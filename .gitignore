@@ -8,3 +8,6 @@ calibration/logs/
 # Xcode user state
 *.xcuserstate
 xcuserdata/
+
+# Claude Code worktrees
+.claude/worktrees/
