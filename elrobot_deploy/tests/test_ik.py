@@ -19,9 +19,9 @@ import time
 import numpy as np
 import pytest
 
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.robot import kinematics as kin
-from g1d_deploy.runtime.ik.arm_qp import DualArmSolver
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.robot import kinematics as kin
+from elrobot_deploy.runtime.ik.arm_qp import DualArmSolver
 
 
 @pytest.fixture(scope="module")

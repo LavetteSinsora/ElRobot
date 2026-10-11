@@ -17,14 +17,14 @@ import uuid
 import numpy as np
 import pytest
 
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.config_loading.derive import derive
-from g1d_deploy.config_loading.errors import ConfigError
-from g1d_deploy.dashboards.inspect.modes.replay.anchors import views_of
-from g1d_deploy.policy_contract import camera_info
-from g1d_deploy.runtime.drivers import fisheye_circle_fit as fit
-from g1d_deploy.runtime.processes import p2_camera
-from g1d_deploy.runtime.shared_memory import Arena, build, open_all
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.config_loading.derive import derive
+from elrobot_deploy.config_loading.errors import ConfigError
+from elrobot_deploy.dashboards.inspect.modes.replay.anchors import views_of
+from elrobot_deploy.policy_contract import camera_info
+from elrobot_deploy.runtime.drivers import fisheye_circle_fit as fit
+from elrobot_deploy.runtime.processes import p2_camera
+from elrobot_deploy.runtime.shared_memory import Arena, build, open_all
 
 HZ = 30.0
 
@@ -62,7 +62,7 @@ class _Source:
 
 class _Arena:
     def __init__(self, cfg, hw):
-        self.arena = Arena.create(f"g1d-t{os.getpid()}-{uuid.uuid4().hex[:8]}",
+        self.arena = Arena.create(f"elr-t{os.getpid()}-{uuid.uuid4().hex[:8]}",
                                   build(cfg, derive(cfg, hw)))
         self.rings = open_all(self.arena, cfg)
 
@@ -222,11 +222,11 @@ def test_capture_source_settles_then_pools_and_never_hangs():
 
 
 def test_init_fits_before_the_arena_and_hands_every_process_the_square(cfg, hw):
-    from g1d_deploy.runtime.launcher import Launcher
+    from elrobot_deploy.runtime.launcher import Launcher
 
     spec = cfgmod.CameraSpec(720, 1280, source="zmq", kind="fisheye180")
     c = _fish_cfg(cfg, spec)
-    lch = Launcher(c, hw, arena_name=f"g1d-t{os.getpid()}-{uuid.uuid4().hex[:8]}",
+    lch = Launcher(c, hw, arena_name=f"elr-t{os.getpid()}-{uuid.uuid4().hex[:8]}",
                    log=lambda *_: None,
                    lens_frames=lambda cam: disc_frames(655.0, 380.0, 372.0))
     try:

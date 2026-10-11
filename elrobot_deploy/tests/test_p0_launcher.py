@@ -15,13 +15,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.config_loading.errors import ConfigError
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.runtime.launcher import Launcher
-from g1d_deploy.runtime.launcher.ramps import (cosine_ramp, cosine_samples, home_ticks,
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.config_loading.errors import ConfigError
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.launcher import Launcher
+from elrobot_deploy.runtime.launcher.ramps import (cosine_ramp, cosine_samples, home_ticks,
                                                ramp_duration, write_ramp)
-from g1d_deploy.runtime.launcher.state_machine import _ExitNow
+from elrobot_deploy.runtime.launcher.state_machine import _ExitNow
 
 T0 = 1000.0
 
@@ -974,7 +974,7 @@ def test_a_usb_only_rig_never_reaches_for_the_robot_board(monkeypatch):
     """A rig whose cameras are all on this machine must not need SSH to the
     board to be able to start — reaching for it would make an unrelated network
     fault a refusal for a run that does not depend on it."""
-    import g1d_deploy.runtime.drivers.board as board
+    import elrobot_deploy.runtime.drivers.board as board
 
     def explode(*a, **k):                       # noqa: ANN002, ANN003
         raise AssertionError("SSHed to the board for a USB-only rig")
@@ -991,7 +991,7 @@ def test_a_zmq_camera_starts_the_board_server_before_p2_connects(monkeypatch):
     """P2's first act is to connect a SUB socket and block. ZMQ connects to an
     unbound port quite happily, so a server nobody started reads as a dead
     camera, not as a missing server."""
-    import g1d_deploy.runtime.drivers.board as board
+    import elrobot_deploy.runtime.drivers.board as board
 
     seen = {}
 
@@ -1014,7 +1014,7 @@ def test_camera_normal_never_touches_the_board(monkeypatch):
     """`--camera normal` is a robot with the stock wrists and teleimager serving
     them. The autostart STOPS teleimager — the only server those cameras have —
     so it must not run, even though the cameras are zmq ones."""
-    import g1d_deploy.runtime.drivers.board as board
+    import elrobot_deploy.runtime.drivers.board as board
 
     def explode(*a, **k):                       # noqa: ANN002, ANN003
         raise AssertionError("SSHed to the board under --camera normal")
@@ -1041,7 +1041,7 @@ def test_the_process_pattern_cannot_match_the_shell_that_runs_it():
     """
     import re
 
-    from g1d_deploy.runtime.drivers.board.image_server_launch import PROCESS_PATTERN
+    from elrobot_deploy.runtime.drivers.board.image_server_launch import PROCESS_PATTERN
 
     pattern = re.compile(PROCESS_PATTERN)
     assert pattern.search("python publisher.py")
@@ -1057,10 +1057,10 @@ def test_the_process_pattern_cannot_match_the_shell_that_runs_it():
 
 def test_zero_does_not_mean_skip_the_board_autostart(monkeypatch):
     """`"0"` is a non-empty string and therefore truthy, so a bare truth test
-    made G1D_NO_BOARD_AUTOSTART=0 mean "skip" — the opposite of what anyone
+    made ELROBOT_NO_BOARD_AUTOSTART=0 mean "skip" — the opposite of what anyone
     typing 0 intends — and then reported the board as "already running" without
     having looked at it."""
-    from g1d_deploy.runtime.drivers.board import image_server_launch as imager
+    from elrobot_deploy.runtime.drivers.board import image_server_launch as imager
 
     for falsy in ("0", "false", "no", "off", "", "  "):
         monkeypatch.setenv(imager.SKIP_ENV, falsy)
@@ -1138,7 +1138,7 @@ def test_the_vendor_stop_never_blocks_on_systemds_own_timeout():
     always going to be needed. Measured from the board's journal 2026-09-02:
     `Stopping` at 10:00:10, `Failed with result 'timeout'` at 10:01:40.
     """
-    from g1d_deploy.runtime.drivers.board import image_server_launch as imager
+    from elrobot_deploy.runtime.drivers.board import image_server_launch as imager
 
     ssh = FakeSSH(active_for=2)
     imager._stop_vendor(ssh, "123", timeout=10.0)
@@ -1155,7 +1155,7 @@ def test_the_vendor_is_stopped_before_it_is_killed():
     cameras again — the board's journal shows exactly that, stopped at 10:00:05
     and back up by 10:00:10. Only a manual stop cancels the restart, so the
     stop must be in flight before anything is killed."""
-    from g1d_deploy.runtime.drivers.board import image_server_launch as imager
+    from elrobot_deploy.runtime.drivers.board import image_server_launch as imager
 
     ssh = FakeSSH(active_for=2)
     imager._stop_vendor(ssh, "123", timeout=10.0)
@@ -1168,7 +1168,7 @@ def test_the_vendor_is_stopped_before_it_is_killed():
 
 
 def test_a_vendor_that_is_already_gone_costs_one_poll_and_no_kill():
-    from g1d_deploy.runtime.drivers.board import image_server_launch as imager
+    from elrobot_deploy.runtime.drivers.board import image_server_launch as imager
 
     ssh = FakeSSH(active_for=0)
     imager._stop_vendor(ssh, "123", timeout=10.0)
@@ -1178,7 +1178,7 @@ def test_a_vendor_that_is_already_gone_costs_one_poll_and_no_kill():
 def test_a_vendor_that_never_dies_raises_rather_than_hanging():
     """The ceiling is ours now, not systemd's — but there still is one, and it
     names the unit rather than reporting a bare socket timeout."""
-    from g1d_deploy.runtime.drivers.board import image_server_launch as imager
+    from elrobot_deploy.runtime.drivers.board import image_server_launch as imager
 
     ssh = FakeSSH(active_for=10_000)
     with pytest.raises(imager.BoardImagerError, match="still active"):
@@ -1195,7 +1195,7 @@ def test_a_vendor_mid_restart_still_counts_as_holding_the_cameras():
     and the stop is skipped, our publisher starts, and teleimager returns
     seconds later to take the devices and `modprobe -r uvcvideo` on its way in.
     """
-    from g1d_deploy.runtime.drivers.board import image_server_launch as imager
+    from elrobot_deploy.runtime.drivers.board import image_server_launch as imager
 
     for holding in ("active", "activating", "deactivating", "reloading"):
         assert imager._vendor_active(FakeSSH(active_for=1, state=holding)), holding
@@ -1206,7 +1206,7 @@ def test_a_vendor_mid_restart_still_counts_as_holding_the_cameras():
 def test_a_vendor_stuck_activating_is_still_killed():
     """The consequence of the above for `_stop_vendor`: it polls the same
     predicate, so a unit looping through `activating` must not read as done."""
-    from g1d_deploy.runtime.drivers.board import image_server_launch as imager
+    from elrobot_deploy.runtime.drivers.board import image_server_launch as imager
 
     ssh = FakeSSH(active_for=2, state="activating")
     imager._stop_vendor(ssh, "123", timeout=10.0)
@@ -1284,14 +1284,14 @@ class FakeBoard:
 
 
 def _ours():
-    from g1d_deploy.runtime.drivers.board import image_server_launch as imager
+    from elrobot_deploy.runtime.drivers.board import image_server_launch as imager
 
     return {n: (imager.LOCAL_DIR / n).read_bytes()
             for n in imager.local_manifest()}
 
 
 def _ensure(monkeypatch, board):
-    from g1d_deploy.runtime.drivers.board import image_server_launch as imager
+    from elrobot_deploy.runtime.drivers.board import image_server_launch as imager
 
     monkeypatch.delenv(imager.SKIP_ENV, raising=False)
     monkeypatch.setattr(imager, "_connect", lambda *a, **k: board)
@@ -1301,14 +1301,14 @@ def _ensure(monkeypatch, board):
 
 
 def _digest():
-    from g1d_deploy.runtime.drivers.board import image_server_launch as imager
+    from elrobot_deploy.runtime.drivers.board import image_server_launch as imager
 
     return imager.manifest_digest(imager.local_manifest())
 
 
 def test_the_manifest_is_the_code_the_board_runs():
     """Every file the publisher imports or reads, and nothing it does not."""
-    from g1d_deploy.runtime.drivers.board import image_server_launch as imager
+    from elrobot_deploy.runtime.drivers.board import image_server_launch as imager
 
     names = set(imager.local_manifest())
     assert {"photometry.py", "publisher.py", "cameras.yaml"} <= names
@@ -1378,7 +1378,7 @@ def test_an_empty_board_is_installed_then_started(monkeypatch):
 def test_a_copy_that_does_not_land_is_an_error_not_a_start(monkeypatch):
     """Verified by hashing on the board again: a full disk or a permissions
     problem must not end in a publisher running whatever was left there."""
-    from g1d_deploy.runtime.drivers.board import image_server_launch as imager
+    from elrobot_deploy.runtime.drivers.board import image_server_launch as imager
 
     board = FakeBoard(dict(_ours(), **{"photometry.py": b"old\n"}),
                       pids=["11470"], drop_writes=True)
@@ -1614,7 +1614,7 @@ def test_check_refuses_before_p1_when_the_nic_holds_no_robot_subnet_address(
     """The wait on p1_state cannot succeed without an address on 192.168.123.0/24,
     so CHECK says so at once — with the nmcli line — instead of waiting forever
     on a robot that pings fine (ssh routes by IP; DDS binds the NIC's address)."""
-    from g1d_deploy.runtime.drivers.dds import domain as dds
+    from elrobot_deploy.runtime.drivers.dds import domain as dds
 
     monkeypatch.setattr(dds, "has_nic", lambda iface: True)
     monkeypatch.setattr(dds, "ipv4_addresses", lambda iface: ["192.168.1.111"])
@@ -1631,7 +1631,7 @@ def test_check_passes_the_subnet_gate_without_pinging(rings, cfg, hw, derived,
                                                       monkeypatch):
     """A robot still booting is a reason to wait, not to refuse: the gate reads
     the NIC only, and the ping belongs to the wait's note."""
-    from g1d_deploy.runtime.drivers.dds import domain as dds
+    from elrobot_deploy.runtime.drivers.dds import domain as dds
 
     monkeypatch.setattr(dds, "has_nic", lambda iface: True)
     monkeypatch.setattr(dds, "ipv4_addresses", lambda iface: ["192.168.123.118"])

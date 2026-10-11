@@ -1,6 +1,6 @@
 # Rollout inspection
 
-    g1d_deploy inspect [ROOT-OR-RECORD] [--port 8770]
+    elrobot_deploy inspect [ROOT-OR-RECORD] [--port 8770]
 
 A local web app over recorded rollouts: scrub a rollout's timeline with every
 camera, the robot in 3-D (measured, commanded pose, commanded joints), and
@@ -10,10 +10,10 @@ file's `[paths] records`. On the deploy box it binds loopback: reach it with
 `ssh -L 8770:localhost:8770 <box>`.
 
 - **Read first:** `docs/overview.md`.
-- **Code:** `src/g1d_deploy/cli/inspect.py`, `src/g1d_deploy/dashboards/inspect/`
+- **Code:** `src/elrobot_deploy/cli/inspect.py`, `src/elrobot_deploy/dashboards/inspect/`
   (`options.py`, `discover.py`, `record_robot.py`, `loader.py`, `scene.py`,
   `server.py`, `modes/`, `producers/ik_bench.py`, `static/`); shared with the
-  live dashboard: `src/g1d_deploy/dashboards/web/`.
+  live dashboard: `src/elrobot_deploy/dashboards/web/`.
 - **Related:** `docs/infra_logic/ik_solvers.md`, `docs/deploying_a_policy/policy_contract.md`,
   `docs/infra_logic/500hz_execution.md`.
 
@@ -66,7 +66,7 @@ on). Opening the mode solves the four shipped solvers the recording lacks,
 once, skipping the one the rollout flew; **Solve** re-runs one. Solving is a
 CPU subprocess:
 
-    python -m g1d_deploy.dashboards.inspect.producers.ik_bench RECORD --methods arm_planner,arm_qp
+    python -m elrobot_deploy.dashboards.inspect.producers.ik_bench RECORD --methods arm_planner,arm_qp
 
 which re-solves every tick the way P6 did (per chunk, on the recorded trunk,
 TCP included) and merges results into `RECORD/ik_bench.npz`. A solver of your
@@ -98,7 +98,7 @@ rollout recorded (or the one given), which needs the `replay` extra. It is
 **refused while a live deployment runs** on the box (it would compete for the
 GPU). By hand:
 
-    g1d_deploy replay-policy --record DIR [--entry E] [--checkpoint STEP | --run RUN --step N]
+    elrobot_deploy replay-policy --record DIR [--entry E] [--checkpoint STEP | --run RUN --step N]
         [--prompt TEXT] [--sample-steps N] [--seed N]
 
 Results land in `<record>/policy_replays/<id>/`.
@@ -116,8 +116,8 @@ making new ones needs a producer module you provide, run as
 A mode is a class, mounted by module path or file (relative to the working
 directory):
 
-    g1d_deploy inspect --mode my_pkg.my_mode:MyMode
-    g1d_deploy inspect --mode examples/inspect_mode/mode.py:LatencyMode
+    elrobot_deploy inspect --mode my_pkg.my_mode:MyMode
+    elrobot_deploy inspect --mode examples/inspect_mode/mode.py:LatencyMode
 
 or in the machine file:
 
@@ -130,7 +130,7 @@ port = 8770
 
 ```python
 from pathlib import Path
-from g1d_deploy.dashboards.inspect.modes import describe
+from elrobot_deploy.dashboards.inspect.modes import describe
 
 class MyMode:
     name = "mine"                                  # ?mode=mine, and mode_mine.js
@@ -157,5 +157,5 @@ the viewer, `onLoaded` / `onFrame` callbacks, `setOverlay` for ghosts, `strip`
 for the mode strip (`strip.show({title, unit, series: [{label, color, t, y}]})`),
 and the loaded record. A mode that fails to import is reported and left out.
 Anything needing a GPU or heavy CPU runs as a subprocess
-(`src/g1d_deploy/dashboards/web/jobs.py`'s `RUNNER`), never in the server.
+(`src/elrobot_deploy/dashboards/web/jobs.py`'s `RUNNER`), never in the server.
 `examples/inspect_mode/` is a working one.

@@ -12,12 +12,12 @@ What is tested here, end to end, with real processes:
 * **P5's import graph is the minimal core**: the child runs with an import
   hook (a `sitecustomize` on its PYTHONPATH) that refuses every heavy
   dependency outright and records every module the process loaded. What it
-  loaded must be the stdlib, numpy, and the `CORE` modules of g1d_deploy —
+  loaded must be the stdlib, numpy, and the `CORE` modules of elrobot_deploy —
   nothing else.
 
-The same tests run against a SECOND venv when `G1D_TEST_POLICY_PYTHON` names
-its interpreter — one holding numpy 2 and only g1d_deploy's minimal core
-(`pip install --no-deps -e g1d_deploy` + `numpy>=2`), while this runtime runs
+The same tests run against a SECOND venv when `ELROBOT_TEST_POLICY_PYTHON` names
+its interpreter — one holding numpy 2 and only elrobot_deploy's minimal core
+(`pip install --no-deps -e elrobot_deploy` + `numpy>=2`), while this runtime runs
 numpy 1.x. That is the case the feature exists for.
 """
 
@@ -35,48 +35,48 @@ import uuid
 import numpy as np
 import pytest
 
-from g1d_deploy.runtime import timing as clock
-from g1d_deploy.config_loading import json_transport as codec, resolved as cfgmod
-from g1d_deploy.config_loading.derive import derive
-from g1d_deploy.config_loading.errors import ConfigError
-from g1d_deploy.config_loading.validate import validate
-from g1d_deploy.runtime.shared_memory import Arena, build, open_all, schema
-from g1d_deploy.runtime.launcher import children
+from elrobot_deploy.runtime import timing as clock
+from elrobot_deploy.config_loading import json_transport as codec, resolved as cfgmod
+from elrobot_deploy.config_loading.derive import derive
+from elrobot_deploy.config_loading.errors import ConfigError
+from elrobot_deploy.config_loading.validate import validate
+from elrobot_deploy.runtime.shared_memory import Arena, build, open_all, schema
+from elrobot_deploy.runtime.launcher import children
 
-#: The minimal core: every g1d_deploy module P5 (and `policy_contract.describe`) may
-#: load. A policy venv installs g1d_deploy with NO extras, and these import
+#: The minimal core: every elrobot_deploy module P5 (and `policy_contract.describe`) may
+#: load. A policy venv installs elrobot_deploy with NO extras, and these import
 #: nothing but numpy and the stdlib.
 CORE = {
-    "g1d_deploy",
-    "g1d_deploy.config_loading",
-    "g1d_deploy.config_loading.errors",
-    "g1d_deploy.config_loading.json_transport",
-    "g1d_deploy.config_loading.resolved",
-    "g1d_deploy.config_loading.rollout_settings",
-    "g1d_deploy.policy_contract",
-    "g1d_deploy.policy_contract.actions",
-    "g1d_deploy.policy_contract.anchor",
-    "g1d_deploy.policy_contract.base",
-    "g1d_deploy.policy_contract.deadline_shift",
-    "g1d_deploy.policy_contract.describe",
-    "g1d_deploy.policy_contract.loading",
-    "g1d_deploy.policy_contract.observation",
-    "g1d_deploy.robot",
-    "g1d_deploy.robot.end_effectors",
-    "g1d_deploy.robot.kinematics",
-    "g1d_deploy.runtime",
-    "g1d_deploy.runtime.cpu_pinning",
-    "g1d_deploy.runtime.ik",
-    "g1d_deploy.runtime.processes",
-    "g1d_deploy.runtime.processes.p5_policy",
-    "g1d_deploy.runtime.processes.policy_host",
-    "g1d_deploy.runtime.shared_memory",
-    "g1d_deploy.runtime.shared_memory.layout",
-    "g1d_deploy.runtime.shared_memory.primitives",
-    "g1d_deploy.runtime.shared_memory.rings",
-    "g1d_deploy.runtime.shared_memory.schema",
-    "g1d_deploy.runtime.teleop.intervention",
-    "g1d_deploy.runtime.timing",
+    "elrobot_deploy",
+    "elrobot_deploy.config_loading",
+    "elrobot_deploy.config_loading.errors",
+    "elrobot_deploy.config_loading.json_transport",
+    "elrobot_deploy.config_loading.resolved",
+    "elrobot_deploy.config_loading.rollout_settings",
+    "elrobot_deploy.policy_contract",
+    "elrobot_deploy.policy_contract.actions",
+    "elrobot_deploy.policy_contract.anchor",
+    "elrobot_deploy.policy_contract.base",
+    "elrobot_deploy.policy_contract.deadline_shift",
+    "elrobot_deploy.policy_contract.describe",
+    "elrobot_deploy.policy_contract.loading",
+    "elrobot_deploy.policy_contract.observation",
+    "elrobot_deploy.robot",
+    "elrobot_deploy.robot.end_effectors",
+    "elrobot_deploy.robot.kinematics",
+    "elrobot_deploy.runtime",
+    "elrobot_deploy.runtime.cpu_pinning",
+    "elrobot_deploy.runtime.ik",
+    "elrobot_deploy.runtime.processes",
+    "elrobot_deploy.runtime.processes.p5_policy",
+    "elrobot_deploy.runtime.processes.policy_host",
+    "elrobot_deploy.runtime.shared_memory",
+    "elrobot_deploy.runtime.shared_memory.layout",
+    "elrobot_deploy.runtime.shared_memory.primitives",
+    "elrobot_deploy.runtime.shared_memory.rings",
+    "elrobot_deploy.runtime.shared_memory.schema",
+    "elrobot_deploy.runtime.teleop.intervention",
+    "elrobot_deploy.runtime.timing",
 }
 
 #: Refused outright in the child: importing one fails loudly at the import.
@@ -88,7 +88,7 @@ FORBIDDEN = ("mujoco", "pinocchio", "pin", "cv2", "cyclonedds",
 _HOOK = textwrap.dedent('''
     import atexit, json, os, sys
     _BASE = set(sys.modules)
-    _FORBIDDEN = set(json.loads(os.environ["G1D_FORBID"]))
+    _FORBIDDEN = set(json.loads(os.environ["ELROBOT_FORBID"]))
 
     class _Refuse:
         def find_spec(self, name, path=None, target=None):
@@ -99,7 +99,7 @@ _HOOK = textwrap.dedent('''
     sys.meta_path.insert(0, _Refuse())
 
     def _dump():
-        with open(os.environ["G1D_IMPORTS_OUT"], "w") as f:
+        with open(os.environ["ELROBOT_IMPORTS_OUT"], "w") as f:
             json.dump({"new": sorted(set(sys.modules) - _BASE),
                        "stdlib": sorted(sys.stdlib_module_names)}, f)
 
@@ -108,7 +108,7 @@ _HOOK = textwrap.dedent('''
 
 POLICY_SRC = textwrap.dedent('''
     import numpy as np
-    from g1d_deploy.policy_contract import EefActions, Policy
+    from elrobot_deploy.policy_contract import EefActions, Policy
 
     class Hold(Policy):
         action_mode = "eef"
@@ -128,9 +128,9 @@ POLICY_SRC = textwrap.dedent('''
 
 def _interpreters():
     out = [pytest.param(sys.executable, id="runtime-python")]
-    other = os.environ.get("G1D_TEST_POLICY_PYTHON")
+    other = os.environ.get("ELROBOT_TEST_POLICY_PYTHON")
     out.append(pytest.param(other, id="policy-venv", marks=pytest.mark.skipif(
-        not other, reason="G1D_TEST_POLICY_PYTHON names no second venv")))
+        not other, reason="ELROBOT_TEST_POLICY_PYTHON names no second venv")))
     return out
 
 
@@ -152,8 +152,8 @@ def _hooked_env(tmp_path, monkeypatch):
     monkeypatch.setenv("PYTHONPATH", os.pathsep.join(
         [str(hook), os.path.abspath(src)]
         + [p for p in os.environ.get("PYTHONPATH", "").split(os.pathsep) if p]))
-    monkeypatch.setenv("G1D_FORBID", json.dumps(FORBIDDEN))
-    monkeypatch.setenv("G1D_IMPORTS_OUT", str(out))
+    monkeypatch.setenv("ELROBOT_FORBID", json.dumps(FORBIDDEN))
+    monkeypatch.setenv("ELROBOT_IMPORTS_OUT", str(out))
     return out
 
 
@@ -163,10 +163,10 @@ def _check_imports(out_file, *, extra=(), core=True):
     top = {m.partition(".")[0] for m in got["new"]}
     # `cython_runtime` is created by numpy's own compiled extensions.
     foreign = sorted(t for t in top if t not in std and not t.startswith("_")
-                     and t not in {"numpy", "cython_runtime", "g1d_deploy", *extra})
+                     and t not in {"numpy", "cython_runtime", "elrobot_deploy", *extra})
     assert not foreign, f"P5 loaded modules outside the minimal core: {foreign}"
-    ours = {m for m in got["new"] if m.partition(".")[0] == "g1d_deploy"}
-    assert not core or ours <= CORE, f"g1d_deploy modules outside CORE: {sorted(ours - CORE)}"
+    ours = {m for m in got["new"] if m.partition(".")[0] == "elrobot_deploy"}
+    assert not core or ours <= CORE, f"elrobot_deploy modules outside CORE: {sorted(ours - CORE)}"
 
 
 # --- codec -----------------------------------------------------------------
@@ -213,7 +213,7 @@ def test_codec_keeps_non_finite_floats_and_scalars():
 @pytest.mark.parametrize("python", _interpreters())
 def test_describe_answers_from_the_policy_interpreter(tmp_path, monkeypatch,
                                                       python):
-    from g1d_deploy.policy_contract.describe import describe
+    from elrobot_deploy.policy_contract.describe import describe
     (tmp_path / "pol.py").write_text(POLICY_SRC)
     out = _hooked_env(tmp_path, monkeypatch)
     info = describe(f"{tmp_path / 'pol.py'}:Hold",
@@ -228,7 +228,7 @@ def test_describe_answers_from_the_policy_interpreter(tmp_path, monkeypatch,
 
 
 def test_describe_reports_the_childs_error(tmp_path):
-    from g1d_deploy.policy_contract.describe import DescribeError, describe
+    from elrobot_deploy.policy_contract.describe import DescribeError, describe
     (tmp_path / "bad.py").write_text("raise RuntimeError('no torch here')\n")
     with pytest.raises(DescribeError, match="no torch here"):
         describe(f"{tmp_path / 'bad.py'}:X",
@@ -236,10 +236,10 @@ def test_describe_reports_the_childs_error(tmp_path):
 
 
 def test_describe_says_how_to_install_the_core(tmp_path, monkeypatch):
-    from g1d_deploy.policy_contract.describe import DescribeError, describe
+    from elrobot_deploy.policy_contract.describe import DescribeError, describe
     monkeypatch.setenv("PYTHONPATH", "")
     monkeypatch.setenv("PYTHONNOUSERSITE", "1")
-    # The system interpreter, isolated from every site-packages: no g1d_deploy.
+    # The system interpreter, isolated from every site-packages: no elrobot_deploy.
     bare = tmp_path / "bare-python"
     bare.write_text(f"#!/bin/sh\nexec {sys.executable} -S \"$@\"\n")
     bare.chmod(0o755)
@@ -249,7 +249,7 @@ def test_describe_says_how_to_install_the_core(tmp_path, monkeypatch):
 
 def test_the_deploy_file_names_the_interpreter_and_resolve_describes_there(
         tmp_path, monkeypatch):
-    from g1d_deploy.config_loading import deploy_file as deployfile
+    from elrobot_deploy.config_loading import deploy_file as deployfile
     (tmp_path / "pol.py").write_text(POLICY_SRC.replace('"rwrist"', '"head_left"'))
     py = _wrapper(tmp_path, sys.executable)
     tree = {"policy": {"entry": "pol.py:Hold", "python": "./policy-python"},
@@ -309,7 +309,7 @@ def test_p5_runs_in_the_policy_interpreter_against_the_runtimes_arena(
                          policy_python=python)
     out = _hooked_env(tmp_path, monkeypatch)
     layout = build(cfg, derive(cfg, hw))
-    name = f"g1d-t{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    name = f"elr-t{os.getpid()}-{uuid.uuid4().hex[:8]}"
     arena = Arena.create(name, layout)
     stop = threading.Event()
     proc = None
@@ -321,7 +321,7 @@ def test_p5_runs_in_the_policy_interpreter_against_the_runtimes_arena(
         feeder.start()
         # P0's own spawn, with P0's own argument: `interpreter=`.
         proc = children._spawn_process(
-            "p5_policy", "g1d_deploy.runtime.processes.p5_policy.run",
+            "p5_policy", "elrobot_deploy.runtime.processes.p5_policy.run",
             (name, cfg, hw), {"interpreter": cfg.policy_python})
         assert isinstance(proc, children._InterpreterChild)
         _wait(lambda: control.warm, 60, proc, "warm")
@@ -351,14 +351,14 @@ def test_the_layout_and_dtypes_do_not_depend_on_numpy(cfg, hw, tmp_path):
     the layout hash (which folds in every region's `dtype.str`, size and
     offset) and every structured dtype's `descr` must agree across numpy
     majors. Asked of the second venv when there is one."""
-    other = os.environ.get("G1D_TEST_POLICY_PYTHON")
+    other = os.environ.get("ELROBOT_TEST_POLICY_PYTHON")
     if not other:
-        pytest.skip("G1D_TEST_POLICY_PYTHON names no second venv")
+        pytest.skip("ELROBOT_TEST_POLICY_PYTHON names no second venv")
     script = textwrap.dedent('''
         import json, sys
         import numpy as np
-        from g1d_deploy import codec, config
-        from g1d_deploy.runtime.shared_memory import build
+        from elrobot_deploy import codec, config
+        from elrobot_deploy.runtime.shared_memory import build
         cfg, hw = codec.loads(sys.stdin.read())
         lay = build(cfg, config.derive(cfg, hw))
         print(json.dumps({"hash": lay.hash, "size": lay.size,
@@ -377,7 +377,7 @@ def test_the_layout_and_dtypes_do_not_depend_on_numpy(cfg, hw, tmp_path):
 
 
 _WORDS = textwrap.dedent('''
-    from g1d_deploy.policy_contract import Policy
+    from elrobot_deploy.policy_contract import Policy
 
     class Words(Policy):
         action_mode = "eef"
@@ -401,7 +401,7 @@ def test_describe_and_check_prompt_run_in_the_policy_interpreter(
     nothing beyond the core — no mujoco, no cv2 — so a numpy-2 policy venv
     answers them."""
     pytest.importorskip("cv2")                    # the fixture record's JPEGs
-    from g1d_deploy.dashboards.inspect.modes.replay import PRODUCER
+    from elrobot_deploy.dashboards.inspect.modes.replay import PRODUCER
 
     from . import inspect_fixtures as fx
     record = fx.write(tmp_path / "records" / "exp" / "20260926-120000")
@@ -431,14 +431,14 @@ def test_a_full_replay_runs_in_a_policy_venv_with_the_replay_extra(tmp_path):
     """A replay decodes JPEGs and runs FK, so the policy venv needs the
     `replay` extra (cv2, mujoco) — which works under numpy 2. Skipped unless
     the second venv has them."""
-    other = os.environ.get("G1D_TEST_POLICY_PYTHON")
+    other = os.environ.get("ELROBOT_TEST_POLICY_PYTHON")
     if not other:
-        pytest.skip("G1D_TEST_POLICY_PYTHON names no second venv")
+        pytest.skip("ELROBOT_TEST_POLICY_PYTHON names no second venv")
     has = subprocess.run([other, "-c", "import cv2, mujoco"], capture_output=True)
     if has.returncode != 0:
         pytest.skip("the second venv has no replay extra (cv2, mujoco)")
     pytest.importorskip("cv2")
-    from g1d_deploy.dashboards.inspect.modes.replay import PRODUCER, store
+    from elrobot_deploy.dashboards.inspect.modes.replay import PRODUCER, store
 
     from . import inspect_fixtures as fx
     record = fx.write(tmp_path / "records" / "exp" / "20260926-120000")

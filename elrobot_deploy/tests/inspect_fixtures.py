@@ -1,4 +1,4 @@
-"""A g1d_deploy rollout record, written the way P9 writes one.
+"""A elrobot_deploy rollout record, written the way P9 writes one.
 
 The manifest is built from the real resolution path — `deploy_file.resolve` of
 one of the example deploy files, `rollout_record_utils.manifest.build` for the robot file chain,
@@ -20,8 +20,8 @@ from pathlib import Path
 
 import numpy as np
 
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.runtime.processes import p9_record as p9
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.processes import p9_record as p9
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
@@ -58,10 +58,10 @@ def write(run: Path, *, example: str = "sine_eef", intervene=(),
     chain (the profile the deploy file named), which is how a test gives the
     record a robot that differs from the shipped one.
     """
-    from g1d_deploy.config_loading import deploy_file as deployfile
-    from g1d_deploy.rollout_record_utils import manifest as provenance
-    from g1d_deploy.robot.kinematics import ForwardKinematics
-    from g1d_deploy.config_loading.rollout_settings import RolloutSettings
+    from elrobot_deploy.config_loading import deploy_file as deployfile
+    from elrobot_deploy.rollout_record_utils import manifest as provenance
+    from elrobot_deploy.robot.kinematics import ForwardKinematics
+    from elrobot_deploy.config_loading.rollout_settings import RolloutSettings
 
     run = Path(run)
     run.mkdir(parents=True, exist_ok=True)

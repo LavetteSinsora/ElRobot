@@ -16,11 +16,11 @@ import time
 import numpy as np
 import pytest
 
-from g1d_deploy.runtime.processes import p1_state
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.runtime.timing import now
-from g1d_deploy.robot.kinematics import ForwardKinematics
-from g1d_deploy.runtime.drivers.robot_state import FakeHandState, FakeLowState
+from elrobot_deploy.runtime.processes import p1_state
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.timing import now
+from elrobot_deploy.robot.kinematics import ForwardKinematics
+from elrobot_deploy.runtime.drivers.robot_state import FakeHandState, FakeLowState
 
 
 class RecordingFK:
@@ -199,9 +199,9 @@ class FakeSub:
 def _dds_hand(monkeypatch, hw, jaws):
     """A connected `DdsHandState` whose two subscribers return `jaws`."""
     pytest.importorskip("cyclonedds")      # the message types are real
-    from g1d_deploy.runtime.drivers.dds import channel
+    from elrobot_deploy.runtime.drivers.dds import channel
 
-    from g1d_deploy.runtime.drivers import robot_state as wire
+    from elrobot_deploy.runtime.drivers import robot_state as wire
 
     monkeypatch.setattr(channel, "ChannelSubscriber", FakeSub)
     monkeypatch.setattr(channel, "ChannelFactoryInitialize",
@@ -222,7 +222,7 @@ def test_each_hand_reads_its_own_topic(monkeypatch, hw):
     the acting gripper's aperture lands in the idle hand's slot and the policy's
     only proprioception reads a constant zero.
     """
-    from g1d_deploy.runtime.drivers import robot_state as wire
+    from elrobot_deploy.runtime.drivers import robot_state as wire
 
     hand = _dds_hand(monkeypatch, hw, [5.1316, 3.8305])   # measured, 2026-08-20
     rec = wire.record(hand.dtype)
@@ -240,7 +240,7 @@ def test_one_silent_gripper_stops_the_whole_latch(monkeypatch, hw):
     keep `t_grip_recv` moving while the other froze at its last value — a
     *plausible* reading that the session sequence's CHECK could no longer catch, reintroduced
     one hand at a time."""
-    from g1d_deploy.runtime.drivers import robot_state as wire
+    from elrobot_deploy.runtime.drivers import robot_state as wire
 
     hand = _dds_hand(monkeypatch, hw, [5.1316, None])      # right never speaks
     rec = wire.record(hand.dtype)
@@ -252,7 +252,7 @@ def test_one_silent_gripper_stops_the_whole_latch(monkeypatch, hw):
 def test_every_end_effector_has_one_topic_per_hand(hw):
     """The one-topic form (`rt/unitree_actuator/state`) ran a whole rollout on a
     constant; the built-in table carries `[left, right]` for every kind."""
-    from g1d_deploy.robot.end_effectors import END_EFFECTORS
+    from elrobot_deploy.robot.end_effectors import END_EFFECTORS
 
     for ee in END_EFFECTORS.values():
         assert len(ee.topic_hand_cmd) == len(ee.topic_hand_state) == schema.N_HANDS

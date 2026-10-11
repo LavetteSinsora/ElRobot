@@ -1,6 +1,6 @@
 # robot_custom.toml — a robot file of your own, on top of a shipped profile.
 #
-#     g1d_deploy check --robot examples/robot_custom.toml
+#     elrobot_deploy check --robot examples/robot_custom.toml
 #     # and in a deploy.toml:   robot = "robot_custom.toml"
 #
 # `extends` names a shipped profile (or another file, relative to this one).

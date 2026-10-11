@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/build_xrobotoolkit.sh — one-time build of the XRoboToolkit PICO
 # bindings, INSIDE this checkout (.xrobotoolkit/), for a deploy box
-# that will run `g1d_deploy run ... --intervene`.
+# that will run `elrobot_deploy run ... --intervene`.
 #
 # Usually run for you by `scripts/install.sh --intervene`. By hand (from
 # anywhere — paths are computed from this script's own location):
@@ -133,8 +133,8 @@ missing = [n for n in need if not callable(getattr(x, n, None))]
 if missing:
     raise SystemExit(
         "built, but the module is missing: " + ", ".join(missing)
-        + "\nThis build is too old for g1d_deploy's P11.")
-print("xrobotoolkit_sdk OK — every getter g1d_deploy needs is present")
+        + "\nThis build is too old for elrobot_deploy's P11.")
+print("xrobotoolkit_sdk OK — every getter elrobot_deploy needs is present")
 EOF
 
 cat <<'EOF'
@@ -149,5 +149,5 @@ Built. Two things this script cannot do for you:
 
 Then check the headset with no robot powered:
 
-    python -m g1d_deploy.runtime.processes.p11_pico
+    python -m elrobot_deploy.runtime.processes.p11_pico
 EOF

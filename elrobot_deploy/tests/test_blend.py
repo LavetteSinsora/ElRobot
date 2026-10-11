@@ -15,9 +15,9 @@ import types
 import numpy as np
 import pytest
 
-from g1d_deploy.runtime.execution import chunk_blend as blend
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.runtime.shared_memory.rings import Contribution
+from elrobot_deploy.runtime.execution import chunk_blend as blend
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.shared_memory.rings import Contribution
 
 
 def _contrib(chunk_id, quat, *, pos=0.0, hand=0.0, waist=0.0, row=-1):
@@ -155,7 +155,7 @@ def test_temporal_ensembling_is_acts_weighting_by_age():
 
 
 def test_the_config_sets_the_ensembles_m():
-    from g1d_deploy.config_loading.resolved import DeployConfig
+    from elrobot_deploy.config_loading.resolved import DeployConfig
     fn = blend.get("temporal_ensemble", types.SimpleNamespace(temporal_ensemble_m=0.5))
     cs = [_contrib(1, IDENT, pos=0.0, row=10), _contrib(2, IDENT, pos=1.0, row=0)]
     assert np.allclose(blend.apply(fn, cs).pose[0, 0], 1 / (1 + np.exp(5.0)))
@@ -177,7 +177,7 @@ def test_a_single_contributor_passes_through_every_method():
 
 
 def test_registry_resolves_the_config_default():
-    from g1d_deploy.config_loading.resolved import DeployConfig
+    from elrobot_deploy.config_loading.resolved import DeployConfig
     assert blend.get(DeployConfig.blend) is blend.temporal_ensemble
     assert blend.get("newest") is blend.newest
     with pytest.raises(ValueError, match="unknown blend"):

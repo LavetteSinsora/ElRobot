@@ -1,29 +1,29 @@
 ---
 name: setup-g1d-deploy
-description: Guide for setting up the g1d_deploy infra on a computer and connecting it to a Unitree G1-D for the first time. Use it whenever the user wants to install g1d_deploy, get started with it, prepare a new deploy computer or a new robot, choose or write the robot file (robot.toml), decide whether a machine file (machine.toml) is needed, or when `g1d_deploy check` reports a problem with the computer, the network or the robot's cameras. After setup, hand over to the deploy-a-policy skill.
+description: Guide for setting up the elrobot_deploy infra on a computer and connecting it to a Unitree G1-D for the first time. Use it whenever the user wants to install elrobot_deploy, get started with it, prepare a new deploy computer or a new robot, choose or write the robot file (robot.toml), decide whether a machine file (machine.toml) is needed, or when `elrobot_deploy check` reports a problem with the computer, the network or the robot's cameras. After setup, hand over to the deploy-a-policy skill.
 ---
 
-# Set up g1d_deploy
+# Set up elrobot_deploy
 
-This skill takes a user from a fresh clone of g1d_deploy to a computer that
+This skill takes a user from a fresh clone of elrobot_deploy to a computer that
 can talk to their Unitree G1-D: installed, on the robot's network, with the
-right robot file, and passing `g1d_deploy check`. Deploying a policy on top of
+right robot file, and passing `elrobot_deploy check`. Deploying a policy on top of
 that is the `deploy-a-policy` skill (`skills/deploy-a-policy/SKILL.md`).
 
-Setup is done when `g1d_deploy check` passes for the user's robot. Nothing in
-this skill moves the robot. Do not run `g1d_deploy run`; where a launch is
+Setup is done when `elrobot_deploy check` passes for the user's robot. Nothing in
+this skill moves the robot. Do not run `elrobot_deploy run`; where a launch is
 needed to look at something, the user runs it.
 
-Contents: [what g1d_deploy is](#what-g1d_deploy-is) ·
+Contents: [what elrobot_deploy is](#what-elrobot_deploy-is) ·
 [how to work with the user](#how-to-work-with-the-user) ·
 [1 install](#1-install) · [2 network](#2-put-the-computer-on-the-robots-network) ·
 [3 robot file](#3-the-robot-file) · [4 machine file](#4-the-machine-file-usually-not-needed) ·
 [5 check](#5-check) · [6 first look](#6-a-first-look-on-the-dashboard) ·
 [next](#next-deploying-a-policy)
 
-## What g1d_deploy is
+## What elrobot_deploy is
 
-g1d_deploy runs a policy on a Unitree G1-D. It is a set of processes on a
+elrobot_deploy runs a policy on a Unitree G1-D. It is a set of processes on a
 **deploy computer** (a Linux PC, usually with a GPU for the policy) that is
 cabled to the robot. It reads the robot's cameras and joint state, runs the
 policy, and sends motor commands. Three files configure it:
@@ -35,7 +35,7 @@ policy, and sends motor commands. Three files configure it:
 | a **deploy file** (`deploy.toml`) with a policy adapter | one deployment of one policy | the `deploy-a-policy` skill |
 
 This skill covers the first two and the installation. Paths such as
-`docs/setup/install.md` are relative to the root of the g1d_deploy checkout
+`docs/setup/install.md` are relative to the root of the elrobot_deploy checkout
 (the directory holding `README.md`, `docs/`, `scripts/` and `src/`), which is
 two directories above this file. `docs/overview.md` maps all the documentation.
 
@@ -65,26 +65,26 @@ Read `docs/setup/install.md` first. In short:
 2. **Check the checkout is where it will stay.** The build records absolute
    paths: a checkout moved or copied after installing has to be reinstalled.
 3. **Run `scripts/install.sh`** from the checkout root. It builds the
-   CycloneDDS library (what g1d_deploy uses to talk to the robot; it has to be
+   CycloneDDS library (what elrobot_deploy uses to talk to the robot; it has to be
    compiled on every computer) and creates `.venv` with everything else. It
    takes a few minutes and is safe to re-run. Options: `--realsense` if a
    RealSense camera is plugged into this computer, `--intervene` for the PICO
    headset takeover.
 4. **Activate the environment**: `source .venv/bin/activate`, in every new
    terminal. The script cannot do this for the user's shell. In your own
-   commands, call `.venv/bin/g1d_deploy` directly.
+   commands, call `.venv/bin/elrobot_deploy` directly.
 
 Then look at the computer itself:
 
 ```bash
-.venv/bin/g1d_deploy check --no-robot
+.venv/bin/elrobot_deploy check --no-robot
 ```
 
 It reports the installed packages, the GPU, shared memory, the network card
 and the CPU table. Work through whatever it marks as failed; each line prints
 its own remedy. Two results need explaining to the user:
 
-- **The CPU table is refused.** g1d_deploy pins each process to its own cores
+- **The CPU table is refused.** elrobot_deploy pins each process to its own cores
   so that the 500 Hz motor loop is never delayed by camera decoding or the
   policy. It derives that assignment automatically, and refuses a CPU it
   cannot lay out (roughly: fewer than 10 physical cores, or no
@@ -112,7 +112,7 @@ deploy computer therefore needs:
   re-plugged.
 
 See what is there with `ip -4 -o addr`. If no card holds a `192.168.123.x`
-address, `g1d_deploy check` reports it. On a computer using NetworkManager,
+address, `elrobot_deploy check` reports it. On a computer using NetworkManager,
 this adds one beside the card's existing configuration:
 
 ```bash
@@ -122,7 +122,7 @@ sudo nmcli con up "<connection>"
 ```
 
 It needs `sudo` and changes the network settings, so explain it and let the
-user run it. g1d_deploy then finds the card by itself; there is nothing to
+user run it. elrobot_deploy then finds the card by itself; there is nothing to
 configure.
 
 ## 3. The robot file
@@ -147,25 +147,25 @@ overrides what is different, so it is usually a few lines
 (`examples/robot_custom.toml` is a working one). Typical reasons:
 
 - **The onboard computer's address or login was changed** from the factory
-  values. g1d_deploy reads the cameras from that computer, and for the fisheye
+  values. elrobot_deploy reads the cameras from that computer, and for the fisheye
   rig it logs into it over SSH to start its camera server, because the
   robot's stock service cannot serve those cameras. That is the only thing
   the login is used for. The factory values (`192.168.123.164`, user
   `unitree`) are the default; ask for a login only if the default is refused,
   and say what it is for. A changed password is better given through the
-  `G1D_BOARD_SSH_PASSWORD` environment variable than written into a file,
+  `ELROBOT_BOARD_SSH_PASSWORD` environment variable than written into a file,
   since robot files are copied into every recording.
 - **A camera is different or additional**: another port, resolution or a
   camera plugged into the deploy computer.
 - **The two wrist cameras are crossed** ([step 6](#6-a-first-look-on-the-dashboard)).
 
 **The fisheye rig needs one thing on the robot's onboard computer.** The
-camera server g1d_deploy starts there runs in a conda environment that must
+camera server elrobot_deploy starts there runs in a conda environment that must
 already exist on that computer, with `pyuvc`, `pyzmq` and `pyyaml` (the
-profile names it: `[image_server] conda`, `conda_env`). g1d_deploy copies and
+profile names it: `[image_server] conda`, `conda_env`). elrobot_deploy copies and
 starts the server itself, but does not create the environment. The server's
 own notes are in
-`src/g1d_deploy/runtime/drivers/board/fisheye_image_server/README.md`,
+`src/elrobot_deploy/runtime/drivers/board/fisheye_image_server/README.md`,
 including the per-robot values in its `cameras.yaml`: which USB socket each
 wrist camera is plugged into differs between robots, and a robot other than
 the reference one needs its own values there.
@@ -180,12 +180,12 @@ are detected and everything else has a default. Read
 **Ask the user one question here: where recordings should be stored.** They
 are unlikely to know what recordings are yet, so explain first:
 
-- g1d_deploy records every rollout automatically: all camera frames, the
+- elrobot_deploy records every rollout automatically: all camera frames, the
   robot's state, the actions the policy produced and the commands sent.
   Recordings are ordinary folders, one per rollout; ones that are no longer
   needed can be deleted at any time to free space.
 - Recordings are what make a rollout reviewable afterwards.
-  `g1d_deploy inspect` opens a page where a rollout is replayed on a
+  `elrobot_deploy inspect` opens a page where a rollout is replayed on a
   timeline with the cameras and a 3-D robot, and where it can be compared
   against alternatives computed offline on the same recording: what a
   different checkpoint would have done given the same observations, or how a
@@ -194,7 +194,7 @@ are unlikely to know what recordings are yet, so explain first:
 - By default each rollout is stored beside the deploy file that produced it,
   in a `rollout_record/` folder. Setting `[paths] records` in `machine.toml`
   puts all of them under one directory instead, which keeps them off a small
-  system disk and lets `g1d_deploy inspect` open them without a path.
+  system disk and lets `elrobot_deploy inspect` open them without a path.
 
 Then ask whether they want one such directory and where (look at `df -h`
 first, and suggest a disk with space). If they have no preference, leave the
@@ -211,7 +211,7 @@ The other reasons to write a machine file need no question:
 With the robot powered on and cabled:
 
 ```bash
-.venv/bin/g1d_deploy check --robot <profile name or path to the robot file>
+.venv/bin/elrobot_deploy check --robot <profile name or path to the robot file>
 ```
 
 It is read-only: it listens to every camera the robot file lists and to the
@@ -239,7 +239,7 @@ Ask the user to launch the shipped hold policy, which moves the arms to the
 home posture and holds them there, and to look at the dashboard:
 
 ```bash
-g1d_deploy run examples/deploy.toml      # the USER runs this: the arms move to home
+elrobot_deploy run examples/deploy.toml      # the USER runs this: the arms move to home
 ```
 
 Explain before they run it that the arms move during startup, and that the
@@ -253,6 +253,6 @@ use that file from then on. Exit from the dashboard ends the session.
 
 Report to the user what was installed, which robot file to use (a profile
 name or the path of the file you wrote), whether a machine file exists and
-why, and the result of `g1d_deploy check`. Then continue with the
+why, and the result of `elrobot_deploy check`. Then continue with the
 `deploy-a-policy` skill (`skills/deploy-a-policy/SKILL.md`) to write the
 policy adapter and the deploy file.

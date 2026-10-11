@@ -17,11 +17,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from g1d_deploy.dashboards.web import gpu
-from g1d_deploy.dashboards.inspect import loader, scene, timeline
-from g1d_deploy.dashboards.inspect.modes import replay as replay_mode
-from g1d_deploy.dashboards.inspect.modes.replay import anchors, browse, run, store
-from g1d_deploy.dashboards.inspect.modes.replay.overlay import OverlayBuilder
+from elrobot_deploy.dashboards.web import gpu
+from elrobot_deploy.dashboards.inspect import loader, scene, timeline
+from elrobot_deploy.dashboards.inspect.modes import replay as replay_mode
+from elrobot_deploy.dashboards.inspect.modes.replay import anchors, browse, run, store
+from elrobot_deploy.dashboards.inspect.modes.replay.overlay import OverlayBuilder
 
 from . import inspect_fixtures as fx
 
@@ -36,7 +36,7 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 #: a second of head history (so the record-backed reader is).
 _PROBE = '''
 import numpy as np
-from g1d_deploy.policy_contract import EefActions, Policy as _Base
+from elrobot_deploy.policy_contract import EefActions, Policy as _Base
 
 
 class Policy(_Base):
@@ -85,7 +85,7 @@ def record(tmp_path):
 def probe(tmp_path):
     path = tmp_path / "probe_policy.py"
     path.write_text(textwrap.dedent(_PROBE))
-    from g1d_deploy.policy_contract import loading as entry
+    from elrobot_deploy.policy_contract import loading as entry
     cls = entry.load_entry(f"{path}:Policy")
     cls.seen.clear()
     return f"{path}:Policy", cls
@@ -208,8 +208,8 @@ def test_settings_that_do_not_change_the_policy_are_not_replayable(record):
 
 def _mode(record_dir):
     """The mode mounted on a dashboard served on one record, loaded."""
-    from g1d_deploy.dashboards.inspect.options import Options
-    from g1d_deploy.dashboards.inspect import server
+    from elrobot_deploy.dashboards.inspect.options import Options
+    from elrobot_deploy.dashboards.inspect import server
 
     opts = Options(root=Path(record_dir),
                    state_file=Path(record_dir).parent / "state.json")
@@ -292,7 +292,7 @@ def test_the_cli_replays_and_describes(record):
     """`--ignore-live`: the toy policy takes no GPU, and a deployment may be
     running on the box the suite runs on (the refusal has its own test)."""
     env = {**os.environ, "PYTHONPATH": str(SRC)}
-    base = [sys.executable, "-m", "g1d_deploy", "replay-policy", "--record",
+    base = [sys.executable, "-m", "elrobot_deploy", "replay-policy", "--record",
             str(record)]
     desc = subprocess.run(base + ["--describe-entry"], capture_output=True,
                           text=True, env=env, timeout=120)

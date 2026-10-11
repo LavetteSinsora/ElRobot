@@ -11,13 +11,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from g1d_deploy.dashboards.inspect import loader, timeline
-from g1d_deploy.dashboards.inspect import scene as scene_mod
-from g1d_deploy.dashboards.web.pack import pack as _pack
-from g1d_deploy.dashboards.web.pack import spans as _spans
+from elrobot_deploy.dashboards.inspect import loader, timeline
+from elrobot_deploy.dashboards.inspect import scene as scene_mod
+from elrobot_deploy.dashboards.web.pack import pack as _pack
+from elrobot_deploy.dashboards.web.pack import spans as _spans
 
-from g1d_deploy.dashboards.inspect.modes.replay import anchors
-from g1d_deploy.dashboards.inspect.modes.replay.overlay import OverlayBuilder
+from elrobot_deploy.dashboards.inspect.modes.replay import anchors
+from elrobot_deploy.dashboards.inspect.modes.replay.overlay import OverlayBuilder
 
 from . import rollout_fixtures as fixtures
 

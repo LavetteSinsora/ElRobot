@@ -18,10 +18,10 @@ import sys
 import numpy as np
 import pytest
 
-from g1d_deploy.runtime.processes import p7_body
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.runtime.processes.p7_body import BodyServo
-from g1d_deploy.runtime.drivers.arm_command import FakeLowCmd, ZeroComp
+from elrobot_deploy.runtime.processes import p7_body
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.processes.p7_body import BodyServo
+from elrobot_deploy.runtime.drivers.arm_command import FakeLowCmd, ZeroComp
 
 PERIOD = 1.0 / 500.0
 
@@ -410,10 +410,10 @@ def test_p7_imports_nothing_from_the_ik_stack():
     """P7's import rule, checked the only way that means anything: transitively.
 
     A source scan catches a module-scope `import mink`; it does not catch
-    `g1d_deploy.runtime.ik.arm_qp` growing a mujoco dependency three levels down. Importing the
+    `elrobot_deploy.runtime.ik.arm_qp` growing a mujoco dependency three levels down. Importing the
     module in a clean interpreter and reading `sys.modules` does.
     """
-    probe = ("import sys; import g1d_deploy.runtime.processes.p7_body as m; "
+    probe = ("import sys; import elrobot_deploy.runtime.processes.p7_body as m; "
              "print(sorted({n.split('.')[0] for n in sys.modules} & "
              "{'mujoco','mink','dm_control','casadi','qpsolvers'}))")
     root = pathlib.Path(p7_body.__file__).resolve().parents[3]
@@ -512,8 +512,8 @@ def test_the_wire_refuses_rather_than_hanging_when_lowstate_is_silent(
     being on its way to the only thing that ends a `kp`-held setpoint.
     """
     pytest.importorskip("cyclonedds")          # the message types are real
-    from g1d_deploy.runtime.drivers.dds import channel
-    from g1d_deploy.runtime.drivers import arm_command as lowcmd
+    from elrobot_deploy.runtime.drivers.dds import channel
+    from elrobot_deploy.runtime.drivers import arm_command as lowcmd
 
     reads = []
 

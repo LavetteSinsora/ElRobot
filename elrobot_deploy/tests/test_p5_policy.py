@@ -18,13 +18,13 @@ from contextlib import contextmanager
 import numpy as np
 import pytest
 
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.config_loading.derive import derive
-from g1d_deploy import policy_contract as policymod
-from g1d_deploy.runtime.processes import p5_policy as p5mod
-from g1d_deploy.runtime.shared_memory import Arena, build, open_all, schema
-from g1d_deploy.runtime.processes.p5_policy import PolicyLoop, apply_policy_env, warmup
-from g1d_deploy.policy_contract import (Anchor, Chunk, ChunkError, EefActions,
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.config_loading.derive import derive
+from elrobot_deploy import policy_contract as policymod
+from elrobot_deploy.runtime.processes import p5_policy as p5mod
+from elrobot_deploy.runtime.shared_memory import Arena, build, open_all, schema
+from elrobot_deploy.runtime.processes.p5_policy import PolicyLoop, apply_policy_env, warmup
+from elrobot_deploy.policy_contract import (Anchor, Chunk, ChunkError, EefActions,
                                         JointActions, Limits, Policy, acquire_anchor,
                                         validate_actions, validate_chunk)
 
@@ -121,7 +121,7 @@ class ProbeLoop(PolicyLoop):
 @contextmanager
 def _arena_for(cfg, hw):
     layout = build(cfg, derive(cfg, hw))
-    arena = Arena.create(f"g1d-t{os.getpid()}-{uuid.uuid4().hex[:8]}", layout)
+    arena = Arena.create(f"elr-t{os.getpid()}-{uuid.uuid4().hex[:8]}", layout)
     try:
         rings = open_all(arena, cfg)
         # P5 acquires the anchor itself, so every loop test needs the frames
@@ -186,7 +186,7 @@ def test_the_anchor_ignores_a_record_only_camera_that_never_published(cfg, hw):
     exactly as a camera whose decoder died would."""
     watched = cfgmod.replace(cfg, observed_cameras=("rwrist",))
     layout = build(watched, derive(watched, hw))
-    arena = Arena.create(f"g1d-t{os.getpid()}-{uuid.uuid4().hex[:8]}", layout)
+    arena = Arena.create(f"elr-t{os.getpid()}-{uuid.uuid4().hex[:8]}", layout)
     try:
         rings = open_all(arena, watched)
         _publish(rings["cameras"]["rwrist"], T0)
@@ -620,7 +620,7 @@ def test_a_free_policy_is_paced_rather_than_spun(cfg, hw):
 def test_the_default_warmup_infers_on_the_infra_dummy(cfg, hw):
     """Policies no longer carry their own dummy: the infra builds one from the
     observed cameras' shapes and binds it, and `Policy.warmup` uses it."""
-    from g1d_deploy.policy_contract import Reader, bind_runtime, dummy_observation
+    from elrobot_deploy.policy_contract import Reader, bind_runtime, dummy_observation
 
     policy = StubPolicy(cfg)
     dummy = dummy_observation(cfg.cameras, cfg.prompt)
@@ -858,7 +858,7 @@ def test_the_observation_carries_the_anchor_and_its_state(cfg, hw):
 
 
 def test_the_reader_returns_every_state_sample_in_a_window(rings):
-    from g1d_deploy.policy_contract import Reader
+    from elrobot_deploy.policy_contract import Reader
 
     for i in range(10):
         _state(rings["state"], T0 + i * 0.001)
@@ -870,7 +870,7 @@ def test_the_reader_returns_every_state_sample_in_a_window(rings):
 
 
 def test_the_reader_refuses_an_undeclared_stream(rings):
-    from g1d_deploy.policy_contract import Reader
+    from elrobot_deploy.policy_contract import Reader
 
     with pytest.raises(LookupError, match="history"):
         Reader(rings["state"], {}).states_between(0.0, 1.0)
@@ -901,7 +901,7 @@ def test_the_shift_sign_matches_the_worked_example():
     """`t_trigger` 10 ms, `t_anchor` 25 ms, dt 33.33 ms: the first action is due
     at 43.33 ms — 55% of the way from the anchor state to the model's first
     action, which it reads as 58.33 ms. A flipped sign is a half-tick LEAD."""
-    from g1d_deploy.policy_contract import deadline_shift_slots, shift_to_deadline
+    from elrobot_deploy.policy_contract import deadline_shift_slots, shift_to_deadline
 
     dt = 1 / 30
     s = deadline_shift_slots(0.025, 0.010, dt)
@@ -917,7 +917,7 @@ def test_the_shift_sign_matches_the_worked_example():
 
 
 def test_a_later_shift_extrapolates_the_tail_rather_than_freezing():
-    from g1d_deploy.policy_contract import shift_to_deadline
+    from elrobot_deploy.policy_contract import shift_to_deadline
 
     a = _actions(3, 0.0)
     a.pose[:, :, 0] = [[0.1], [0.2], [0.3]]
@@ -928,7 +928,7 @@ def test_a_later_shift_extrapolates_the_tail_rather_than_freezing():
 
 
 def test_a_zero_shift_is_bit_identical_to_none():
-    from g1d_deploy.policy_contract import shift_to_deadline
+    from elrobot_deploy.policy_contract import shift_to_deadline
 
     a = _actions(3)
     assert shift_to_deadline(a, {}, 0.0) is a
@@ -937,8 +937,8 @@ def test_a_zero_shift_is_bit_identical_to_none():
 def test_the_shift_is_bounded_for_a_camera_that_stopped():
     """A dead camera leaves the anchor arbitrarily old; the honest correction
     would be an arbitrarily long extrapolation. One tick is the most invented."""
-    from g1d_deploy.policy_contract import deadline_shift_slots
-    from g1d_deploy.policy_contract.deadline_shift import MAX_SHIFT_SLOTS
+    from elrobot_deploy.policy_contract import deadline_shift_slots
+    from elrobot_deploy.policy_contract.deadline_shift import MAX_SHIFT_SLOTS
 
     assert deadline_shift_slots(T0 - 5.0, T0, 1 / 30) == MAX_SHIFT_SLOTS
     assert deadline_shift_slots(T0 + 5.0, T0, 1 / 30) == -MAX_SHIFT_SLOTS
@@ -948,7 +948,7 @@ def test_rotations_are_slerped_and_the_point_is_honoured():
     """The rotation is the same at every rigidly attached point, so only the
     translation depends on where the interpolation happens. Interpolating at a
     TCP 0.2 m out moves the flange by the chord-vs-arc deficit, not by zero."""
-    from g1d_deploy.policy_contract import shift_to_deadline
+    from elrobot_deploy.policy_contract import shift_to_deadline
 
     th = 0.4
     a = EefActions(pose=np.array([[[0, 0, 0, np.cos(th / 2), 0, 0,
@@ -971,7 +971,7 @@ def test_rotations_are_slerped_and_the_point_is_honoured():
 
 
 def test_joint_actions_shift_linearly_from_the_measured_joints():
-    from g1d_deploy.policy_contract import shift_to_deadline
+    from elrobot_deploy.policy_contract import shift_to_deadline
 
     a = JointActions(arm_q=np.full((2, 2, 7), 1.0), hand=np.full((2, 2), 2.0),
                      waist_q=np.full((2, 3), 0.2))
@@ -1153,7 +1153,7 @@ def test_a_joint_chunk_without_a_waist_cannot_exist(cfg, hw):
 
 
 def test_action_mode_and_anchor_camera_are_required():
-    from g1d_deploy.policy_contract import PolicyError, validate_policy_class
+    from elrobot_deploy.policy_contract import PolicyError, validate_policy_class
 
     class NoMode(Policy):
         anchor_camera = "rwrist"
@@ -1191,7 +1191,7 @@ def test_action_mode_and_anchor_camera_are_required():
 def test_end_effector_is_required_and_checked_against_the_robot(hw):
     """`end_effector` names what `hand` means; it must be one the contract
     speaks, and the robot file's."""
-    from g1d_deploy.policy_contract import (PolicyError, check_end_effector,
+    from elrobot_deploy.policy_contract import (PolicyError, check_end_effector,
                                             validate_policy_class)
 
     class NoHand(Policy):
@@ -1221,7 +1221,7 @@ def test_end_effector_is_required_and_checked_against_the_robot(hw):
 def test_the_hand_is_one_value_per_side_in_both_modes():
     """`EefActions(pose, hand)` / `JointActions(arm_q, waist_q, hand)`: `hand`
     is (n, 2); the six-wide block is the ring's, packed by the infra."""
-    from g1d_deploy.policy_contract.actions import hand_block
+    from elrobot_deploy.policy_contract.actions import hand_block
 
     a = EefActions(pose=np.tile([0, 0, 0, 1.0, 0, 0, 0], (3, 2, 1)),
                    hand=np.full((3, 2), 2.0))
@@ -1237,7 +1237,7 @@ def test_the_hand_is_one_value_per_side_in_both_modes():
 
 
 def test_the_declarations_are_checked_against_the_run(cfg):
-    from g1d_deploy.policy_contract import PolicyError, check_against
+    from elrobot_deploy.policy_contract import PolicyError, check_against
 
     class Elsewhere(StubPolicy):
         anchor_camera = "exo"
@@ -1261,14 +1261,14 @@ def test_the_declarations_are_checked_against_the_run(cfg):
 
 
 def test_a_policy_loads_by_module_or_by_path(tmp_path):
-    from g1d_deploy.policy_contract.loading import load_entry
+    from elrobot_deploy.policy_contract.loading import load_entry
 
-    cls = load_entry("g1d_deploy.policy_contract.base:EchoPolicy")
+    cls = load_entry("elrobot_deploy.policy_contract.base:EchoPolicy")
     assert cls.action_mode == "eef"
 
     src = tmp_path / "mine.py"
     src.write_text(
-        "from g1d_deploy.policy_contract import Policy\n"
+        "from elrobot_deploy.policy_contract import Policy\n"
         "class Mine(Policy):\n"
         "    action_mode = 'joint'\n"
         "    end_effector = 'dex1'\n"
@@ -1286,7 +1286,7 @@ def test_the_examples_run_through_p5(example, hw):
     produces a chunk P5 will publish."""
     from pathlib import Path
 
-    from g1d_deploy.config_loading import deploy_file as deployfile
+    from elrobot_deploy.config_loading import deploy_file as deployfile
 
     path = Path(__file__).resolve().parents[1] / "examples" / example
     r = deployfile.resolve(path, record=False)
@@ -1321,18 +1321,18 @@ def test_an_empty_policy_env_touches_nothing(cfg):
 def test_policy_env_is_applied_before_any_import(cfg):
     import inspect
 
-    from g1d_deploy.runtime.processes import p5_policy
+    from elrobot_deploy.runtime.processes import p5_policy
 
     src = inspect.getsource(p5_policy.run)
-    assert src.index("apply_policy_env(cfg)") < src.index("from g1d_deploy.policy_contract import")
+    assert src.index("apply_policy_env(cfg)") < src.index("from elrobot_deploy.policy_contract import")
 
 
 def test_the_toy_joint_example_commands_an_explicit_upright_waist(cfg, hw):
     """`waist_q` is required in joint mode; the toy returns zeros."""
     from pathlib import Path
 
-    from g1d_deploy.policy_contract.loading import load_entry
-    from g1d_deploy.policy_contract.observation import Observation, State
+    from elrobot_deploy.policy_contract.loading import load_entry
+    from elrobot_deploy.policy_contract.observation import Observation, State
     src = Path(__file__).resolve().parents[1] / "examples" / "policies" / "sine_joint.py"
     pol = load_entry(f"{src}:Policy")(None, "", hw)
     obs = Observation(t_anchor=1.0, frames={}, prompt="",

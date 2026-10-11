@@ -15,9 +15,9 @@ import json
 import numpy as np
 import pytest
 
-from g1d_deploy.rollout_record_utils import reader as record_read
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.runtime.processes.p9_record import TARGET_REC as BODY_REC
+from elrobot_deploy.rollout_record_utils import reader as record_read
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.processes.p9_record import TARGET_REC as BODY_REC
 
 N_TICKS = 90
 DT = 1.0 / 30.0

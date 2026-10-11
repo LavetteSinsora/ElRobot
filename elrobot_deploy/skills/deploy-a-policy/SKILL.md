@@ -1,12 +1,12 @@
 ---
 name: deploy-a-policy
-description: Guide for getting a trained policy to run on a real Unitree G1-D through the g1d_deploy infra. Use it whenever the user wants to deploy, run, roll out or test a policy or checkpoint on the G1-D; needs the policy adapter or the deploy.toml written or changed; or has an adapter that fails `g1d_deploy check-policy` or behaves wrongly on the robot. Covers how the infra works, what has to be set up first, how to write and verify the adapter, and how to fill in the deploy file.
+description: Guide for getting a trained policy to run on a real Unitree G1-D through the elrobot_deploy infra. Use it whenever the user wants to deploy, run, roll out or test a policy or checkpoint on the G1-D; needs the policy adapter or the deploy.toml written or changed; or has an adapter that fails `elrobot_deploy check-policy` or behaves wrongly on the robot. Covers how the infra works, what has to be set up first, how to write and verify the adapter, and how to fill in the deploy file.
 ---
 
-# Deploy a policy on the G1-D with g1d_deploy
+# Deploy a policy on the G1-D with elrobot_deploy
 
 This skill is for helping a user run a policy they trained on a real Unitree
-G1-D. It explains how the deployment infra (g1d_deploy) works, what has to be
+G1-D. It explains how the deployment infra (elrobot_deploy) works, what has to be
 in place before a policy can run, and how to write and check the two files a
 policy needs:
 
@@ -20,21 +20,21 @@ way: its adapter returns actions in the same contract, the deploy file's
 `[checkpoint]` is left empty, and the sections about training below reduce to
 "what does this policy expect as input, and what do its outputs mean".
 
-The work is finished when the user can run `g1d_deploy run path/to/deploy.toml`
+The work is finished when the user can run `elrobot_deploy run path/to/deploy.toml`
 on the robot. That command moves the robot, so the user runs it, supervised.
 Do not run it yourself. Everything in this skill is done without the robot
 moving.
 
-Contents: [how g1d_deploy works](#how-g1d_deploy-works) ·
+Contents: [how elrobot_deploy works](#how-elrobot_deploy-works) ·
 [where the files are](#where-the-files-are) · [setup](#setup) ·
 [the policy adapter](#part-1-the-policy-adapter) ·
 [the deploy file](#part-2-the-deploy-file) ·
 [verifying](#part-3-verify-without-the-robot) ·
 [handing over](#part-4-hand-over) · [when something fails](#when-something-fails)
 
-## How g1d_deploy works
+## How elrobot_deploy works
 
-g1d_deploy is a set of processes on the deploy computer that share one block
+elrobot_deploy is a set of processes on the deploy computer that share one block
 of memory, called the **arena**. Every stream of data has its own region in
 the arena (a ring buffer), and each region has exactly one writer.
 
@@ -74,7 +74,7 @@ So the adapter has one job: given an observation, return actions in the format
 the infra expects. Timing, synchronisation, safety checks, IK, the servo and
 recording are the infra's and need no code from the user.
 
-A launch (`g1d_deploy run`) goes through these stages: check the robot and
+A launch (`elrobot_deploy run`) goes through these stages: check the robot and
 cameras, move the arms to a home posture, load and warm up the policy, then
 wait at READY. The operator presses Start on a web dashboard to begin a
 rollout, Reset to end it and return home, and Start again for the next one.
@@ -87,7 +87,7 @@ For more depth: `docs/overview.md` (the processes and one chunk's life) and
 
 This skill refers to documents, examples and templates by paths such as
 `docs/deploying_a_policy/policy_contract.md` and `examples/policies/sine_eef.py`. Those paths are relative to
-the **root of the g1d_deploy checkout**: the directory that contains
+the **root of the elrobot_deploy checkout**: the directory that contains
 `README.md`, `docs/`, `examples/`, `skills/` and `src/`. Find that directory
 once, at the start, so the paths can be opened.
 
@@ -97,10 +97,10 @@ once, at the start, so the paths can be opened.
 - If the skill was copied somewhere else, ask the installed package:
 
   ```bash
-  python -c "import g1d_deploy, pathlib; print(pathlib.Path(g1d_deploy.__file__).resolve().parents[2])"
+  python -c "import elrobot_deploy, pathlib; print(pathlib.Path(elrobot_deploy.__file__).resolve().parents[2])"
   ```
 
-  Run it with a Python that has g1d_deploy installed (the checkout's
+  Run it with a Python that has elrobot_deploy installed (the checkout's
   `.venv/bin/python`). If the answer is a `site-packages` directory, the
   package was not installed from a checkout; ask the user where the checkout
   is.
@@ -127,8 +127,8 @@ Check these before writing anything. Each is a one-time step per computer; if
 any is missing, the `setup-g1d-deploy` skill
 (`skills/setup-g1d-deploy/SKILL.md`) walks through it.
 
-1. **g1d_deploy is installed.** The checkout has a `.venv` and
-   `.venv/bin/g1d_deploy` exists. If not: `scripts/install.sh` from the
+1. **elrobot_deploy is installed.** The checkout has a `.venv` and
+   `.venv/bin/elrobot_deploy` exists. If not: `scripts/install.sh` from the
    checkout root (`docs/setup/install.md`). Activate with
    `source .venv/bin/activate`.
 2. **A robot profile fits the user's robot.** The shipped profiles
@@ -137,13 +137,13 @@ any is missing, the `setup-g1d-deploy` skill
    file extending one. `machine.toml` at the checkout root is optional: it
    only overrides this computer's defaults, such as where recordings are
    stored (`docs/setup/machine_toml.md`).
-3. **`g1d_deploy check` passes** (optional before writing; required before a
+3. **`elrobot_deploy check` passes** (optional before writing; required before a
    launch). It is read-only: it reports whether this computer is ready and
    whether the robot's cameras and state streams answer. `--no-robot` skips
    the robot half.
-4. **The model's Python can import g1d_deploy.** The adapter runs in the
+4. **The model's Python can import elrobot_deploy.** The adapter runs in the
    model's own Python environment (its torch or JAX versions), not in
-   g1d_deploy's. That environment needs g1d_deploy's core, which depends only
+   elrobot_deploy's. That environment needs elrobot_deploy's core, which depends only
    on numpy. Either install it there
    (`<model venv>/bin/python -m pip install -e <checkout root>`), or write a
    small wrapper script that sets `PYTHONPATH` and runs the model's Python
@@ -152,7 +152,7 @@ any is missing, the `setup-g1d-deploy` skill
 ## Part 1: the policy adapter
 
 Most of the work, and nearly all of the risk, is here. The adapter is one
-class, a subclass of `g1d_deploy.policy_contract.Policy`. It has three parts:
+class, a subclass of `elrobot_deploy.policy_contract.Policy`. It has three parts:
 
 - **declarations**: class attributes that tell the infra what the policy
   needs (which cameras, the action type, the action rate);
@@ -279,7 +279,7 @@ To build the adapter in a script exactly as the infra builds it, for your own
 checks, run this under the model's Python:
 
 ```python
-from g1d_deploy.policy_contract.offline import build
+from elrobot_deploy.policy_contract.offline import build
 policy, cfg, hw = build("path/to/deploy.toml", warmup=True)   # warmup=False: no weights
 obs = policy.dummy_observation()
 actions = policy.infer(obs, policy.reader())
@@ -359,14 +359,14 @@ would, constructs the adapter in its own Python with the GPU hidden, and
 checks the prompt length. Takes seconds and no GPU; run it after every change.
 
 ```bash
-g1d_deploy check-policy path/to/deploy.toml --no-run
+elrobot_deploy check-policy path/to/deploy.toml --no-run
 ```
 
 **Check 2: the policy loads and an inference completes.** Runs `warmup()`
 and one `infer` on a dummy observation (black images, zero joints).
 
 ```bash
-g1d_deploy check-policy path/to/deploy.toml
+elrobot_deploy check-policy path/to/deploy.toml
 ```
 
 This one uses the GPU as a real launch does. Run `nvidia-smi` first; if
@@ -409,7 +409,7 @@ Report to the user:
 
   ```bash
   source <checkout root>/.venv/bin/activate
-  g1d_deploy run path/to/deploy.toml
+  elrobot_deploy run path/to/deploy.toml
   ```
 
   The arms move to the home posture **during startup, before Start is
@@ -435,5 +435,5 @@ Report to the user:
 | A launch is refused before the arms move | the message is a startup check; if the robot was switched on moments ago, relaunch first (`docs/deploying_a_policy/field_notes.md`) |
 | A prompt is refused as too long | `max_prompt_tokens` is the compiled length; see [the prompt](#the-prompt) |
 | The checkpoint is refused by the adapter's own self-check | the checkpoint and the code disagree about how it was trained; `skills/deploy-a-policy/references/adapter_patterns.md` |
-| The robot moves, but wrongly | a convention mistake: redo Check 3, then replay the recorded rollout in `g1d_deploy inspect` (`docs/deploying_a_policy/rollout_inspection.md`) to compare the policy's actions with what was executed |
+| The robot moves, but wrongly | a convention mistake: redo Check 3, then replay the recorded rollout in `elrobot_deploy inspect` (`docs/deploying_a_policy/rollout_inspection.md`) to compare the policy's actions with what was executed |
 | The arm pauses between chunks | expected in sync mode: the pause is the inference time. Async removes it |

@@ -1,0 +1,188 @@
+# g1d_base — the G1-D itself: joints, gains, limits, servo model, URDF, rates
+# and the DDS topics. NO END EFFECTOR and NO CAMERAS: a rig profile
+# (`g1d_fisheye_dex1`, `g1d_normal_dex1`, ...) says `extends = "g1d_base"` and
+# lists the cameras that actually exist on it.
+#
+# What is NOT here, because it is a fact about the deploy BOX rather than the
+# robot: the NIC and the CPU pin table. Those are detected, or stated in the
+# optional machine file (`machine.toml` at the project root).
+#
+# How robot files work, and how to extend one: docs/setup/robot_toml.md.
+#
+# EVERY NUMBER IN THIS FILE CITES ITS SOURCE. A plausible-looking guess in a
+# robot file is worse than a missing one — a missing value refuses at startup,
+# a guessed one runs and is wrong.
+#
+# Sources, once:
+#   VENDOR  unitree_deploy v0.0.5, robot_devices/arm/configs.py::G1ArmConfig —
+#           the config Unitree's own 500 Hz executor runs on. That stack is not
+#           a dependency (elrobot_deploy implements the wire itself), so the
+#           values below ARE the record: upstream is
+#           github.com/unitreerobotics/unitree_deploy if one is ever disputed.
+#   URDF    robot/assets/unitree_g1d/g1_d.urdf — the G1-D's own description, from
+#           Unitree's unitree_ros; see that directory's PROVENANCE.md
+#   CAMCFG  unitree image_server's cam_config_client.yaml
+#   ROBOT   measured on the reference G1-D (the unit elrobot_deploy was developed
+#           on); each note says what and when. Re-measure for another unit.
+
+# The robot's onboard computer: where its cameras are read from, and the login
+# P0 uses to start the fisheye image server there. VENDOR: the G1-D's factory
+# address and login; a rig file overrides them for a unit that differs.
+# `ssh_password` defaults to the factory one; prefer $ELROBOT_BOARD_SSH_PASSWORD
+# over writing a changed password into a file that rollout records copy.
+[board]
+ip = "192.168.123.164"
+ssh_user = "unitree"
+
+[rates]
+body_hz     = 500      # VENDOR G1ArmConfig.control_dt = 1/500
+lowstate_hz = 1042     # ROBOT   MEASURED; re-verified at CHECK
+
+# UNMEASURED — the one number in this file with no source. It is an
+# assumption: below ~35 Hz the publish rate, not the jaw's own speed limit,
+# becomes what bounds the motion, so anything from ~50 Hz up is likely fine
+# and 200 Hz may be more than is needed. A rate sweep on the gripper would
+# settle it.
+hand_hz     = 200
+
+# PICO — how often P11 polls the XRoboToolkit SDK.
+#
+# The SDK republishes controller state at roughly 90 Hz, so this is about twice
+# the publish rate: a poll landing between two publishes finds nothing new and
+# costs one comparison, while a poll landing late costs sample AGE, which is
+# what `intervene_lead_s` has to cover and therefore what the operator feels as
+# lag. Oversampling is the cheap side of that trade.
+#
+# P11 sits on an efficiency core (the machine file's [cpu]): it is a network poll, not a
+# servo loop, and taking a P core from P7 or P1 to run it would be paying a
+# real-time cost for a 5 Hz human.
+pico_poll_hz = 180
+
+[dds]
+domain           = 0             # ROBOT
+topic_lowcmd     = "rt/lowcmd"   # VENDOR G1ArmConfig.topic_low_command
+topic_lowstate   = "rt/lowstate" # VENDOR G1ArmConfig.topic_low_state
+# The NIC these are bound to is the MACHINE file's `iface` (auto-detected as
+# the one holding a 192.168.123.x address), never this file's: a hardcoded
+# "eth0" silently subscribes to nothing on a machine that names it enp3s0.
+# The end effector's topics are built in per type (robot/end_effectors.py).
+
+[joints]
+arm       = [15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28]
+arm_wrist = [19, 20, 21, 26, 27, 28]
+waist     = [12, 13, 14]
+leg       = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+
+# VENDOR G1ArmConfig: kp_low/kd_low for shoulder+elbow, kp_wrist/kd_wrist for
+# the six wrist joints, kp_high/kd_high for the trunk and legs. Expanded to one
+# value per joint at load; `arm_wrist` overrides `arm`.
+[gains.kp]
+arm       = 80.0     # kp_low
+arm_wrist = 40.0     # kp_wrist
+waist     = 300.0    # kp_high
+leg       = 300.0    # kp_high
+
+[gains.kd]
+arm       = 3.0      # kd_low
+arm_wrist = 1.5      # kd_wrist
+waist     = 3.0      # kd_high
+leg       = 3.0      # kd_high
+
+# ROBOT — MEASURED on the reference robot, 2026-09-10 (small bow steps from both
+# directions, settled error read off the state). A constant added to each
+# waist joint's feedforward torque, N.m, in robot/kinematics.py's
+# WAIST_JOINT_NAMES slot order: (yaw, bow, absent).
+#
+# The bow settles short of its command by the same ~25 mrad whichever direction
+# it arrived from, which at kp=300 is 7.6 N.m the feedforward does not supply
+# and the position error has been making up. Three things say it is a CONSTANT
+# rather than a modelling error:
+#
+#   * it does not grow with lean. Over the bow's range the gravity model's own
+#     torque goes -5.7 -> -25.9 N.m; a scale error would have tracked that.
+#   * it is not stiction. Stepping either side of a bias came out short one way
+#     and long the other — both errors the same DIRECTION, which friction
+#     cannot produce, since friction opposes whichever way the joint moves.
+#   * adding it works. With +7.0 the mean settled error fell 25.2 -> 9.3 mrad
+#     and a +0.05 rad step landed on +0.0525 instead of +0.0310.
+#
+# So it is a spring, a harness or a driver offset: a fact about this trunk that
+# the URDF does not describe, sitting beside the mechanical stop. NOT a tuning
+# knob, and NOT transferable — a second robot needs its own measurement (set
+# it to 0.0 until measured).
+#
+# The yaw is 0.0 because it has not been measured; its steps land within a few
+# mrad, so whatever it has is small. What remains on the bow after this is
+# direction-dependent (~7 mrad) and no constant can remove it.
+[gains]
+waist_tau_offset = [0.0, 7.0, 0.0]
+
+# ROBOT — the arm's dynamics for P7's torque feedforward (`ServoShaping.
+# torque_ff`, docs/infra_logic/500hz_execution.md): per arm joint, left 7 then
+# right 7,
+#
+#     tau_ff = torque_ff * (inertia * a + viscous * v + coulomb * tanh(v / eps_v))
+#
+# on top of gravity comp, bounded by tau_max. IDENTIFIED 2026-09-17 by least
+# squares on 16 recorded rollouts of the reference robot (re-identify for
+# another unit); the same model reproduces measured 4-40 Hz joint motion
+# band by band (correlation 0.96-1.00). Coulomb is floored at 0 when read. A
+# robot without this section cannot run with torque_ff > 0.
+[servo_model]
+inertia = [0.02051, 0.02793, 0.01516, 0.02269, 0.005494, 0.006167, 0.00615,
+           0.02886, 0.03387, 0.01524, 0.01837, 0.00565, 0.00683, 0.006212]
+viscous = [0.4203, 0.4642, 0.4058, 0.6128, 0.1698, 0.07466, 0.103,
+           0.5348, 0.4805, 0.4181, 0.3765, 0.1315, 0.07316, 0.1142]
+coulomb = [0.5178, 0.3478, 0.3254, 0.3504, 0.2286, 0.1532, 0.1422,
+           0.5001, 0.3059, 0.3678, 0.5282, 0.249, 0.2221, 0.122]
+eps_v   = 0.02     # rad/s
+tau_max = 2.0      # N.m per joint
+
+# ROBOT — the e-stop: kp = 0, kd = 2 on every joint, latching.
+# Published by P0 and by nothing else.
+[gains.damp]
+kp = 0.0
+kd = 2.0
+
+
+[limits]
+# VENDOR G1ArmConfig.max_pos_speed = 180 * (pi/180) * 2 = 2*pi rad/s. This is
+# the slew the vendor's own 500 Hz interpolator enforces.
+#
+# Deliberately NOT the URDF's per-joint `velocity` limits: those are the
+# motor's no-load maxima (37 rad/s on the shoulder, 22 on the wrist), so
+# clamping to them would be no clamp at all. One uniform vendor number, applied
+# to every joint, is both authentic and the conservative of the two.
+qdot_max = 6.283185307179586
+
+# --- the end effector -------------------------------------------------------
+#
+# Not here: a rig profile names the end effector bolted on,
+#
+#     [end_effector]
+#     type = "dex1"                        # dex1 | brainco
+#     tcp = [x, y, z, qw, qx, qy, qz]      # optional, flange frame
+#
+# and each type's topics and travel are built in (robot/end_effectors.py).
+
+# ONE model file, because there is one robot. `robot/g1d_model.py` builds from it
+# whatever asks: MuJoCo geometry for P1's FK and P6's IK (three-finger hand
+# stripped, a Dex-1 mounted, both in memory) and a pinocchio inertia model for
+# P7's gravity compensation. The file itself is byte-identical to Unitree's —
+# see robot/assets/unitree_g1d/PROVENANCE.md.
+#
+# There is no second (humanoid G1) model: it bows about the torso origin, the
+# real machine about a joint 104 mm below it — 4 mm of error at the measured
+# 0.039 rad droop.
+[model]
+urdf = "assets/unitree_g1d/g1_d.urdf"
+
+# Mass on each wrist that the URDF does not describe: the wrist camera and its
+# mount. `mass = 0.0` means unmeasured, not absent — see `Hardware` in
+# config_loading/resolved.py.
+# The gripper itself is NOT here; the Dex-1's own 0.365 kg is applied from
+# upstream's numbers in `runtime/drivers/arm_command.py`, replacing the three-finger hand the
+# URDF ships with.
+[model.wrist_payload]
+mass  = 0.0     # kg
+com_x = 0.10    # m along the wrist-yaw +x; inert while mass is 0

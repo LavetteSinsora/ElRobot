@@ -13,11 +13,11 @@ import urllib.request
 import numpy as np
 import pytest
 
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.dashboards.live.scene import LiveScene
-from g1d_deploy.dashboards.live.server import STATIC, Live, serve
-from g1d_deploy.config_loading.machine_file import load_machine
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.dashboards.live.scene import LiveScene
+from elrobot_deploy.dashboards.live.server import STATIC, Live, serve
+from elrobot_deploy.config_loading.machine_file import load_machine
 
 from .live_fixtures import fake_run
 
@@ -58,7 +58,7 @@ def test_there_are_no_view_modes():
         assert gone not in html, gone
     assert not list(STATIC.glob("mode_*.js"))
     with pytest.raises(ImportError):
-        import g1d_deploy.dashboards.live.modes  # noqa: F401
+        import elrobot_deploy.dashboards.live.modes  # noqa: F401
     app = (STATIC / "app.js").read_text()
     assert "/api/modes" not in app and 'from "/static/live.js"' in app
 
@@ -164,4 +164,4 @@ def test_a_port_in_use_is_the_bind_error(live):
 def test_fake_arena_is_the_suites_own(arena):
     """The fixture arena is a fresh segment with the test's pid: a deploy run
     on this box (`/dev/shm/g1d-<pid>`) is never touched."""
-    assert arena.shm.name.lstrip("/").startswith(f"g1d-t{os.getpid()}-")
+    assert arena.shm.name.lstrip("/").startswith(f"elr-t{os.getpid()}-")

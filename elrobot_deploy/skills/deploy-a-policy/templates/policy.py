@@ -1,11 +1,11 @@
 """TEMPLATE adapter: copy this folder (policy.py, conversions.py, __init__.py,
 deploy.toml) next to the model code and fill in every TODO.
 
-Keep `__init__.py`: `from .conversions import ...` works because g1d_deploy
+Keep `__init__.py`: `from .conversions import ...` works because elrobot_deploy
 imports a file that sits in a package as a package member. Give the folder a
 name that is a valid identifier and does not shadow an installed module.
 
-As shipped it runs (and passes `g1d_deploy check-policy`): with no model it
+As shipped it runs (and passes `elrobot_deploy check-policy`): with no model it
 holds the arm where it is. The contract: docs/deploying_a_policy/policy_contract.md.
 """
 
@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from g1d_deploy import policy_contract as g1d
-from g1d_deploy.policy_contract import EefActions
+from elrobot_deploy import policy_contract as g1d
+from elrobot_deploy.policy_contract import EefActions
 
 from .conversions import normalize_quat  # noqa: F401  (tcp_to_flange, xyzw_to_wxyz, ...)
 

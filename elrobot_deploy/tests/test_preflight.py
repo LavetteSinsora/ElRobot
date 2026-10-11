@@ -1,4 +1,4 @@
-"""`g1d_deploy check` (`preflight`) must report every check, not stop at the first failure.
+"""`elrobot_deploy check` (`preflight`) must report every check, not stop at the first failure.
 
 The whole value of the tool is the LIST — a bring-up where you fix one thing,
 re-run, and discover the next is the thing it exists to replace. So the
@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from g1d_deploy.cli import main as entry
-from g1d_deploy.cli import check as preflight
+from elrobot_deploy.cli import main as entry
+from elrobot_deploy.cli import check as preflight
 
 
 def test_a_failing_check_does_not_stop_the_ones_after_it():
@@ -66,7 +66,7 @@ def test_the_package_list_names_import_names_not_distribution_names():
 
 def test_policy_dependencies_are_not_the_runtimes():
     """jax and openpi are a POLICY's dependencies; a box that serves a
-    numpy-only policy must not fail `g1d_deploy check` for lacking them."""
+    numpy-only policy must not fail `elrobot_deploy check` for lacking them."""
     mods = {m for m, _ in preflight._PACKAGES}
     assert not {"jax", "openpi", "flax", "orbax"} & mods
 
@@ -84,7 +84,7 @@ def test_check_robot_stops_early_on_an_unknown_robot(capsys):
     assert "no shipped robot profile" in out and "CAMERAS" not in out
 
 
-# --- The `g1d_deploy` command line ------------------------------------------------------
+# --- The `elrobot_deploy` command line ------------------------------------------------------
 
 
 def _help(capsys, argv):

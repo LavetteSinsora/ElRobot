@@ -1,7 +1,7 @@
 """`[control.servo] smoother` / `feedforward = "pkg.module:factory"`: a deploy
 file replaces the 500 Hz shaping's two pieces with its own, under the same
 switches (`filter_hz = 0` / `torque_ff = 0` still turn them off), imported at
-launch in g1d_deploy's Python because P7 runs there."""
+launch in elrobot_deploy's Python because P7 runs there."""
 
 from __future__ import annotations
 
@@ -11,12 +11,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from g1d_deploy.config_loading import deploy_file
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.config_loading.errors import ConfigError
-from g1d_deploy.config_loading.validate import validate
-from g1d_deploy.runtime.execution import servo_filter
-from g1d_deploy.runtime.shared_memory import schema
+from elrobot_deploy.config_loading import deploy_file
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.config_loading.errors import ConfigError
+from elrobot_deploy.config_loading.validate import validate
+from elrobot_deploy.runtime.execution import servo_filter
+from elrobot_deploy.runtime.shared_memory import schema
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 HERE = __name__                                     # this module, importable

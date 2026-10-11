@@ -12,8 +12,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from g1d_deploy.dashboards.inspect import loader, scene, timeline
-from g1d_deploy.dashboards.inspect.modes import ik as ik_mode
+from elrobot_deploy.dashboards.inspect import loader, scene, timeline
+from elrobot_deploy.dashboards.inspect.modes import ik as ik_mode
 
 from . import inspect_fixtures as fx
 

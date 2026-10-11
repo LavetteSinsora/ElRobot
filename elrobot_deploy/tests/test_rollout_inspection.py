@@ -1,4 +1,4 @@
-"""The rollout viewer — `g1d_deploy.dashboards.inspect`.
+"""The rollout viewer — `elrobot_deploy.dashboards.inspect`.
 
 The claims worth testing are the ones whose failure would be *plausible on
 screen*: a timeline that silently shows the end of the run at its start, a
@@ -20,10 +20,10 @@ import struct
 import numpy as np
 import pytest
 
-from g1d_deploy.rollout_record_utils import reader as record_read
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.dashboards.inspect import discover, events, loader, scene, timeline
-from g1d_deploy.dashboards.web import robot_scene
+from elrobot_deploy.rollout_record_utils import reader as record_read
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.dashboards.inspect import discover, events, loader, scene, timeline
+from elrobot_deploy.dashboards.web import robot_scene
 
 # A one-pixel JPEG. Content is irrelevant — the tests check offsets and slicing,
 # never pixels — but it must be a real file so `Camera.jpeg` returns bytes.
@@ -52,7 +52,7 @@ _PLANTED_T = np.array([
 def _fill_flange(state) -> None:
     """Give the synthetic record a physically consistent `flange` column.
 
-    Rather than importing `g1d_deploy.robot.kinematics` — which would tie this suite to
+    Rather than importing `elrobot_deploy.robot.kinematics` — which would tie this suite to
     whatever the live control stack currently is, and has already broken once
     mid-refactor — the flange is generated from the VIEWER's own G1-D model and
     then expressed in a planted pelvis frame:
@@ -141,7 +141,7 @@ _CMD_JAW = (3.1, 0.7)
 #:
 #: The waist pair is the real robot's own case rather than an arbitrary offset:
 #: commanded to zero, measured at 0.03 yaw and 0.039 of gravity bow, which is
-#: exactly the divergence `g1d_deploy.robot.kinematics`'s docstring warns about.
+#: exactly the divergence `elrobot_deploy.robot.kinematics`'s docstring warns about.
 _CMD_Q = np.zeros(17)
 _CMD_Q[0] = 0.42        # left shoulder pitch; measured runs 0.20 -> 0.22
 _CMD_Q[3] = -0.15       # left elbow; measured is 0
@@ -197,8 +197,8 @@ def _write_commands(run_dir, manifest, *, t0, duration, control_hz=30.0,
     `tick_hitch` inserts a stall into the tick line — the real one, where `k`
     jumps by 2 and the wall clock by 149 ms at every sync chunk boundary.
     """
-    from g1d_deploy.rollout_record_utils import reader as record_read
-    from g1d_deploy.runtime.processes import p9_record as p9
+    from elrobot_deploy.rollout_record_utils import reader as record_read
+    from elrobot_deploy.runtime.processes import p9_record as p9
 
     start = t0 + 0.25 * duration
     horizon = _CMD_NK
@@ -239,7 +239,7 @@ def _write_commands(run_dir, manifest, *, t0, duration, control_hz=30.0,
         # late by the hitch, and the tick line stops being `k / control_hz`.
         deadlines[_CMD_NK // 2:] += tick_hitch
 
-    from g1d_deploy.runtime.processes.p9_record import TARGET_REC
+    from elrobot_deploy.runtime.processes.p9_record import TARGET_REC
     body_dtype = TARGET_REC
     drop = ({"pose"} if not record_pose else set()) | \
            ({"waist_ik"} if not record_waist_ik else set())
@@ -296,7 +296,7 @@ def _write_session(run_dir, manifest, *, t0, duration, active=True):
     at the READY prompt. It has a session log and no ACTIVE edge, which is a
     different case from having no log at all, and the two must not be conflated.
     """
-    from g1d_deploy.runtime.processes import p9_record as p9
+    from elrobot_deploy.runtime.processes import p9_record as p9
 
     phases = [schema.CHECK, schema.HOME, schema.WARMUP, schema.READY]
     if active:
@@ -394,8 +394,8 @@ def _write_record(run_dir, *, n_state=2000, state_hz=1000.0,
     if model_block:
         # The robot block P9 writes (`rollout_record_utils.manifest.robot_block`): the shipped
         # profile chain, verbatim. No path in it has to exist here.
-        from g1d_deploy.rollout_record_utils import manifest as provenance
-        from g1d_deploy.config_loading.robot_file import load_robot
+        from elrobot_deploy.rollout_record_utils import manifest as provenance
+        from elrobot_deploy.config_loading.robot_file import load_robot
         manifest["robot"] = provenance.robot_block(
             "g1d_fisheye_dex1", load_robot("g1d_fisheye_dex1"))
         manifest["model"] = {"urdf": "assets/unitree_g1d/g1_d.urdf",
@@ -515,7 +515,7 @@ def test_a_manifest_that_will_not_parse_is_refused_at_the_listing(tmp_path):
 def test_a_record_without_a_robot_file_is_unsupported(tmp_path):
     """No robot file in the manifest: nothing to rebuild the robot from, so
     the record is refused rather than drawn as a guess."""
-    from g1d_deploy.dashboards.inspect.record_robot import UnsupportedRecord
+    from elrobot_deploy.dashboards.inspect.record_robot import UnsupportedRecord
 
     with pytest.raises(UnsupportedRecord, match="unsupported"):
         loader.load(_write_record(tmp_path / "r", model_block=False))
@@ -886,7 +886,7 @@ def test_an_active_edge_outside_the_stream_overlap_is_ignored(tmp_path):
     clamp, because clamping would report `window == "active"` for a window that
     was not actually cut to anything.
     """
-    from g1d_deploy.runtime.processes import p9_record as p9
+    from elrobot_deploy.runtime.processes import p9_record as p9
 
     for shift in (-500.0, +500.0):            # far before, and far after
         run = _write_record(tmp_path / f"edge{shift:+.0f}", session=True)
@@ -996,7 +996,7 @@ def test_the_marker_is_the_virtual_tcp_not_the_flange(record):
 
         # The offset decomposes as the deploy stack documents it: the gripper's
         # own mount, plus the base-to-fingertip-midpoint distance.
-        from g1d_deploy.robot import g1d_model as g1d
+        from elrobot_deploy.robot import g1d_model as g1d
 
         assert robot_scene.FLANGE_TO_TCP_X == g1d.FLANGE_TO_TCP_X
         assert robot_scene.FLANGE_TO_TCP_X - g1d.DEX1_MOUNT_X == pytest.approx(
@@ -1191,7 +1191,7 @@ def test_a_tick_from_P0s_ramp_is_recorded_as_undefined_and_is_not_drawn(tmp_path
     ghost at the base frame's origin, which looks like a real commanded pose.
     """
     run = _write_record(tmp_path / "ramp", commands=True)
-    from g1d_deploy.runtime.processes import p9_record as p9
+    from elrobot_deploy.runtime.processes import p9_record as p9
 
     body = np.fromfile(run / "targets.bin", dtype=p9.TARGET_REC)
     # `k` is left as P6 wrote it — 1..40, ordinary ticks — precisely so that `k`
@@ -1371,7 +1371,7 @@ def _solved_tcp(q_body, jaws=_CMD_JAW, waist=None):
     """
     import mujoco
 
-    from g1d_deploy.robot import g1d_model as g1d
+    from elrobot_deploy.robot import g1d_model as g1d
 
     model, data = robot_scene.build_model()
     jmap = robot_scene._JointMap(model, _FACTS)
@@ -1493,7 +1493,7 @@ def test_a_tick_with_no_ik_behind_it_poses_both_overlays_the_same(tmp_path):
     through the ramps, where the ghost is not.
     """
     run = _write_record(tmp_path / "ramp-waist", commands=True)
-    from g1d_deploy.runtime.processes import p9_record as p9
+    from elrobot_deploy.runtime.processes import p9_record as p9
 
     body = np.fromfile(run / "targets.bin", dtype=p9.TARGET_REC)
     # Only the trunk is undefined here. `pose` is left intact so this is about
@@ -1581,7 +1581,7 @@ def test_the_solved_overlay_hides_where_no_target_was_in_force(commanded):
 
 def _loaded(run):
     """A `server.Loaded` over a record, without starting an HTTP server."""
-    from g1d_deploy.dashboards.inspect import server
+    from elrobot_deploy.dashboards.inspect import server
 
     rollout = loader.load(run)
     tl = timeline.build(rollout)

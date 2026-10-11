@@ -1,6 +1,6 @@
-"""`ik = NAME`: the solver object P6 runs, by name (`g1d_deploy.runtime.ik`).
+"""`ik = NAME`: the solver object P6 runs, by name (`elrobot_deploy.runtime.ik`).
 
-What must hold: exactly four shipped names, none reaching outside g1d_deploy,
+What must hold: exactly four shipped names, none reaching outside elrobot_deploy,
 with `arm_planner` / `waist_planner` the defaults of their modes; an unknown
 name, or a `module:factory` without a mode, is refused at startup and never
 reaches a process; the mode comes from the solver (so a waist solver is held to
@@ -16,12 +16,12 @@ import dataclasses
 import numpy as np
 import pytest
 
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.config_loading.errors import ConfigError
-from g1d_deploy.config_loading.validate import validate_rollout
-from g1d_deploy.runtime import ik as ik_solvers
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.runtime.processes.p6_target import Target
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.config_loading.errors import ConfigError
+from elrobot_deploy.config_loading.validate import validate_rollout
+from elrobot_deploy.runtime import ik as ik_solvers
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.processes.p6_target import Target
 
 from .test_p6_target import FakeClock, FakeSolver, publish
 
@@ -121,7 +121,7 @@ def test_a_solver_that_does_not_plan_leaves_the_hook_to_the_wbik_flag(
 # --- The four solvers this package ships ------------------------------------
 
 
-def test_exactly_four_shipped_solvers_all_inside_g1d_deploy():
+def test_exactly_four_shipped_solvers_all_inside_elrobot_deploy():
     """The set is the user's decision (2026-09-26): two per mode, a planner
     and the original QP, in the dashboard's order. No registry of research
     names — those come in as `module:factory`."""
@@ -129,7 +129,7 @@ def test_exactly_four_shipped_solvers_all_inside_g1d_deploy():
                                         "waist_planner", "waist_qp"]
     assert tuple(ik_solvers.SOLVERS) == schema.IK_OPTIONS == cfgmod.IK_SOLVERS
     for name, (spec, mode) in ik_solvers.SOLVERS.items():
-        assert spec.startswith("g1d_deploy.runtime.ik"), spec
+        assert spec.startswith("elrobot_deploy.runtime.ik"), spec
         assert ik_solvers.mode_of(name) == mode
     assert not hasattr(ik_solvers, "BENCH")
 
@@ -152,8 +152,8 @@ def test_the_qp_names_build_the_original_solvers(cfg, hw):
     `DualArmSolver(cfg, urdf)` and `WholeBodySolver(..., TIERS["waist"])`."""
     pytest.importorskip("mujoco")
     pytest.importorskip("mink")
-    from g1d_deploy.runtime.ik.arm_qp import DualArmSolver
-    from g1d_deploy.runtime.ik.waist_qp import TIERS, WholeBodySolver
+    from elrobot_deploy.runtime.ik.arm_qp import DualArmSolver
+    from elrobot_deploy.runtime.ik.waist_qp import TIERS, WholeBodySolver
 
     arm = ik_solvers.build(dataclasses.replace(cfg, ik="arm_qp"), hw)
     assert type(arm) is DualArmSolver
@@ -166,7 +166,7 @@ def test_the_qp_names_build_the_original_solvers(cfg, hw):
 def test_the_deployed_solver_is_unchanged_by_default():
     """The convergence stop the planners use is opt-in: a `DualArmSolver` built
     the way P6 builds it has it OFF and keeps `cfg.ik_max_iters`."""
-    from g1d_deploy.runtime.ik import arm_qp as ik
+    from elrobot_deploy.runtime.ik import arm_qp as ik
 
     class Cfg:
         dt = 1 / 30.0
@@ -183,7 +183,7 @@ def test_the_deployed_solver_is_unchanged_by_default():
 
 
 def test_the_tick_anchor_caps_only_inside_a_tick():
-    from g1d_deploy.runtime.ik.velocity_caps import TickAnchor
+    from elrobot_deploy.runtime.ik.velocity_caps import TickAnchor
 
     a = TickAnchor(1 / 30.0)
     assert not a.active
@@ -199,7 +199,7 @@ def test_the_tick_anchor_caps_only_inside_a_tick():
 
 
 def test_the_trunk_servo_model_moves_a_bounded_fraction_per_tick():
-    from g1d_deploy.runtime.ik.waist_planner import TRUNK_GAIN, TRUNK_VMAX, trunk_servo
+    from elrobot_deploy.runtime.ik.waist_planner import TRUNK_GAIN, TRUNK_VMAX, trunk_servo
 
     dt = 1 / 30.0
     cmd = np.zeros((4, 3))
@@ -213,7 +213,7 @@ def test_the_trunk_servo_model_moves_a_bounded_fraction_per_tick():
 
 
 def test_the_slewed_trunk_holds_the_last_ticks_of_a_chunk():
-    from g1d_deploy.runtime.ik.waist_planner import SlewTrunk
+    from elrobot_deploy.runtime.ik.waist_planner import SlewTrunk
 
     slew = SlewTrunk(bend=0.2, unbend=0.1, yaw=0.3, settle=6)
     traj = np.zeros((25, 3))
@@ -261,7 +261,7 @@ def test_every_shipped_solver_drives_the_robot_files_tcp(cfg, hw):
 
 def _reachable_pose(solver, q14):
     """The flange poses (base frame) of a known arm configuration."""
-    from g1d_deploy.robot import kinematics as kin
+    from elrobot_deploy.robot import kinematics as kin
     solver.place(q14, np.zeros(3))
     inv = np.linalg.inv(solver.base)
     return np.stack([kin.mat_to_pose(inv @ solver.backend.flange_pose(s))
@@ -273,8 +273,8 @@ def test_a_solve_lands_the_driven_point(cfg, tcp):
     """A perfect solve is the same either way: the flange lands on its target,
     and with a TCP the TCP lands on the flange target composed with it. The
     returned error is at the driven point."""
-    from g1d_deploy.robot import kinematics as kin
-    from g1d_deploy.runtime.ik.arm_qp import DualArmSolver
+    from elrobot_deploy.robot import kinematics as kin
+    from elrobot_deploy.runtime.ik.arm_qp import DualArmSolver
 
     c = cfgmod.replace(cfg, ik_max_iters=200)
     s = DualArmSolver(c, tcp=tcp, max_iters=200)
@@ -300,8 +300,8 @@ def test_a_solve_lands_the_driven_point(cfg, tcp):
 def test_a_miss_is_traded_at_the_tcp_not_the_flange(cfg):
     """Out of reach, the two rules miss differently: the TCP-driven solve
     leaves the TCP nearer its target than the flange-driven one does."""
-    from g1d_deploy.robot import kinematics as kin
-    from g1d_deploy.runtime.ik.arm_qp import DualArmSolver
+    from elrobot_deploy.robot import kinematics as kin
+    from elrobot_deploy.runtime.ik.arm_qp import DualArmSolver
 
     tcp = np.array([0.184759, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
     X = kin.pose_to_mat(tcp)

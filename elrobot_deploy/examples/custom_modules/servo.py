@@ -6,7 +6,7 @@
     smoother = "servo.py:make_smoother"
     feedforward = "servo.py:make_feedforward"
 
-    g1d_deploy check-policy examples/custom_modules/deploy.toml
+    elrobot_deploy check-policy examples/custom_modules/deploy.toml
 
 P7 walks the line through P6's joint targets and, with a smoother on, hands it
 the line read `lead_s` ahead; the smoother returns the command's position,

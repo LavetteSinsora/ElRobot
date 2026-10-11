@@ -4,7 +4,7 @@ Copy this file next to your adapter. Every function takes arrays with any
 number of leading dimensions — e.g. `(n, 2, 4)` quaternions for n actions of
 two arms — and returns the same leading shape.
 
-The g1d_deploy contract (docs/deploying_a_policy/policy_contract.md, "The actions"):
+The elrobot_deploy contract (docs/deploying_a_policy/policy_contract.md, "The actions"):
     pose = [x, y, z, qw, qx, qy, qz], metres, unit wxyz quaternion, the FLANGE
     (wrist-yaw link), absolute, in the robot base frame.
 """

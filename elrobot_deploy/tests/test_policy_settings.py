@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import dataclasses
 
-from g1d_deploy.config_loading.rollout_settings import RolloutSettings
-from g1d_deploy.policy_contract import bind_runtime
-from g1d_deploy.runtime.processes.p5_policy import RolloutLatch
+from elrobot_deploy.config_loading.rollout_settings import RolloutSettings
+from elrobot_deploy.policy_contract import bind_runtime
+from elrobot_deploy.runtime.processes.p5_policy import RolloutLatch
 
 from .test_p0_launcher import FakeClock
 from .test_settings import _Choosy, _activate, _dummy, _launch

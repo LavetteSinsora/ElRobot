@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from g1d_deploy.dashboards.inspect import discover
+from elrobot_deploy.dashboards.inspect import discover
 
 
 def _record(path, **cfg):
@@ -71,7 +71,7 @@ def test_a_record_is_never_searched_for_records(tmp_path):
     _record(run / "executor_replays" / "20260926-120000")
     (run / "policy_replays" / "x").mkdir(parents=True)
     (run / "policy_replays" / "x" / "manifest.json").write_text(
-        json.dumps({"schema": "g1d_deploy.policy_replay.v1", "streams": {}}))
+        json.dumps({"schema": "elrobot_deploy.policy_replay.v1", "streams": {}}))
     assert [r.key for r in discover.scan(tmp_path)] == ["20260926-101010"]
 
 
@@ -114,7 +114,7 @@ def test_an_unreadable_manifest_is_listed_not_hidden(tmp_path):
 
 def test_the_server_lists_and_loads_by_key(tmp_path):
     """`/api/tree` and `/api/load` speak keys: the path under the root."""
-    from g1d_deploy.dashboards.inspect import server
+    from elrobot_deploy.dashboards.inspect import server
 
     from . import inspect_fixtures as fx
 

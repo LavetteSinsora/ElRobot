@@ -1,4 +1,4 @@
-"""`g1d_deploy.runtime.teleop.intervention` — the arithmetic of a takeover.
+"""`elrobot_deploy.runtime.teleop.intervention` — the arithmetic of a takeover.
 
 Pure functions only: no arena, no clock, no SDK, no robot. Everything here runs
 on a laptop, which is the point of keeping the geometry out of P11.
@@ -9,10 +9,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.runtime.teleop import intervention as iv
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.robot.kinematics import mat_from_quat
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.runtime.teleop import intervention as iv
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.robot.kinematics import mat_from_quat
 
 #: Realistic offsets, so the numbers in these tests are the numbers a
 #: run would see: the Dex-1 fingertip midpoint is 18.5 cm out of the flange, and
@@ -266,7 +266,7 @@ def test_the_full_travel_is_reachable_from_any_anchor():
 
 
 def test_the_squeeze_margin_bounds_the_command_below_the_measured_jaw():
-    """THE FORCE BOUND. g1d_deploy publishes jaw position straight to the wire at
+    """THE FORCE BOUND. elrobot_deploy publishes jaw position straight to the wire at
     kp = 10 with no leash, and a held stick is an integrator — so without this an
     operator can wind the command to 0 against an object stopped at 1.4 rad and
     ask for 14 N·m."""
@@ -431,7 +431,7 @@ def test_the_robot_tool_offset_is_exp_004s_measured_one():
     It is the Dex-1's, so it lives in the robot file (`[end_effector] tcp`)
     and reaches the IK as `Hardware.tcp`; the model constant is the same
     number."""
-    from g1d_deploy.robot import g1d_model as g1d
+    from elrobot_deploy.robot import g1d_model as g1d
 
     tcp = cfgmod.load_hardware("g1d_fisheye_dex1").tcp
     assert tcp.shape == (schema.POSE_DIM,) and tcp.dtype == np.float64

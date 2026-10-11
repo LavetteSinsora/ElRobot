@@ -13,8 +13,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.dashboards.inspect import clock, loader, timeline
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.dashboards.inspect import clock, loader, timeline
 
 from . import rollout_fixtures as fx
 

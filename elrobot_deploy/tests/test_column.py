@@ -14,9 +14,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.runtime.processes.p1_state import ColumnLatch
-from g1d_deploy.runtime.drivers import column as col
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.processes.p1_state import ColumnLatch
+from elrobot_deploy.runtime.drivers import column as col
 
 
 # --- The wire ---------------------------------------------------------------

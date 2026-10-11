@@ -1,7 +1,7 @@
 # Adapter patterns
 
 Situations that come up when serving real checkpoints, and a way to handle
-each inside the adapter and the deploy file, without changing g1d_deploy. Read
+each inside the adapter and the deploy file, without changing elrobot_deploy. Read
 the section that matches the situation.
 
 - [Several training runs, one adapter](#several-training-runs-one-adapter)
@@ -42,7 +42,7 @@ it sits in) when one adapter serves two runs.
 
 ## A switch the user sets at launch
 
-For behaviour that belongs to one model and should not become a g1d_deploy
+For behaviour that belongs to one model and should not become a elrobot_deploy
 feature, read an environment variable in `__init__`:
 
 ```python
@@ -53,7 +53,7 @@ def _skip_self_check() -> bool:
 The user sets it in the deploy file's `[policy.env]`, or for one launch:
 
 ```bash
-g1d_deploy run deploy.toml --set policy.env.MYMODEL_SKIP_SELF_CHECK=1
+elrobot_deploy run deploy.toml --set policy.env.MYMODEL_SKIP_SELF_CHECK=1
 ```
 
 Two rules:
@@ -71,7 +71,7 @@ The deploy file can narrow the cameras the adapter receives, as long as the
 anchor camera stays:
 
 ```bash
-g1d_deploy run deploy.toml --set 'policy.uses_cameras=["lwrist", "rwrist"]'
+elrobot_deploy run deploy.toml --set 'policy.uses_cameras=["lwrist", "rwrist"]'
 ```
 
 `obs.frames` then has no entry for the camera left out. An adapter that
@@ -128,11 +128,11 @@ wrapper script instead of a Python binary:
 #!/usr/bin/env bash
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export PYTHONPATH="$here/model_repo:/path/to/g1d_deploy/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$here/model_repo:/path/to/elrobot_deploy/src${PYTHONPATH:+:$PYTHONPATH}"
 exec "$here/model_repo/.venv/bin/python" "$@"
 ```
 
-Putting g1d_deploy's `src` directory on `PYTHONPATH` this way also replaces
+Putting elrobot_deploy's `src` directory on `PYTHONPATH` this way also replaces
 installing it into the model's environment. Variables that code reads while
 being imported belong here: the infra imports the adapter once without
 `[policy.env]`, to read its declarations, before the policy process applies it.

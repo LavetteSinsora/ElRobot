@@ -1,12 +1,12 @@
 # Running a policy, and the live dashboard
 
-How a launch goes from `g1d_deploy run` to rollouts, what the operator sees,
+How a launch goes from `elrobot_deploy run` to rollouts, what the operator sees,
 and what can change between rollouts.
 
 - **Read first:** `docs/overview.md`.
-- **Code:** `src/g1d_deploy/cli/main.py` (the commands and flags),
-  `src/g1d_deploy/runtime/launcher/` (P0: `state_machine.py`,
-  `startup_checks.py`, `ramps.py`), `src/g1d_deploy/dashboards/live/` (P10).
+- **Code:** `src/elrobot_deploy/cli/main.py` (the commands and flags),
+  `src/elrobot_deploy/runtime/launcher/` (P0: `state_machine.py`,
+  `startup_checks.py`, `ramps.py`), `src/elrobot_deploy/dashboards/live/` (P10).
 - **Related:** `docs/deploying_a_policy/deploy_toml.md`, `docs/setup/machine_toml.md`,
   `docs/setup/robot_toml.md`, `docs/deploying_a_policy/rollout_inspection.md`.
 
@@ -14,17 +14,17 @@ and what can change between rollouts.
 
 | command | robot? | what |
 |---|---|---|
-| `g1d_deploy check [--robot R] [--no-robot]` | read-only | is this box ready (packages, machine file, GPU, `/dev/shm`, network card, CPU table), and does the robot answer (every camera the robot file lists, with a preview of each fisheye's lens fit; the state streams)? Never publishes anything |
-| `g1d_deploy check-policy deploy.toml [--no-run]` | no | level 1: resolve the deploy file exactly as `run` would, applying every startup check, then construct the class and judge the prompt in its own Python with the GPU hidden (seconds, no GPU). Level 2: under the adapter's Python, construct it, judge the prompt, `warmup()` and one `infer` on a dummy observation — the policy loads and an inference completes. Level 2 **takes the GPU** like a warmup and is refused while a deployment is live; it fails on exceptions, a wrong action type or an unusable action count, and only *notes* action values (meaningless on black frames). `--no-run` stops after level 1 |
-| `g1d_deploy run deploy.toml` | **moves the arm** | the deployment |
-| `g1d_deploy inspect [DIR]` | no | the rollout inspection dashboard (`docs/deploying_a_policy/rollout_inspection.md`) |
+| `elrobot_deploy check [--robot R] [--no-robot]` | read-only | is this box ready (packages, machine file, GPU, `/dev/shm`, network card, CPU table), and does the robot answer (every camera the robot file lists, with a preview of each fisheye's lens fit; the state streams)? Never publishes anything |
+| `elrobot_deploy check-policy deploy.toml [--no-run]` | no | level 1: resolve the deploy file exactly as `run` would, applying every startup check, then construct the class and judge the prompt in its own Python with the GPU hidden (seconds, no GPU). Level 2: under the adapter's Python, construct it, judge the prompt, `warmup()` and one `infer` on a dummy observation — the policy loads and an inference completes. Level 2 **takes the GPU** like a warmup and is refused while a deployment is live; it fails on exceptions, a wrong action type or an unusable action count, and only *notes* action values (meaningless on black frames). `--no-run` stops after level 1 |
+| `elrobot_deploy run deploy.toml` | **moves the arm** | the deployment |
+| `elrobot_deploy inspect [DIR]` | no | the rollout inspection dashboard (`docs/deploying_a_policy/rollout_inspection.md`) |
 
 Activate the venv first (`source .venv/bin/activate` in the checkout), or
 prefix commands with `uv run`.
 
 ## A launch, start to finish
 
-`g1d_deploy run my_task/deploy.toml`:
+`elrobot_deploy run my_task/deploy.toml`:
 
 1. **Resolve** the deploy file (layers, the adapter's declarations read in its
    own Python), print a banner of every non-default value and where it came
@@ -112,7 +112,7 @@ solver, a `module:function` blend, and custom servo modules.
 `--replan-period`, `--action-horizon`, `--control-hz`, `--home-tol-arm`,
 `--home-tol-waist`, the servo flags (`--servo-filter-hz`, `--servo-no-lead`,
 `--velocity-ff`, `--torque-ff`, `--arm-gain-scale`), and
-`--intervene`. `g1d_deploy run --help` describes each.
+`--intervene`. `elrobot_deploy run --help` describes each.
 
 ### `--intervene`: PICO takeover
 
@@ -125,7 +125,7 @@ through ~26 cm per quarter turn. `[intervene]` in the deploy file tunes it.
 
 ## Known limits
 
-- **The DDS layer** is g1d_deploy's own over CycloneDDS (vendored message
+- **The DDS layer** is elrobot_deploy's own over CycloneDDS (vendored message
   types and CRC, tested byte-identical to Unitree's SDK) and has not yet been
   checked on the robot. Do one supervised run first; if the state arrives but
   the arm does not move at homing, suspect the command, not the network.

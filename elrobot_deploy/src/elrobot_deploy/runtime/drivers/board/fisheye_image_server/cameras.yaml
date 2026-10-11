@@ -1,0 +1,257 @@
+# =====================================================================
+# fish_eye_image_server — camera configuration
+# =====================================================================
+#
+# Deployed to the robot file's `[image_server] dir` on the robot board
+# (elrobot_deploy syncs it at every launch). THE VALUES BELOW ARE THE REFERENCE
+# ROBOT'S: its USB sockets, serials and lens circles. Another unit needs its
+# own (`python publisher.py --list-devices`, `--probe`; see README.md).
+#
+# Schema deliberately mirrors the vendor's cam_config_server.yaml
+# (/home/unitree/unitree_eai_environment/service/teleimager/cam_config_server.yaml)
+# so the two read the same way — same camera topic names, same `image_shape`
+# [height, width], same `enable_zmq` / `zmq_port` / `fps` keys.
+#
+# TWO DIFFERENCES FROM THE VENDOR SCHEMA:
+#
+#   * `video_id` is NOT supported. This board has no /dev/video* at all — pyuvc
+#     claims the cameras through usbfs — so there is no node to number. Identify
+#     by `physical_path` (preferred) or `serial_number`.
+#   * `controls` is new, and is the reason this server exists. See below.
+#
+# PORTS ARE DELIBERATELY NOT THE VENDOR'S. teleimager uses 55555/6/7; this uses
+# 55565/6/7. If both are ever running you get a bind error instead of silently
+# reading 480x640 from the wrong server where 720p was expected.
+
+server:
+  bind_host: "0.0.0.0"
+  # Matches the vendor unit's `CPUAffinity=0 1 2`, so this competes for the same
+  # cores the server it stands in for did, and no others.
+  cpu_affinity: [0, 1, 2]
+  # How often the per-camera rate / seq / drop line is logged.
+  report_period_s: 10.0
+
+# =====================================================================
+# ACTIVE — the fisheye rig
+# =====================================================================
+
+# The head is unchanged hardware; it is served here so that one server
+# covers every camera on the board.
+head_camera:
+  enable_zmq: true
+  zmq_port: 55565
+  type: uvc
+  image_shape: [480, 1280]      # [height, width]; binocular, split by the consumer
+  binocular: true
+  fps: 30
+  physical_path: "1-2.1"        # reference robot, 2026-08-28: 1bcf:2d4f, serial 01.00.00
+  serial_number: "01.00.00"     # fallback if physical_path is absent
+  # Rectilinear, so the camera's own auto-exposure meters it correctly.
+  photometry: auto
+  controls_auto:
+    Auto Exposure Mode: 8
+    White Balance temperature,Auto: 1
+
+left_wrist_camera:
+  enable_zmq: true
+  zmq_port: 55566
+  type: uvc
+  # Fisheye, native 1280x720. The lens circle below and the robot file's
+  # `shape` / `fallback_lens_circle` describe THIS resolution; change them
+  # together.
+  image_shape: [720, 1280]
+  binocular: false
+  fps: 30
+  # WHICH SOCKET IS WHICH ARM (reference robot, settled 2026-08-31):
+  #
+  #   1-3.2  -> LEFT   (this entry)
+  #   1-3.1  -> RIGHT
+  #
+  # Both units report serial EP.20CC54K01, so NOTHING in software can verify
+  # this, and a cable trace has got it wrong before. What settles it is
+  # LOOKING: open the live dashboard (or a recorded rollout) and check which
+  # arm appears in the lwrist image. Re-establish it the same way after any
+  # cable moves. Port order tells you nothing. (If the two are crossed, a
+  # robot file exchanges their ports: docs/setup/robot_toml.md.)
+  physical_path: "1-3.2"
+  # NULL, AND IT HAS TO BE. Both units report the SAME serial, EP.20CC54K01 —
+  # confirmed on the live board. `serial_number` cannot tell them apart and
+  # `resolve_uid` refuses a duplicate rather than guessing, so which socket the
+  # cable is in is the only thing that names these cameras. Getting the two
+  # backwards gives the policy a mirrored view of its own arms and raises
+  # nothing at all.
+  serial_number: null
+
+  # --- the lens circle --------------------------------------------------
+  #
+  # Where the image actually is on the sensor, in FULL-SENSOR pixels. Same fit
+  # that produced the robot file's `fallback_lens_circle` — these
+  # two must describe the same circle, because one
+  # decides what the policy sees and the other decides what the exposure loop
+  # meters, and disagreeing would expose for a region that is not the region
+  # being recorded.
+  #
+  # This is the ONLY reason the server needs to know any geometry. Without it
+  # a camera falls back to `auto` (see publisher.py::resolve_controls).
+  circle:
+    cx: 662.6
+    cy: 333.82
+    r: 344.28
+
+  # --- photometry -------------------------------------------------------
+  #
+  # `servo` (default), `auto`, or `pinned`. publisher.py::PHOTOMETRY_MODES has
+  # the full argument and the measurements; the short version:
+  #
+  #   servo   this server runs the exposure loop, metering ONLY inside the
+  #           circle above and holding its 99.5th percentile just under the
+  #           clipping ceiling. Adapts to the room like `auto` does, without
+  #           `auto`'s fatal flaw.
+  #   auto    the camera's own loop. MEASURED TO BLOW THE IMAGE OUT HERE: it
+  #           averages the whole frame, ~60% of which is the black surround
+  #           around the lens circle, and lifts exposure and gain until the
+  #           picture clips. 26.3% of the disk over 250, against 1.5%/4.5% in
+  #           well-exposed reference recordings.
+  #   pinned  frozen device values. Reproducible, adapts to nothing.
+  photometry: servo
+
+  # All three blocks live here so the alternatives are documented where they
+  # are switched. Order is significant and preserved: an auto mode must be set
+  # before the manual value it overrides will stick, and disabled before one
+  # will hold. Every value is set, read back, and the server REFUSES to start
+  # if the driver declined it. `--probe` prints this unit's names and ranges.
+
+  # Exposure and gain are deliberately ABSENT: the loop owns them and writes
+  # them every tick. What this block does is hand them over — auto-exposure off
+  # (or the writes are accepted and silently ignored), and white balance pinned
+  # (3800 K, the reference rig's lighting) so the loop has one variable to
+  # chase, not two.
+  controls_servo:
+    Auto Exposure Mode: 1            # 1 = manual; the servo drives from here
+    White Balance temperature,Auto: 0
+    White Balance temperature: 3800  # the reference rig's lighting
+
+  controls_auto:
+    Auto Exposure Mode: 8            # 8 = aperture priority (auto exposure)
+    White Balance temperature,Auto: 1
+
+  # Manual settings recorded from ANOTHER camera model (an MSK R4231 rig).
+  #
+  # ⚠️ THESE ARE DEVICE VALUES, NOT PHYSICAL QUANTITIES. Exposure and gain are
+  # firmware-scoped: 110 is assumed to be 11 ms on the R4231, and need not
+  # mean that here. Every one of these numbers is inside this unit's accepted
+  # range, so they will apply cleanly and the read-back check will pass — a
+  # mismatch here is silent by construction.
+  #
+  # MEASURED ALTERNATIVE for `pinned`: on this unit `Absolute Exposure Time:
+  # 200` with `Gain: 56` gives p99.5 253 and 4.2% clipped; the right wrist at
+  # 200/64 gives p99.5 248 and 0.18%. The 110/64 below has never been checked
+  # here.
+  controls_pinned:
+    Auto Exposure Mode: 1            # 1 = manual, in Linux UVC semantics
+    Absolute Exposure Time: 110      # R4231: assumed 11 ms, unit 100 us
+    Gain: 64
+    White Balance temperature,Auto: 0
+    White Balance temperature: 3800
+
+right_wrist_camera:
+  enable_zmq: true
+  zmq_port: 55567
+  type: uvc
+  image_shape: [720, 1280]
+  binocular: false
+  fps: 30
+  # See left_wrist_camera: same model, same duplicate serial, told apart only by
+  # which USB socket the cable is in — and settled by LOOKING AT THE RENDER,
+  # not by tracing the cable, which got it backwards once already.
+  physical_path: "1-3.1"
+  serial_number: null
+
+  # Same fit as the left wrist's. A different circle,
+  # because these are two physical lenses seated differently. The radii
+  # agree to under a pixel, but the CENTRES are 13 px apart in x — which is
+  # still exactly why each camera carries its own rather than the server
+  # assuming one geometry.
+  circle:
+    cx: 675.48
+    cy: 342.61
+    r: 343.44
+
+  # Identical to the left wrist: same model, same reasoning.
+  # --- photometry -------------------------------------------------------
+  #
+  # `servo` (default), `auto` or `pinned` — see the left wrist and
+  # publisher.py::PHOTOMETRY_MODES. Measured here under `auto`: 26.3% of the
+  # disk clipped.
+  photometry: servo
+
+  controls_servo:
+    Auto Exposure Mode: 1            # 1 = manual; the servo drives from here
+    White Balance temperature,Auto: 0
+    White Balance temperature: 3800  # the reference rig's lighting
+
+  controls_auto:
+    Auto Exposure Mode: 8            # 8 = aperture priority (auto exposure)
+    White Balance temperature,Auto: 1
+
+  # Manual settings recorded from ANOTHER camera model (an MSK R4231 rig).
+  #
+  # ⚠️ THESE ARE DEVICE VALUES, NOT PHYSICAL QUANTITIES, and this camera is a
+  # DIFFERENT MODEL (10bb:2b08, not an R4231). Exposure and gain are
+  # firmware-scoped: 110 is assumed to be 11 ms on the
+  # R4231, and need not mean that here. Every one of these numbers is inside
+  # this unit's accepted range, so they will apply cleanly and the read-back
+  # check will pass — a mismatch here is silent by construction.
+  controls_pinned:
+    Auto Exposure Mode: 1            # 1 = manual, in Linux UVC semantics
+    Absolute Exposure Time: 110      # R4231: assumed 11 ms, unit 100 us
+    Gain: 64
+    White Balance temperature,Auto: 0
+    White Balance temperature: 3800
+
+# =====================================================================
+# STOCK — the ordinary 480x640 wrist cameras, as shipped
+# =====================================================================
+#
+# To serve the stock wrist cameras through THIS server:
+#
+#   1. delete the two 720x1280 wrist entries above (or set enable_zmq: false);
+#   2. uncomment everything between the two marker lines below, by stripping the
+#      leading "# " from each line. The block is contiguous and contains NO
+#      prose, so this is mechanical — README.md gives a one-line sed for it.
+#      (The command is kept there, not here, so that each marker string appears
+#      exactly ONCE in this file and the range cannot match itself.)
+#
+# Reverting to the fisheye rig is the reverse edit. Nothing else changes on the
+# board — but the DEPLOY side must change with it, because the resolution is
+# declared in two places. See README.md section "Switching the rig back": the
+# robot file's wrist cameras become `kind = "normal"`, `shape = [480, 640]`
+# (ports unchanged: 55565/6/7 are this server).
+#
+# The reference board's stock units and geometry, 2026-08-28:
+#
+## --- BEGIN STOCK ---
+# left_wrist_camera:
+#   enable_zmq: true
+#   zmq_port: 55566
+#   type: uvc
+#   image_shape: [480, 640]
+#   binocular: false
+#   fps: 30
+#   physical_path: "1-3.2"
+#   serial_number: "JR0001"
+#   controls: {}
+# right_wrist_camera:
+#   enable_zmq: true
+#   zmq_port: 55567
+#   type: uvc
+#   image_shape: [480, 640]
+#   binocular: false
+#   fps: 30
+#   physical_path: "1-3.1"
+#   serial_number: "JR0002"
+#   controls: {}
+## --- END STOCK ---
+#
+# (uid 1:7 = JR0001 = left, uid 1:5 = JR0002 = right. These stock units have
+# DISTINCT serials, unlike the fisheye pair, which share one.)

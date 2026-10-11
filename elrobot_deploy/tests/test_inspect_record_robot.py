@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from g1d_deploy.dashboards.inspect import loader, record_robot, scene, timeline
+from elrobot_deploy.dashboards.inspect import loader, record_robot, scene, timeline
 
 from . import inspect_fixtures as fx
 

@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.runtime.execution.servo_segment import Phase, Segment
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.execution.servo_segment import Phase, Segment
 
 BODY = schema.BODY_DOF
 T0 = 100.0

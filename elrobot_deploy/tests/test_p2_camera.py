@@ -19,11 +19,11 @@ import time
 import numpy as np
 import pytest
 
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.runtime import cpu_pinning as affinity
-from g1d_deploy.runtime.processes import p2_camera
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.runtime.drivers.cameras import (FakeCamera, RealSenseCamera, V4l2Camera,
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.runtime import cpu_pinning as affinity
+from elrobot_deploy.runtime.processes import p2_camera
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.drivers.cameras import (FakeCamera, RealSenseCamera, V4l2Camera,
                                                 ZmqCamera, _fourcc_name, _is_jpeg)
 
 SHAPE = (8, 8, 3)          # the conftest `rwrist` camera, at native resolution
@@ -214,7 +214,7 @@ def test_fourcc_round_trips():
     requested one, and that comparison is the whole guard against the YUYV
     fallback — which delivers ~5 fps rather than refusing."""
     cv2 = pytest.importorskip("cv2")
-    from g1d_deploy.runtime.drivers.cameras import _fourcc
+    from elrobot_deploy.runtime.drivers.cameras import _fourcc
 
     for name in ("MJPG", "YUYV"):
         assert _fourcc_name(int(_fourcc(cv2, name))) == name
@@ -335,7 +335,7 @@ def _zmq_camera_reading(payloads, shape=SHAPE):
 
 
 def test_zmq_camera_strips_our_header_and_reports_the_sequence_number():
-    from g1d_deploy.runtime.drivers.board.fisheye_image_server.publisher import (pack_header)
+    from elrobot_deploy.runtime.drivers.board.fisheye_image_server.publisher import (pack_header)
 
     jpeg = _jpeg(SHAPE)
     cam = _zmq_camera_reading([pack_header(7) + jpeg])
@@ -361,7 +361,7 @@ def test_zmq_camera_still_reads_the_vendor_servers_bare_jpeg():
 
 def test_a_jpeg_can_never_be_mistaken_for_our_header():
     """The discrimination is exact, not heuristic: SOI is FF D8, magic is G1DF."""
-    from g1d_deploy.runtime.drivers.board.fisheye_image_server.publisher import MAGIC
+    from elrobot_deploy.runtime.drivers.board.fisheye_image_server.publisher import MAGIC
 
     assert _jpeg(SHAPE)[:2] == b"\xff\xd8"
     assert MAGIC[:2] != b"\xff\xd8"
@@ -369,7 +369,7 @@ def test_a_jpeg_can_never_be_mistaken_for_our_header():
 
 def test_the_sequence_number_reaches_the_arena_beside_its_own_frame(arena, cfg):
     """`source_seq` rides in the slot with the pixels it numbers."""
-    from g1d_deploy.runtime.shared_memory import open_all
+    from elrobot_deploy.runtime.shared_memory import open_all
 
     region = open_all(arena, cfg)["cameras"]["rwrist"]
     region.publish(1.0, b"\xff\xd8ab", seq=41)
@@ -382,7 +382,7 @@ def test_the_sequence_number_reaches_the_arena_beside_its_own_frame(arena, cfg):
 def test_a_source_without_a_counter_records_minus_one_not_zero(arena, cfg):
     """Zero is a real sequence number. Conflating it with "absent" would make
     CHECK report a fabricated drop count for the vendor server."""
-    from g1d_deploy.runtime.shared_memory import open_all
+    from elrobot_deploy.runtime.shared_memory import open_all
 
     region = open_all(arena, cfg)["cameras"]["rwrist"]
     region.publish(1.0, None, seq=None)
@@ -404,7 +404,7 @@ def test_a_bitmask_controls_nonsense_step_does_not_disable_the_readback_check():
     the one control that gates all the others — auto-exposure must be off before
     a manual exposure time sticks — would have passed silently.
     """
-    from g1d_deploy.runtime.drivers.board.fisheye_image_server.publisher import (_tolerance)
+    from elrobot_deploy.runtime.drivers.board.fisheye_image_server.publisher import (_tolerance)
 
     assert _tolerance(_Ctl(step=9, lo=1, hi=8)) == 0
 
@@ -412,7 +412,7 @@ def test_a_bitmask_controls_nonsense_step_does_not_disable_the_readback_check():
 def test_a_real_quantum_is_still_allowed():
     """`Pan control` steps by 3600 over +-57600, `White Balance temperature` by
     10 over 2800..6500. Those snaps are the driver working, not refusing."""
-    from g1d_deploy.runtime.drivers.board.fisheye_image_server.publisher import (_tolerance)
+    from elrobot_deploy.runtime.drivers.board.fisheye_image_server.publisher import (_tolerance)
 
     assert _tolerance(_Ctl(step=3600, lo=-57600, hi=57600)) == 3600
     assert _tolerance(_Ctl(step=10, lo=2800, hi=6500)) == 10
@@ -439,7 +439,7 @@ def test_servo_is_the_default_photometry_mode():
     don't trust device integers copied off another camera model — and meters
     the lens circle instead of the whole sensor.
     """
-    from g1d_deploy.runtime.drivers.board.fisheye_image_server.publisher import (DEFAULT_PHOTOMETRY,
+    from elrobot_deploy.runtime.drivers.board.fisheye_image_server.publisher import (DEFAULT_PHOTOMETRY,
                                                                                  resolve_controls)
 
     assert DEFAULT_PHOTOMETRY == "servo"
@@ -452,7 +452,7 @@ def test_a_camera_without_a_circle_falls_back_to_auto():
     auto-exposure meters the right thing and measures 0.16% clipped. There is
     also no circle for the servo to meter. Falling back rather than refusing
     is what lets `servo` be the file-wide default."""
-    from g1d_deploy.runtime.drivers.board.fisheye_image_server.publisher import (resolve_controls)
+    from elrobot_deploy.runtime.drivers.board.fisheye_image_server.publisher import (resolve_controls)
 
     mode, controls = resolve_controls(
         "head", {"controls_auto": {"Auto Exposure Mode": 8}})
@@ -461,7 +461,7 @@ def test_a_camera_without_a_circle_falls_back_to_auto():
 
 
 def test_each_mode_selects_its_own_control_block():
-    from g1d_deploy.runtime.drivers.board.fisheye_image_server.publisher import (resolve_controls)
+    from elrobot_deploy.runtime.drivers.board.fisheye_image_server.publisher import (resolve_controls)
 
     spec = {"controls_auto": {"Auto Exposure Mode": 8},
             "controls_pinned": {"Auto Exposure Mode": 1,
@@ -477,14 +477,14 @@ def test_an_unknown_photometry_mode_is_refused():
     photometry nobody chose."""
     import pytest as _pytest
 
-    from g1d_deploy.runtime.drivers.board.fisheye_image_server.publisher import (resolve_controls)
+    from elrobot_deploy.runtime.drivers.board.fisheye_image_server.publisher import (resolve_controls)
 
     with _pytest.raises(RuntimeError, match="photometry"):
         resolve_controls("w", {"photometry": "atuo"})
 
 
 def test_the_shipped_config_servos_the_wrists_and_autos_the_head():
-    from g1d_deploy.runtime.drivers.board.fisheye_image_server import publisher as pub
+    from elrobot_deploy.runtime.drivers.board.fisheye_image_server import publisher as pub
 
     cfg = pub.load_config(pub.DEFAULT_CONFIG)
     for topic, spec in cfg["cameras"].items():
@@ -520,8 +520,8 @@ def test_the_wrists_declare_the_circle_the_servo_meters():
     falls back to: one decides what the model sees, the other what the loop
     exposes for. Both are the reference robot's fit of 2026-09-21.
     """
-    from g1d_deploy.config_loading import robot_file as robot
-    from g1d_deploy.runtime.drivers.board.fisheye_image_server import publisher as pub
+    from elrobot_deploy.config_loading import robot_file as robot
+    from elrobot_deploy.runtime.drivers.board.fisheye_image_server import publisher as pub
 
     cfg = pub.load_config(pub.DEFAULT_CONFIG)
     cams = robot.load_robot("g1d_fisheye_dex1").cameras
@@ -543,7 +543,7 @@ def test_the_wrists_declare_the_circle_the_servo_meters():
 def test_the_wrists_carry_the_collection_settings_for_pinned():
     """The `pinned` block holds one recorded set of manual controls, so
     switching modes needs no archaeology."""
-    from g1d_deploy.runtime.drivers.board.fisheye_image_server import publisher as pub
+    from elrobot_deploy.runtime.drivers.board.fisheye_image_server import publisher as pub
 
     cfg = pub.load_config(pub.DEFAULT_CONFIG)
     for topic in ("left_wrist_camera", "right_wrist_camera"):

@@ -14,16 +14,16 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from g1d_deploy.cli import main as cli
-from g1d_deploy.config_loading import deploy_file
-from g1d_deploy.config_loading.rollout_settings import RolloutSettings
-from g1d_deploy.policy_contract import (DummyReader, Reader, bind_runtime,
+from elrobot_deploy.cli import main as cli
+from elrobot_deploy.config_loading import deploy_file
+from elrobot_deploy.config_loading.rollout_settings import RolloutSettings
+from elrobot_deploy.policy_contract import (DummyReader, Reader, bind_runtime,
                                         camera_info, dummy_observation)
-from g1d_deploy.policy_contract.loading import load_attr
-from g1d_deploy.runtime import ik
-from g1d_deploy.runtime.execution import chunk_blend, servo_filter
-from g1d_deploy.runtime.shared_memory import open_read_only, schema
-from g1d_deploy.runtime.shared_memory.rings import Contribution
+from elrobot_deploy.policy_contract.loading import load_attr
+from elrobot_deploy.runtime import ik
+from elrobot_deploy.runtime.execution import chunk_blend, servo_filter
+from elrobot_deploy.runtime.shared_memory import open_read_only, schema
+from elrobot_deploy.runtime.shared_memory.rings import Contribution
 
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
@@ -58,7 +58,7 @@ def test_plugins_named_by_file_resolve_against_the_deploy_file():
 def test_the_custom_solver_solves_a_reachable_pose_and_times_it():
     r = _resolve("custom_modules/deploy.toml")
     solver = ik.build(r.cfg, r.hw)
-    from g1d_deploy.robot.kinematics import ForwardKinematics
+    from elrobot_deploy.robot.kinematics import ForwardKinematics
     home = np.asarray(r.cfg.home_q, np.float64)
     target = ForwardKinematics(r.hw.urdf).flange(home, np.zeros(3)).copy()
     seed = home + 0.05
@@ -197,7 +197,7 @@ def test_history_policy_stacks_square_fisheye_frames_and_a_state_window():
 
 
 def test_the_inspection_mode_loads_by_file_and_plots_latency():
-    from g1d_deploy.dashboards.inspect import modes
+    from elrobot_deploy.dashboards.inspect import modes
     mode = modes.build(f"{EXAMPLES / 'inspect_mode' / 'mode.py'}:LatencyMode")
     assert mode.describe()["script"] == "/static/mode_latency.js"
     assert (mode.static_dir / "mode_latency.js").is_file()

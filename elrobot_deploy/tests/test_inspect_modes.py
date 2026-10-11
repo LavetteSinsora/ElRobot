@@ -16,16 +16,16 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from g1d_deploy.dashboards.inspect import options as options_mod
-from g1d_deploy.dashboards.inspect import modes as modes_mod
-from g1d_deploy.dashboards.inspect import server
-from g1d_deploy.dashboards.inspect.modes import executor as ex
+from elrobot_deploy.dashboards.inspect import options as options_mod
+from elrobot_deploy.dashboards.inspect import modes as modes_mod
+from elrobot_deploy.dashboards.inspect import server
+from elrobot_deploy.dashboards.inspect.modes import executor as ex
 
 from . import inspect_fixtures as fx
 
 _PLUGIN = '''
 from pathlib import Path
-from g1d_deploy.dashboards.inspect.modes import describe
+from elrobot_deploy.dashboards.inspect.modes import describe
 
 
 class Hello:
@@ -86,7 +86,7 @@ def test_the_builtins_are_ik_and_replay_and_executor_is_opt_in(tmp_path):
     assert list(modes_mod.BUILTIN) == ["ik", "replay"]
     assert list(modes_mod.OPTIONAL) == ["executor"]
     for spec in [*modes_mod.BUILTIN.values(), *modes_mod.OPTIONAL.values()]:
-        assert spec.startswith("g1d_deploy.dashboards.inspect.")
+        assert spec.startswith("elrobot_deploy.dashboards.inspect.")
     for opts in (options_mod.Options(root=tmp_path, modes=["executor"]),
                  options_mod.Options(root=tmp_path, executor_producer="pkg.sim")):
         req = _Req("/api/modes")
@@ -123,7 +123,7 @@ def test_modes_come_from_the_machine_file_and_the_flags(tmp_path, monkeypatch):
         runs = ["/data/runs"]
         port = 9999
     '''))
-    monkeypatch.delenv("G1D_MACHINE", raising=False)
+    monkeypatch.delenv("ELROBOT_MACHINE", raising=False)
     o = options_mod.resolve(tmp_path, machine=str(machine), modes=["d.e:F", "a.b:C"],
                             runs=["/x"])
     assert o.modes == ["a.b:C", "d.e:F"]
@@ -194,9 +194,9 @@ def test_both_dashboards_pose_with_the_shared_robot_scene():
     """`dashboards/web/robot_scene.py` is the one model and joint map both the
     live dashboard and inspection pose with; neither imports the other."""
     pytest.importorskip("mujoco")
-    from g1d_deploy.dashboards.inspect import scene as inspect_scene
-    from g1d_deploy.dashboards.live import scene as live_scene
-    from g1d_deploy.dashboards.web import robot_scene
+    from elrobot_deploy.dashboards.inspect import scene as inspect_scene
+    from elrobot_deploy.dashboards.live import scene as live_scene
+    from elrobot_deploy.dashboards.web import robot_scene
 
     model, data = robot_scene.build_model()
     assert model.ngeom > 0

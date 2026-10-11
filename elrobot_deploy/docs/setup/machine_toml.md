@@ -8,22 +8,22 @@ recordings on a big disk. Nothing about the robot is here (its address and
 login are the robot file's `[board]`, `docs/setup/robot_toml.md`), and nothing
 about the task.
 
-- **Code:** `src/g1d_deploy/config_loading/machine_file.py`
+- **Code:** `src/elrobot_deploy/config_loading/machine_file.py`
   (`load_machine`, `machine_path`, `records_root`),
-  `src/g1d_deploy/runtime/cpu_pinning.py`.
+  `src/elrobot_deploy/runtime/cpu_pinning.py`.
 - **Template:** `machine.example.toml` at the checkout's root.
 - **Related:** `docs/setup/robot_toml.md`, `docs/deploying_a_policy/running_and_live_dashboard.md`.
 
 ## Where it is
 
-First found wins: `--machine PATH`, then `$G1D_MACHINE`, then
+First found wins: `--machine PATH`, then `$ELROBOT_MACHINE`, then
 `<checkout>/machine.toml`, then no file (every default applies). Nothing is
 created for you and nothing is written to your home directory. To have one:
 
     cp machine.example.toml machine.toml     # keep only what you change
 
 It is in `.gitignore` (it describes one computer). Each scalar can be
-overridden for one shell by the `G1D_*` variable named below. `g1d_deploy
+overridden for one shell by the `ELROBOT_*` variable named below. `elrobot_deploy
 check` prints what was resolved and from where; every rollout's manifest
 records it.
 
@@ -35,13 +35,13 @@ stated by hand, below.
 
 | key | default | env | what it is for |
 |---|---|---|---|
-| `[network] iface` | `"auto"` | `G1D_IFACE` | the network card DDS binds to. `"auto"` = the first interface with an address on `subnet` |
+| `[network] iface` | `"auto"` | `ELROBOT_IFACE` | the network card DDS binds to. `"auto"` = the first interface with an address on `subnet` |
 | `[network] subnet` | `"192.168.123."` | | the robot's DDS network. The G1-D's factory addresses are on 192.168.123.x, so this box needs a static address there on the card cabled to the robot; without one, `auto` finds nothing and the launch says so |
-| `[dashboard] port` | 8080 | `G1D_DASHBOARD_PORT` | the live dashboard, on loopback |
-| `[paths] records` | unset | `G1D_RECORDS` | this box's record root: a run whose deploy file has no `[record] out` records to `<records>/<task>/`, and `g1d_deploy inspect` with no argument opens it. Relative to this file; put it on a big disk (~1 GB per rollout). Unset: each deploy file records beside itself |
+| `[dashboard] port` | 8080 | `ELROBOT_DASHBOARD_PORT` | the live dashboard, on loopback |
+| `[paths] records` | unset | `ELROBOT_RECORDS` | this box's record root: a run whose deploy file has no `[record] out` records to `<records>/<task>/`, and `elrobot_deploy inspect` with no argument opens it. Relative to this file; put it on a big disk (~1 GB per rollout). Unset: each deploy file records beside itself |
 | `[env]` | | | environment exported into P5 (the policy process) before it imports anything, e.g. `XLA_PYTHON_CLIENT_PREALLOCATE = "false"` on a shared GPU. A deploy file's `[policy.env]` wins over it |
 | `[cpu] reserved`, `rt_priority`, `[cpu.pin]` | derived | | CPU pinning, below |
-| `[inspect]` | | | defaults for `g1d_deploy inspect`: `port`, `host`, `modes`, `executor_producer`, `runs` (`docs/deploying_a_policy/rollout_inspection.md`) |
+| `[inspect]` | | | defaults for `elrobot_deploy inspect`: `port`, `host`, `modes`, `executor_producer`, `runs` (`docs/deploying_a_policy/rollout_inspection.md`) |
 
 ## CPU pinning
 
@@ -49,7 +49,7 @@ Every process is pinned to cores. The 500 Hz servos (P7, P8) cannot miss a
 2 ms deadline because a camera decoder or the recorder landed on their core.
 
 - **Without `[cpu.pin]`** the table is derived from this CPU's `/sys`
-  topology. `python -m g1d_deploy.runtime.cpu_pinning` prints the table it
+  topology. `python -m elrobot_deploy.runtime.cpu_pinning` prints the table it
   would derive, to paste if you would rather state one.
 - **A stated table is checked, not believed:** each core's real siblings are
   read at startup, and a table that does not match this machine (one copied

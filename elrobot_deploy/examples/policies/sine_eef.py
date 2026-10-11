@@ -1,6 +1,6 @@
 """A toy EEF policy: both flanges trace a small vertical sinusoid.
 
-    g1d_deploy run examples/policies/sine_eef.toml
+    elrobot_deploy run examples/policies/sine_eef.toml
 
 The smallest policy that exercises the whole eef contract with visible motion
 and no model: absolute flange poses in the base frame, timed from `t_anchor`,
@@ -31,8 +31,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from g1d_deploy import policy_contract as g1d
-from g1d_deploy.policy_contract import EefActions
+from elrobot_deploy import policy_contract as g1d
+from elrobot_deploy.policy_contract import EefActions
 
 AMPLITUDE_M = 0.02
 PERIOD_S = 4.0

@@ -14,14 +14,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from g1d_deploy.dashboards.inspect.options import Options
-from g1d_deploy.dashboards.inspect import loader, server
-from g1d_deploy.dashboards.inspect.modes import ik as ik_mode
-from g1d_deploy.dashboards.inspect.producers import ik_bench
-from g1d_deploy.dashboards.inspect.modes import executor as ex
-from g1d_deploy.dashboards.inspect.modes import replay as replay_mode
-from g1d_deploy.dashboards.inspect.modes.replay import anchors, store
-from g1d_deploy.dashboards.inspect.modes.replay.overlay import ChunkPoses, action_diff
+from elrobot_deploy.dashboards.inspect.options import Options
+from elrobot_deploy.dashboards.inspect import loader, server
+from elrobot_deploy.dashboards.inspect.modes import ik as ik_mode
+from elrobot_deploy.dashboards.inspect.producers import ik_bench
+from elrobot_deploy.dashboards.inspect.modes import executor as ex
+from elrobot_deploy.dashboards.inspect.modes import replay as replay_mode
+from elrobot_deploy.dashboards.inspect.modes.replay import anchors, store
+from elrobot_deploy.dashboards.inspect.modes.replay.overlay import ChunkPoses, action_diff
 
 from . import inspect_fixtures as fx
 
@@ -206,7 +206,7 @@ def test_action_diff_is_the_flange_distance_per_anchor(tmp_path):
 
 def test_replay_strip_route_serves_a_ready_replay(tmp_path):
     pytest.importorskip("cv2")
-    from g1d_deploy.dashboards.inspect.modes.replay import run
+    from elrobot_deploy.dashboards.inspect.modes.replay import run
 
     rec = fx.write(tmp_path / "records" / "20260926-120000")
     out = run.replay(rec, log=lambda *_: None)

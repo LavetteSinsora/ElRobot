@@ -11,8 +11,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from g1d_deploy.dashboards.inspect import overlays
-from g1d_deploy.dashboards.inspect.producers import ik_bench
+from elrobot_deploy.dashboards.inspect import overlays
+from elrobot_deploy.dashboards.inspect.producers import ik_bench
 
 from . import inspect_fixtures as fx
 

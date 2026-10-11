@@ -13,7 +13,7 @@ and `infer` is simply "compute the next actions" (`examples/policies/hold.py`,
 `examples/policies/sine_eef.py`).
 
 - **Read first:** `docs/overview.md` (what the infra does around the adapter).
-- **Code:** `src/g1d_deploy/policy_contract/` — `base.py` (the `Policy`
+- **Code:** `src/elrobot_deploy/policy_contract/` — `base.py` (the `Policy`
   class), `actions.py` (`EefActions`, `JointActions`, validation),
   `observation.py` (`Observation`, `Reader`), `deadline_shift.py`,
   `anchor.py`.
@@ -42,7 +42,7 @@ and `infer` is simply "compute the next actions" (`examples/policies/hold.py`,
 ## What an adapter is
 
 One Python class, a subclass of
-`src/g1d_deploy/policy_contract/base.py::Policy`. It sits between the infra and
+`src/elrobot_deploy/policy_contract/base.py::Policy`. It sits between the infra and
 whatever decides the actions (in the common case, a trained model):
 
 | the infra owns | the adapter owns |
@@ -62,7 +62,7 @@ moves is the infra's, so every policy gets the same, tested behaviour.
 
 ```python
 import numpy as np
-from g1d_deploy.policy_contract import EefActions, Policy
+from elrobot_deploy.policy_contract import EefActions, Policy
 
 class MyPolicy(Policy):
     action_mode = "eef"            # required: "eef" | "joint"
@@ -104,15 +104,15 @@ robot side (which pins numpy 1.x and carries MuJoCo, pinocchio, CycloneDDS):
 ```toml
 [policy]
 entry  = "policy.py:MyPolicy"
-python = "~/projects/my_model/.venv/bin/python"   # default: g1d_deploy's own
+python = "~/projects/my_model/.venv/bin/python"   # default: elrobot_deploy's own
 ```
 
 A relative path is from the deploy file's folder, a bare name from `PATH`.
 Symlinks are not followed (a venv's `bin/python` is a symlink out of the venv).
 
-**That venv must have g1d_deploy's core installed**, with no extras:
+**That venv must have elrobot_deploy's core installed**, with no extras:
 
-    ~/projects/my_model/.venv/bin/python -m pip install -e /path/to/g1d_deploy
+    ~/projects/my_model/.venv/bin/python -m pip install -e /path/to/elrobot_deploy
 
 The core needs only numpy (1.x or 2.x). Install the same checkout into both
 venvs: the arena's schema version is checked on attach, and a mismatch is
@@ -120,19 +120,19 @@ refused at launch.
 
 - **The runtime never imports the adapter.** Before anything starts, the
   deploy file's resolution asks the adapter's interpreter for the class's
-  declarations (`python -m g1d_deploy.policy_contract.describe`, GPU hidden),
+  declarations (`python -m elrobot_deploy.policy_contract.describe`, GPU hidden),
   so an adapter that fails to import fails the launch with its own traceback.
 - **Configuration reaches P5 as JSON**
-  (`src/g1d_deploy/config_loading/json_transport.py`), never pickled, so the
+  (`src/elrobot_deploy/config_loading/json_transport.py`), never pickled, so the
   two numpy versions never meet.
-- **Don't import the robot side.** Nothing in `g1d_deploy.policy_contract`
+- **Don't import the robot side.** Nothing in `elrobot_deploy.policy_contract`
   needs MuJoCo; `obs.state.flange` is computed by P1, not in your process.
   `tests/test_policy_interpreter.py` pins the modules P5 may load.
 - **Replay needs one extra.** Replaying the policy on a recording
   (`docs/deploying_a_policy/rollout_inspection.md`) decodes JPEGs, so that venv also needs the
-  `replay` extra (`pip install -e '/path/to/g1d_deploy[replay]'`).
+  `replay` extra (`pip install -e '/path/to/elrobot_deploy[replay]'`).
 - **Or a wrapper instead of an install.** `[policy] python` may be a script
-  that sets `PYTHONPATH` (the model's repo, and g1d_deploy's `src/`) and any
+  that sets `PYTHONPATH` (the model's repo, and elrobot_deploy's `src/`) and any
   environment variables the model's code needs **at import time**, then
   `exec`s a venv's python with `"$@"`. The runtime keeps using the script, not
   the python it runs. Variables in `[policy.env]` are set by P5 only, so
@@ -174,13 +174,13 @@ rate or the data's recording rate.
 
 | method | required | default behaviour |
 |---|---|---|
-| `__init__(checkpoint, prompt, robot)` | yes; call `super().__init__` | Stores the three. `checkpoint` is a `Path` or `None`; `robot` is `src/g1d_deploy/config_loading/resolved.py::Hardware`: `joints_arm`, `joints_waist`, `urdf`, `hand_min`, `hand_max`, `tcp`. Load only cheap things (config, tokenizer, norm stats) and never the GPU: the inspection dashboard constructs the class just to check a prompt. |
+| `__init__(checkpoint, prompt, robot)` | yes; call `super().__init__` | Stores the three. `checkpoint` is a `Path` or `None`; `robot` is `src/elrobot_deploy/config_loading/resolved.py::Hardware`: `joints_arm`, `joints_waist`, `urdf`, `hand_min`, `hand_max`, `tcp`. Load only cheap things (config, tokenizer, norm stats) and never the GPU: the inspection dashboard constructs the class just to check a prompt. |
 | `infer(obs, reader)` | yes | Returns `EefActions` or `JointActions`. |
 | `warmup()` | no | One `infer` on the infra's dummy observation. Override to restore weights, then call `super().warmup()` to compile. |
 | `count_prompt_tokens(text)` | no | `None`: never refused for length. Return the model's token count, template included. |
 | `check_prompt_length(text)` | no | Raises `PromptTooLong` when the count exceeds `max_prompt_tokens`. Rarely overridden. |
 | `set_prompt(text)` | no | Checks, then stores `self.prompt`. Called at a Start whose prompt changed. |
-| `on_settings(settings)` | no | Ignores them. Called at a Start whose rollout settings changed; `settings` is `src/g1d_deploy/config_loading/rollout_settings.py::RolloutSettings` (`sync`, `replan_period`, `control_hz`, `ik`, `sample_steps`, `servo`). Raise to refuse the Start. A JAX policy compiles a sampler per `sample_steps` here. Read the argument: `self.settings` still holds the previous settings until this returns. |
+| `on_settings(settings)` | no | Ignores them. Called at a Start whose rollout settings changed; `settings` is `src/elrobot_deploy/config_loading/rollout_settings.py::RolloutSettings` (`sync`, `replan_period`, `control_hz`, `ik`, `sample_steps`, `servo`). Raise to refuse the Start. A JAX policy compiles a sampler per `sample_steps` here. Read the argument: `self.settings` still holds the previous settings until this returns. |
 | `resolve_checkpoint(run, step)` | no (classmethod) | `None`: the infra's rule (numbered step folders, `"latest"` = highest). Return a `Path` for your own layout or aliases like `"best"`. |
 
 Bound by the infra, for the adapter to read:
@@ -194,8 +194,8 @@ Bound by the infra, for the adapter to read:
 
 **Building an adapter offline**, for your own checks, exactly as P5 builds it
 (in the adapter's interpreter): `policy, cfg, hw =
-g1d_deploy.policy_contract.offline.build("deploy.toml")`, with `warmup=True`
-to load the weights (`src/g1d_deploy/policy_contract/offline.py::build`).
+elrobot_deploy.policy_contract.offline.build("deploy.toml")`, with `warmup=True`
+to load the weights (`src/elrobot_deploy/policy_contract/offline.py::build`).
 
 ## Lifecycle
 
@@ -300,7 +300,7 @@ applies no crop of its own; resize it as training did. The live dashboard
 outlines the square and the circle on each fisheye pane; whether the lens is
 the one the data was collected with is for a human to see there.
 
-`self.cameras[view]` (`src/g1d_deploy/policy_contract/base.py::CameraInfo`):
+`self.cameras[view]` (`src/elrobot_deploy/policy_contract/base.py::CameraInfo`):
 
 | field | meaning |
 |---|---|
@@ -308,7 +308,7 @@ the one the data was collected with is for a human to see there.
 | `height`, `width`, `x0` | the view's size (a fisheye's square side, both), and its first column in the wire frame |
 | `hz` | the frame rate the robot file states |
 | `kind` | `"normal"` or `"fisheye180"` |
-| `crop`, `crop_source` | for information only (the pixels are already cut): where a fisheye's square sits on the sensor, `(x0, y0, x1, y1)`, `x1`/`y1` exclusive, possibly running off the sensor (`src/g1d_deploy/runtime/drivers/fisheye_circle_fit.py::crop_for`). Live: the launch's fit (`"fitted"`). In check-policy, where nothing is fitted: the robot file's `fallback_lens_circle` (`"fallback_lens_circle"`), else a sensor-height square (`"placeholder"`, right in shape only). `None` for a normal lens. |
+| `crop`, `crop_source` | for information only (the pixels are already cut): where a fisheye's square sits on the sensor, `(x0, y0, x1, y1)`, `x1`/`y1` exclusive, possibly running off the sensor (`src/elrobot_deploy/runtime/drivers/fisheye_circle_fit.py::crop_for`). Live: the launch's fit (`"fitted"`). In check-policy, where nothing is fitted: the robot file's `fallback_lens_circle` (`"fallback_lens_circle"`), else a sensor-height square (`"placeholder"`, right in shape only). `None` for a normal lens. |
 | `lens_circle` | the lens circle `(center_x, center_y, radius)`, full-sensor pixels, the square was cut around, when known |
 | `intrinsics`, `extrinsics` | the robot file's optional calibration, passed through untouched |
 
@@ -339,7 +339,7 @@ class MyPolicy(Policy):
 | `reader.frame_ids_between(cam, t0, t1)` | `FrameTimes`: `ids (m,)`, `t_recv (m,)`; metadata only |
 | `reader.frames_by_id(cam, ids)` | `list[Frame]` for those ids, in order asked, RGB, private copies |
 | `reader.frames_between(cam, t0, t1)` | every frame in the window |
-| `nearest_to_times(x, times)`, `subsample_every(x, dt)` | helpers over any of the above (`from g1d_deploy.policy_contract import ...`) |
+| `nearest_to_times(x, times)`, `subsample_every(x, dt)` | helpers over any of the above (`from elrobot_deploy.policy_contract import ...`) |
 
 Rules, and why:
 
@@ -377,7 +377,7 @@ know H.
 Every pose (actions, `obs.state.flange`) is in the robot's **base frame**:
 
 - **Attached to** `LZ_it_Link`, the link on top of the lift column
-  (`src/g1d_deploy/robot/g1d_model.py::BASE_BODY`). It rides the column and
+  (`src/elrobot_deploy/robot/g1d_model.py::BASE_BODY`). It rides the column and
   the wheeled base, so column height never changes a pose; the waist (yaw and
   bow) sits above it, so bowing moves the flanges *within* the frame.
 - **Origin** at the waist-yaw axis, where the Unitree humanoid's pelvis sits
@@ -422,7 +422,7 @@ say `ik: not used (joint actions)`.
 
 ## What happens to the actions
 
-In P5, in this order (`src/g1d_deploy/runtime/processes/p5_policy.py`):
+In P5, in this order (`src/elrobot_deploy/runtime/processes/p5_policy.py`):
 
 1. **Cut to H, then validate.** A chunk longer than `action_horizon` keeps
    its first H actions. Then: the type matches `action_mode`; shapes match;
@@ -463,7 +463,7 @@ zero puts every flange 8–11 mm off.
 
 `arm_q[:, side, i]`. `b` is the index in the 14-joint arm vector (left 0–6,
 right 7–13); `w` is the index in `obs.state.q`, from the robot file's
-`[joints] arm`. Limits from `src/g1d_deploy/robot/assets/unitree_g1d/g1_d.urdf`,
+`[joints] arm`. Limits from `src/elrobot_deploy/robot/assets/unitree_g1d/g1_d.urdf`,
 radians.
 
 | i | joint | left b / w / URDF | right b / w / URDF | axis | left limits | right limits |

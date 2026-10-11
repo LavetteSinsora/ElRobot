@@ -1,7 +1,7 @@
 # Example: an async policy with real-time chunking
 
-    g1d_deploy check-policy examples/rtc/deploy.toml     # offline
-    g1d_deploy run examples/rtc/deploy.toml              # async; MOVES THE ARM
+    elrobot_deploy check-policy examples/rtc/deploy.toml     # offline
+    elrobot_deploy run examples/rtc/deploy.toml              # async; MOVES THE ARM
 
 A complete async deployment in three files. It has no model: the "policy" is
 a small sinusoid, so the part worth reading is how the pieces fit.

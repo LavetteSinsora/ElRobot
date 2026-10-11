@@ -15,10 +15,10 @@ import pathlib
 import numpy as np
 import pytest
 
-from g1d_deploy.runtime.processes import p8_hand
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.runtime.processes.p8_hand import HandServo
-from g1d_deploy.runtime.drivers.gripper import FakeHandCmd
+from elrobot_deploy.runtime.processes import p8_hand
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.processes.p8_hand import HandServo
+from elrobot_deploy.runtime.drivers.gripper import FakeHandCmd
 
 PERIOD = 1.0 / 200.0
 SHAPE = (schema.N_HANDS, schema.HAND_DIM)
@@ -256,7 +256,7 @@ def test_the_wire_puts_dim_zero_of_each_hand_on_the_gripper_motors(rings, hw):
     dropped, so that the day the Brainco mapping is settled the change is in the
     binding and not in the loop.
     """
-    from g1d_deploy.runtime.drivers import gripper as wire
+    from elrobot_deploy.runtime.drivers import gripper as wire
 
     out = FakeHandCmd(hw)
     out.connect()

@@ -26,8 +26,8 @@ import pytest
 
 pytest.importorskip("cyclonedds")
 
-from g1d_deploy.runtime.drivers.dds import channel, crc  # noqa: E402
-from g1d_deploy.runtime.drivers.dds.idl import geometry_msgs, unitree_go, unitree_hg  # noqa: E402
+from elrobot_deploy.runtime.drivers.dds import channel, crc  # noqa: E402
+from elrobot_deploy.runtime.drivers.dds.idl import geometry_msgs, unitree_go, unitree_hg  # noqa: E402
 
 sdk = pytest.importorskip("unitree_sdk2py")
 
@@ -218,7 +218,7 @@ def test_the_domain_config_is_the_sdks():
 def test_dds_init_binds_an_ambiguous_nic_by_address(monkeypatch):
     """`dds/domain.py::init` on a NIC holding several addresses switches THIS
     module's template to `address=` and binds the robot-subnet address."""
-    from g1d_deploy.runtime.drivers.dds import domain as dds
+    from elrobot_deploy.runtime.drivers.dds import domain as dds
 
     calls = []
     monkeypatch.setattr(channel, "ChannelFactoryInitialize",

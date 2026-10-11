@@ -9,9 +9,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from g1d_deploy.cli import main as cli
-from g1d_deploy.policy_contract.loading import load_attr
-from g1d_deploy.robot import kinematics as kin
+from elrobot_deploy.cli import main as cli
+from elrobot_deploy.policy_contract.loading import load_attr
+from elrobot_deploy.robot import kinematics as kin
 
 T = Path(__file__).resolve().parents[1] / "skills" / "deploy-a-policy" / "templates"
 

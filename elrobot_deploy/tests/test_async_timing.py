@@ -18,11 +18,11 @@ import dataclasses
 import numpy as np
 import pytest
 
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.config_loading.errors import ConfigError
-from g1d_deploy.config_loading.validate import check_async_timing
-from g1d_deploy.runtime.processes.p5_policy import RolloutLatch
-from g1d_deploy.runtime.shared_memory import schema
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.config_loading.errors import ConfigError
+from elrobot_deploy.config_loading.validate import check_async_timing
+from elrobot_deploy.runtime.processes.p5_policy import RolloutLatch
+from elrobot_deploy.runtime.shared_memory import schema
 
 from .test_arena import _chunk
 from .test_p0_launcher import (FakeClock, _measured, _play_p5,

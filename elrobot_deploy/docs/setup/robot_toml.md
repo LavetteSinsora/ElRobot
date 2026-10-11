@@ -5,10 +5,10 @@ model and rates, plus what is bolted onto this one — which cameras exist,
 which hand, who serves the board's cameras. A deploy file picks one by name or
 path (`robot = ...`).
 
-- **Code:** `src/g1d_deploy/config_loading/robot_file.py` (loading, `extends`
-  merge, refusals), `src/g1d_deploy/config_loading/resolved.py`
-  (`load_hardware` → `Hardware`, `CameraSpec`), `src/g1d_deploy/robot/end_effectors.py`.
-- **Profiles:** `src/g1d_deploy/robot/profiles/*.toml`.
+- **Code:** `src/elrobot_deploy/config_loading/robot_file.py` (loading, `extends`
+  merge, refusals), `src/elrobot_deploy/config_loading/resolved.py`
+  (`load_hardware` → `Hardware`, `CameraSpec`), `src/elrobot_deploy/robot/end_effectors.py`.
+- **Profiles:** `src/elrobot_deploy/robot/profiles/*.toml`.
 - **Related:** `examples/robot_custom.toml`, `docs/setup/machine_toml.md` (the box,
   not the robot), `docs/deploying_a_policy/policy_contract.md` ("Cameras").
 
@@ -36,7 +36,7 @@ shape = [720, 1280]
 ```
 
 Tables merge key by key, this file winning; arrays are replaced whole.
-Unknown keys are refused. `g1d_deploy check --robot path/to/file.toml`
+Unknown keys are refused. `elrobot_deploy check --robot path/to/file.toml`
 verifies it against the real robot, read-only.
 
 **A robot file lists the cameras that exist.** CHECK waits for every one, so
@@ -111,8 +111,8 @@ ssh_user = "unitree"          # the login P0 uses to start the image server
 - **What the login is for:** only to start (and keep in sync) the fisheye
   image server on the board, below. With `[image_server] type = "teleimager"`
   or `"none"` it is never used.
-- **One shell's override:** `G1D_ROBOT_IP`, `G1D_BOARD_SSH_USER`,
-  `G1D_BOARD_SSH_PASSWORD`. Prefer the variable for a changed password: a
+- **One shell's override:** `ELROBOT_ROBOT_IP`, `ELROBOT_BOARD_SSH_USER`,
+  `ELROBOT_BOARD_SSH_PASSWORD`. Prefer the variable for a changed password: a
   robot file is copied verbatim into every rollout's manifest.
 
 ## `[image_server]`
@@ -126,7 +126,7 @@ conda_env = "tv"                             # fisheye: env with pyuvc, pyzmq, p
 ```
 
 - **`fisheye`** is ours
-  (`src/g1d_deploy/runtime/drivers/board/fisheye_image_server/`): at CHECK,
+  (`src/elrobot_deploy/runtime/drivers/board/fisheye_image_server/`): at CHECK,
   P0 SSHes to the board with the `[board]` login, stops the
   vendor's teleimager (the two cannot run at once) and starts ours from `dir`
   in `conda_env`. Before starting it, P0 hashes the server's `.py`/`.yaml`
@@ -134,7 +134,7 @@ conda_env = "tv"                             # fisheye: env with pyuvc, pyzmq, p
   needed), and restarts a publisher that was not started from exactly this
   code (`/tmp/fish_eye_image_server.stamp` on the board). So the board always
   runs the package's copy; a hand edit there is overwritten at the next CHECK.
-  `G1D_NO_BOARD_AUTOSTART=1` skips all of it.
+  `ELROBOT_NO_BOARD_AUTOSTART=1` skips all of it.
 - **`teleimager`** is Unitree's service; P0 never touches the board.
 - **absent / `none`**: no board cameras.
 
@@ -156,5 +156,5 @@ Rarely edited; every number cites its source in the file.
 
 Every rollout's `manifest.json` carries the robot file chain verbatim. The
 inspection dashboard rebuilds the robot from that text and this package's
-model, so a record opens on any machine with g1d_deploy installed — unless its
+model, so a record opens on any machine with elrobot_deploy installed — unless its
 robot names a custom URDF, which is reported as unsupported there.

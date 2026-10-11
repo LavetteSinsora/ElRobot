@@ -3,7 +3,7 @@
 What to do once on a new computer before any policy can run.
 
 - **Read first:** `docs/overview.md`.
-- **Code:** `scripts/install.sh`, `src/g1d_deploy/cli/check.py`.
+- **Code:** `scripts/install.sh`, `src/elrobot_deploy/cli/check.py`.
 - **Related:** `docs/setup/machine_toml.md`, `docs/setup/robot_toml.md`.
 
 ## Install
@@ -14,7 +14,7 @@ install records absolute paths; do not move or copy the checkout afterwards),
 then from its root:
 
     scripts/install.sh                 # builds CycloneDDS, creates .venv
-    source .venv/bin/activate          # puts g1d_deploy on PATH; every new shell
+    source .venv/bin/activate          # puts elrobot_deploy on PATH; every new shell
 
 Options: `--realsense` (a RealSense camera plugged into this computer),
 `--intervene` (the PICO headset takeover), `--no-dev` (leave out the test
@@ -31,12 +31,12 @@ address on that subnet** (any free one). With NetworkManager:
     sudo nmcli con mod "<connection>" ipv4.method auto ipv4.addresses 192.168.123.<free number>/24
     sudo nmcli con up "<connection>"
 
-`g1d_deploy check` reports a missing address. The card is then found
+`elrobot_deploy check` reports a missing address. The card is then found
 automatically.
 
 ## On the robot, for a fisheye rig
 
-g1d_deploy copies its own camera server to the robot's onboard computer and
+elrobot_deploy copies its own camera server to the robot's onboard computer and
 starts it there over SSH. It runs in a conda environment that must already
 exist on that computer, with `pyuvc`, `pyzmq` and `pyyaml`
 (`docs/setup/robot_toml.md`, `[image_server]`).
@@ -54,8 +54,8 @@ by default.
 
 ## Check the computer and the robot
 
-    g1d_deploy check              # this computer, then the robot; read-only
-    g1d_deploy check --no-robot   # this computer only
+    elrobot_deploy check              # this computer, then the robot; read-only
+    elrobot_deploy check --no-robot   # this computer only
 
 It reports packages, the GPU, shared memory, the network
 card and the CPU table, then whether every camera of the robot file and the
@@ -63,8 +63,8 @@ state streams answer. It never publishes a command.
 
 ## Try the shipped examples
 
-    g1d_deploy check-policy examples/policies/sine_eef.toml   # offline
-    g1d_deploy run examples/deploy.toml                    # MOVES THE ARM: homes it and holds
+    elrobot_deploy check-policy examples/policies/sine_eef.toml   # offline
+    elrobot_deploy run examples/deploy.toml                    # MOVES THE ARM: homes it and holds
 
 `docs/deploying_a_policy/running_and_live_dashboard.md` describes what a
 launch does.
@@ -72,7 +72,7 @@ launch does.
 ## Connect a policy's Python environment
 
 A policy adapter runs under its own Python (the one with its model's
-libraries), which only needs g1d_deploy's numpy-only core:
+libraries), which only needs elrobot_deploy's numpy-only core:
 
     /path/to/policy/.venv/bin/python -m pip install -e /path/to/this/checkout
 

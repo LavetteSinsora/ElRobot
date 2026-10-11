@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 import pytest
 
-from g1d_deploy.cli import main as entry
+from elrobot_deploy.cli import main as entry
 
 DEPLOY = Path(__file__).resolve().parents[1] / "examples" / "deploy.toml"
 

@@ -1,0 +1,15 @@
+# g1d_normal_brainco — no fisheye rig (head only, teleimager) and the BrainCo
+# Revo2 hand (a unit tested 2026-09-10). The BrainCo's board-side driver is out of scope for elrobot_deploy;
+# the runtime only publishes to and reads from its topics
+# (built in: robot/end_effectors.py).
+extends = "g1d_normal_dex1"
+
+[end_effector]
+type = "brainco"
+# No `tcp`, deliberately: nobody has measured where the Revo2's grasp point sits
+# relative to the flange. Changing `type` drops the Dex-1 TCP this file would
+# otherwise inherit from g1d_normal_dex1, so IK and the dashboards use the
+# flange. Measure it and add `tcp = [x, y, z, qw, qx, qy, qz]` (flange frame).
+#
+# The BrainCo is NOT supported by the policy action contract yet
+# (robot/end_effectors.py): `elrobot_deploy check` works on this rig, a policy is refused.

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from g1d_deploy.runtime import ik
+from elrobot_deploy.runtime import ik
 
 SEEN = {}
 

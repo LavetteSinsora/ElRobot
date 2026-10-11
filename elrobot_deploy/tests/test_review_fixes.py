@@ -14,11 +14,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from g1d_deploy.cli import main as cli
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.policy_contract import EefActions, JointActions, Policy
-from g1d_deploy.policy_contract.actions import first_actions
-from g1d_deploy.policy_contract.base import anchor_camera, observation_cameras
+from elrobot_deploy.cli import main as cli
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.policy_contract import EefActions, JointActions, Policy
+from elrobot_deploy.policy_contract.actions import first_actions
+from elrobot_deploy.policy_contract.base import anchor_camera, observation_cameras
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 

@@ -16,9 +16,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.runtime.shared_memory import open_all, schema
-from g1d_deploy.runtime.processes.p6_target import OWN_WAIST, Target, run
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.runtime.shared_memory import open_all, schema
+from elrobot_deploy.runtime.processes.p6_target import OWN_WAIST, Target, run
 
 ARM, BODY = schema.ARM_DOF, schema.BODY_DOF
 T0 = 1000.0

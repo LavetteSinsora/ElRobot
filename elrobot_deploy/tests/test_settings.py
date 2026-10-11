@@ -20,18 +20,18 @@ import time
 import numpy as np
 import pytest
 
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.config_loading.derive import servo_gains
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.config_loading.resolved import ServoShaping
-from g1d_deploy.config_loading.errors import ConfigError
-from g1d_deploy.policy_contract import EefActions, Policy
-from g1d_deploy.runtime.processes.p5_policy import RolloutLatch, warmup
-from g1d_deploy.runtime.processes.p7_body import BodyServo, relatch
-from g1d_deploy.runtime.execution.servo_filter import LINEAR
-from g1d_deploy.config_loading.rollout_settings import (LAUNCH_IK, RolloutSettings,
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.config_loading.derive import servo_gains
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.config_loading.resolved import ServoShaping
+from elrobot_deploy.config_loading.errors import ConfigError
+from elrobot_deploy.policy_contract import EefActions, Policy
+from elrobot_deploy.runtime.processes.p5_policy import RolloutLatch, warmup
+from elrobot_deploy.runtime.processes.p7_body import BodyServo, relatch
+from elrobot_deploy.runtime.execution.servo_filter import LINEAR
+from elrobot_deploy.config_loading.rollout_settings import (LAUNCH_IK, RolloutSettings,
                                                         SettingsError, check, latched)
-from g1d_deploy.runtime.drivers.arm_command import FakeLowCmd, ZeroComp
+from elrobot_deploy.runtime.drivers.arm_command import FakeLowCmd, ZeroComp
 
 from .test_p0_launcher import (FakeClock, _measured, _play_p5,
                                _spawning_launcher)
@@ -346,8 +346,8 @@ def test_p10_learns_the_step_and_port_from_the_launch_not_the_environment(
     from the resolved deploy file via P0 and the port from the machine file."""
     import inspect
 
-    from g1d_deploy.runtime import launcher as p0_launcher
-    from g1d_deploy.runtime.processes import p10_dashboard
+    from elrobot_deploy.runtime import launcher as p0_launcher
+    from elrobot_deploy.runtime.processes import p10_dashboard
 
     assert "os.environ" not in inspect.getsource(p10_dashboard)
     lch = p0_launcher.Launcher(
@@ -358,9 +358,9 @@ def test_p10_learns_the_step_and_port_from_the_launch_not_the_environment(
     assert lch._checkpoint_step() == "29999"
     assert p0_launcher.Launcher(cfg, hw)._checkpoint_step() is None
 
-    monkeypatch.setenv("G1D_DASHBOARD_PORT", "8123")
+    monkeypatch.setenv("ELROBOT_DASHBOARD_PORT", "8123")
     assert cfgmod.load_hardware().dashboard_port == 8123
-    monkeypatch.delenv("G1D_DASHBOARD_PORT")
+    monkeypatch.delenv("ELROBOT_DASHBOARD_PORT")
     assert cfgmod.load_hardware().dashboard_port == 8080
 
 
@@ -399,7 +399,7 @@ class _Choosy(Policy):
 
 
 def _dummy(cfg):
-    from g1d_deploy.policy_contract import dummy_observation
+    from elrobot_deploy.policy_contract import dummy_observation
     return dummy_observation({c: cfg.cameras[c] for c in cfg.observed}, cfg.prompt)
 
 

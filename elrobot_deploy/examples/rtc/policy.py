@@ -1,7 +1,7 @@
 """An async adapter that reads the arena: the bookkeeping of real-time chunking.
 
-    g1d_deploy check-policy examples/rtc/deploy.toml
-    g1d_deploy run examples/rtc/deploy.toml        # async, P = 10
+    elrobot_deploy check-policy examples/rtc/deploy.toml
+    elrobot_deploy run examples/rtc/deploy.toml        # async, P = 10
 
 Real-time chunking (RTC) generates each new chunk so that its first rows agree
 with what the PREVIOUS chunk will still be executing while this one is being
@@ -44,8 +44,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from g1d_deploy import policy_contract as g1d
-from g1d_deploy.policy_contract import EefActions
+from elrobot_deploy import policy_contract as g1d
+from elrobot_deploy.policy_contract import EefActions
 
 AMPLITUDE_M = 0.02
 PERIOD_S = 4.0

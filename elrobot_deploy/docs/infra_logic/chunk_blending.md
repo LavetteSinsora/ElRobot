@@ -7,9 +7,9 @@ switched between rollouts; it can also be your own function, chosen at launch.
 
 - **Read first:** `docs/overview.md`, and the async part of
   `docs/deploying_a_policy/deploy_toml.md` (`[control] sync`).
-- **Code:** `src/g1d_deploy/runtime/execution/chunk_blend.py` (`apply`,
+- **Code:** `src/elrobot_deploy/runtime/execution/chunk_blend.py` (`apply`,
   `temporal_ensemble`, `newest`, `weighted`, `get`); the caller is
-  `src/g1d_deploy/runtime/processes/p6_target.py::Target`.
+  `src/elrobot_deploy/runtime/processes/p6_target.py::Target`.
 - **Related:** `docs/infra_logic/arena_layout_and_reads.md` (the chunk ring),
   `examples/custom_modules/blend.py`.
 
@@ -31,7 +31,7 @@ def blend(contributors: Sequence[Contribution]) -> Action: ...
 
 `contributors` — every chunk P6 has adopted that covers this tick, in
 ascending `chunk_id` (oldest first, newest last). Each is a
-`src/g1d_deploy/runtime/shared_memory/rings.py::Contribution`:
+`src/elrobot_deploy/runtime/shared_memory/rings.py::Contribution`:
 
 | field | meaning |
 |---|---|
@@ -67,7 +67,7 @@ sync = false
 blend = "blends.py:temporal_ensemble"    # relative to the deploy file, or "pkg.module:fn"
 ```
 
-- **It runs in P6, under g1d_deploy's own Python** (not the adapter's), so
+- **It runs in P6, under elrobot_deploy's own Python** (not the adapter's), so
   its module must import there. It is imported at launch, and one that does
   not import is refused before anything moves.
 - **Once per tick per re-solve**, inside P6's per-tick budget: pure numpy,

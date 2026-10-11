@@ -5,10 +5,10 @@ angles (and, in waist mode, a trunk). Four solvers ship; a solver of your own
 plugs in by module path.
 
 - **Read first:** `docs/overview.md` (where P6 sits).
-- **Code:** `src/g1d_deploy/runtime/ik/` — `__init__.py` (the registry,
+- **Code:** `src/elrobot_deploy/runtime/ik/` — `__init__.py` (the registry,
   `SOLVERS`, `build`, the interface), `arm_qp.py`, `arm_planner.py`,
   `waist_planner.py`, `waist_qp.py`, `collision.py`, `velocity_caps.py`;
-  the caller is `src/g1d_deploy/runtime/processes/p6_target.py`.
+  the caller is `src/elrobot_deploy/runtime/processes/p6_target.py`.
 - **Related:** `docs/deploying_a_policy/deploy_toml.md` (`[control] ik`), `docs/setup/robot_toml.md`
   (`[end_effector] tcp`), `docs/deploying_a_policy/rollout_inspection.md` (the IK mode, where
   solvers are compared on recordings), `examples/custom_modules/ik_solver.py`.
@@ -162,7 +162,7 @@ class MySolver:
 - **The mode is the solver's**, and the run is held to it: a `"waist"`
   factory is refused with `sync = false`, and a factory without `.mode` is
   refused at launch.
-- **It runs in P6, under g1d_deploy's own Python**, not the adapter's: the
+- **It runs in P6, under elrobot_deploy's own Python**, not the adapter's: the
   module must import there (MuJoCo and mink are available). It is imported at
   launch, so a typo fails before anything moves.
 - **Budget.** `solve` has one tick (33 ms at 30 Hz) and should take a few
@@ -182,7 +182,7 @@ commanded poses with each shipped solver and draws each as a ghost, with its
 residual on a strip under the timeline (`docs/deploying_a_policy/rollout_inspection.md`). A
 solver of your own is benched from the command line, then shows up there too:
 
-    python -m g1d_deploy.dashboards.inspect.producers.ik_bench RECORD_DIR --methods my_pkg.my_ik:my_solver
+    python -m elrobot_deploy.dashboards.inspect.producers.ik_bench RECORD_DIR --methods my_pkg.my_ik:my_solver
 
 Each tick is solved the way P6 solved it (chunk by chunk, on the trunk P6
 recorded, seeded with the previous solution, TCP included) and scored at the

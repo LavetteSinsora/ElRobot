@@ -14,9 +14,9 @@ import json
 import numpy as np
 import pytest
 
-from g1d_deploy.rollout_record_utils import reader as record_read
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.runtime.shared_memory.rings import TargetRing
+from elrobot_deploy.rollout_record_utils import reader as record_read
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.shared_memory.rings import TargetRing
 
 T0 = 1000.0
 

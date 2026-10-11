@@ -12,11 +12,11 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.config_loading.derive import P_MIN, derive
-from g1d_deploy.config_loading.errors import ConfigError
-from g1d_deploy.config_loading.validate import validate, validate_rollout
-from g1d_deploy.runtime.shared_memory import (Arena, LayoutMismatch, build, open_all,
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.config_loading.derive import P_MIN, derive
+from elrobot_deploy.config_loading.errors import ConfigError
+from elrobot_deploy.config_loading.validate import validate, validate_rollout
+from elrobot_deploy.runtime.shared_memory import (Arena, LayoutMismatch, build, open_all,
                                               schema)
 
 
@@ -472,7 +472,7 @@ def test_the_model_path_actually_selects_the_model(hw):
     constant, so editing the knob changed nothing. Now it reaches the backend,
     and a bad path fails where it is chosen rather than deep inside mujoco."""
     import pytest as _pytest
-    from g1d_deploy.robot import kinematics as kin
+    from elrobot_deploy.robot import kinematics as kin
 
     fk = kin.ForwardKinematics(hw.urdf)
     assert fk.flange(np.zeros(schema.ARM_DOF), np.zeros(schema.WAIST_DOF)).shape \
@@ -485,7 +485,7 @@ def test_reserved_cores_are_enforced_not_merely_declared(hw):
     """The core reservation. `[cpu] reserved` was read by nothing, so a table putting a
     decoder on P7's sibling was accepted in silence — which costs exactly the
     jitter the reservation exists to prevent."""
-    from g1d_deploy.runtime import cpu_pinning as affinity
+    from elrobot_deploy.runtime import cpu_pinning as affinity
 
     ok = cfgmod.replace(hw, cpu={"p7_body": 1, "p8_hand": 7, "p5_policy": 8},
                         cpu_reserved=[13, 19])
@@ -517,7 +517,7 @@ def test_camera_ports_agree_with_the_board_server_config(hw):
     twice, on two machines, and nothing at runtime compares them.
 
     They no longer trace to the vendor's CAMCFG: the ports point at
-    `g1d_deploy/runtime/drivers/board/fisheye_image_server/`, the fisheye publisher, which deliberately
+    `elrobot_deploy/runtime/drivers/board/fisheye_image_server/`, the fisheye publisher, which deliberately
     avoids teleimager's 55555/6/7 so that running the wrong server produces
     silence rather than a plausible 480x640 stream where 720p was expected.
 
@@ -525,13 +525,13 @@ def test_camera_ports_agree_with_the_board_server_config(hw):
     publishes on and `acquire_anchor` blocks forever on a camera that has
     produced no frame at all, which reads as a hung run, not a typo.
     """
-    from g1d_deploy.runtime.drivers.board.fisheye_image_server import publisher
+    from elrobot_deploy.runtime.drivers.board.fisheye_image_server import publisher
 
     board = publisher.load_config(publisher.DEFAULT_CONFIG)["cameras"]
     expected = {_BOARD_TOPICS[topic]: int(spec["zmq_port"])
                 for topic, spec in board.items() if topic in _BOARD_TOPICS}
     assert hw.camera_ports == expected, (
         "the robot profile's camera ports and "
-        "g1d_deploy/runtime/drivers/board/fisheye_image_server/cameras.yaml disagree")
+        "elrobot_deploy/runtime/drivers/board/fisheye_image_server/cameras.yaml disagree")
     # And they must not be the vendor's, or the distinction buys nothing.
     assert not (set(expected.values()) & {55555, 55556, 55557})

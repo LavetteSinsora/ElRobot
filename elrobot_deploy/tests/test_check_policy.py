@@ -1,4 +1,4 @@
-"""`g1d_deploy check-policy`: resolves like `run`, then loads the checkpoint
+"""`elrobot_deploy check-policy`: resolves like `run`, then loads the checkpoint
 and runs one inference on the dummy observation under the policy's own
 interpreter. Only what does not depend on the input fails level 2 (the action
 type and count); the values, meaningless on a dummy, are notes. No robot."""
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from g1d_deploy.cli import main as cli
+from elrobot_deploy.cli import main as cli
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
@@ -40,8 +40,8 @@ def _adapter(tmp_path, body: str) -> Path:
 
 _BAD_HAND = """
     import numpy as np
-    from g1d_deploy import policy_contract as g1d
-    from g1d_deploy.policy_contract import EefActions
+    from elrobot_deploy import policy_contract as g1d
+    from elrobot_deploy.policy_contract import EefActions
 
     class Policy(g1d.Policy):
         action_mode = "eef"
@@ -68,8 +68,8 @@ def test_values_on_the_dummy_are_a_note_not_a_failure(tmp_path, capfd):
 
 _WRONG_TYPE = """
     import numpy as np
-    from g1d_deploy import policy_contract as g1d
-    from g1d_deploy.policy_contract import JointActions
+    from elrobot_deploy import policy_contract as g1d
+    from elrobot_deploy.policy_contract import JointActions
 
     class Policy(g1d.Policy):
         action_mode = "eef"
@@ -90,7 +90,7 @@ def test_the_wrong_action_type_fails_level_two(tmp_path, capfd):
 
 
 def test_level_two_is_refused_while_a_deployment_holds_the_gpu(capfd, monkeypatch):
-    from g1d_deploy.dashboards.web import gpu
+    from elrobot_deploy.dashboards.web import gpu
     monkeypatch.setattr(gpu, "refusal", lambda: "a live deployment is running")
     code, out = _check([str(EXAMPLES / "policies" / "sine_eef.toml")], capfd)
     assert code == 1

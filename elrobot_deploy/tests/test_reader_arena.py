@@ -11,8 +11,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from g1d_deploy.runtime.processes.p5_policy import history_reader
-from g1d_deploy.runtime.shared_memory import ArenaRings, open_read_only, schema
+from elrobot_deploy.runtime.processes.p5_policy import history_reader
+from elrobot_deploy.runtime.shared_memory import ArenaRings, open_read_only, schema
 
 from .test_arena import _chunk
 from .test_p5_policy import StubPolicy

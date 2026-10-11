@@ -14,9 +14,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.config_loading.derive import derive
-from g1d_deploy.runtime.shared_memory import Arena, build, open_all, schema
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.config_loading.derive import derive
+from elrobot_deploy.runtime.shared_memory import Arena, build, open_all, schema
 
 
 #: The machine file every test runs against. It states a CPU table: a laptop
@@ -31,9 +31,9 @@ def _machine(monkeypatch):
     the robot's subnet, and refuses when there is none — which a test box has
     no reason to have. Tests never open a socket, so they declare a
     placeholder rather than the refusal being weakened to accommodate them."""
-    monkeypatch.setenv("G1D_MACHINE", str(MACHINE_TOML))
-    monkeypatch.setenv("G1D_IFACE", "lo0")
-    for var in ("G1D_ROBOT_IP", "G1D_BOARD_SSH_USER", "G1D_BOARD_SSH_PASSWORD"):
+    monkeypatch.setenv("ELROBOT_MACHINE", str(MACHINE_TOML))
+    monkeypatch.setenv("ELROBOT_IFACE", "lo0")
+    for var in ("ELROBOT_ROBOT_IP", "ELROBOT_BOARD_SSH_USER", "ELROBOT_BOARD_SSH_PASSWORD"):
         monkeypatch.delenv(var, raising=False)
 
 
@@ -76,7 +76,7 @@ def layout(cfg, derived):
 
 @pytest.fixture
 def arena(layout):
-    name = f"g1d-t{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    name = f"elr-t{os.getpid()}-{uuid.uuid4().hex[:8]}"
     a = Arena.create(name, layout)
     try:
         yield a

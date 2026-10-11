@@ -1,15 +1,15 @@
 # TEMPLATE deploy file: fill in every TODO. Every key: docs/deploying_a_policy/deploy_toml.md.
 # Relative paths are relative to THIS file.
 #
-#     g1d_deploy check-policy deploy.toml --no-run    # level 1: resolves, no GPU
-#     g1d_deploy check-policy deploy.toml             # level 2: loads + infers (takes the GPU)
+#     elrobot_deploy check-policy deploy.toml --no-run    # level 1: resolves, no GPU
+#     elrobot_deploy check-policy deploy.toml             # level 2: loads + infers (takes the GPU)
 
 robot = "g1d_fisheye_dex1"      # TODO the profile whose cameras match the training rig (docs/setup/robot_toml.md)
 prompt = "TODO the task instruction, as training phrased it"
 
 [policy]
 entry = "policy.py:Policy"
-# python = "~/path/to/model/.venv/bin/python"   # TODO the model's venv, with g1d_deploy's core installed
+# python = "~/path/to/model/.venv/bin/python"   # TODO the model's venv, with elrobot_deploy's core installed
 #
 # [policy.env]                                  # set before the first import (e.g. JAX memory)
 # XLA_PYTHON_CLIENT_MEM_FRACTION = "0.5"

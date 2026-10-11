@@ -1,6 +1,6 @@
-# g1d_deploy: overview
+# elrobot_deploy: overview
 
-g1d_deploy runs a policy on a Unitree G1-D. A **policy** here is anything that
+elrobot_deploy runs a policy on a Unitree G1-D. A **policy** here is anything that
 turns observations into actions: a trained neural network, a scripted
 controller, or a bridge to an external planner or language model that emits
 waypoints. It is plugged in through a small **adapter** class and a **deploy
@@ -15,7 +15,7 @@ the actions it returns.
 This page is the map. It gives the whole system in brief and says which
 document holds the detail; read further only where you need to.
 
-- **Code:** `src/g1d_deploy/` (the table under "Source layout" below says what
+- **Code:** `src/elrobot_deploy/` (the table under "Source layout" below says what
   each folder holds; every module's docstring names the document that explains
   it). Working adapters and plug-ins: `examples/`.
 
@@ -59,7 +59,7 @@ One launch is a dozen processes sharing one block of memory (the *arena*,
 `docs/infra_logic/arena_layout_and_reads.md`). Each region has exactly one writer, and no
 process ever waits on another's lock.
 
-| process | code (`src/g1d_deploy/runtime/`) | does |
+| process | code (`src/elrobot_deploy/runtime/`) | does |
 |---|---|---|
 | P0 launcher | `launcher/` | resolves the config, creates the arena, starts the others, checks the robot, homes the arm, runs the session (Start / Reset / Exit), exit ramp and damp |
 | P1 state | `processes/p1_state.py` | reads `rt/lowstate` (~1 kHz), the hands and the column; computes flange FK; writes the state ring |
@@ -109,7 +109,7 @@ takes over when it lands; inference must be shorter than a replan period
 | anything in shared memory (read-only) | `reader.arena` | P5 | `docs/infra_logic/arena_layout_and_reads.md` | `examples/rtc/` |
 | checkpoint layout / aliases | `resolve_checkpoint` classmethod | resolution | `docs/deploying_a_policy/policy_contract.md` | — |
 | the robot's cameras, hand, TCP | a robot file extending a profile | everywhere | `docs/setup/robot_toml.md` | `examples/robot_custom.toml` |
-| the IK solver | `[control] ik = "pkg.mod:factory"` | P6, g1d_deploy's Python | `docs/infra_logic/ik_solvers.md` | `examples/custom_modules/ik_solver.py` |
+| the IK solver | `[control] ik = "pkg.mod:factory"` | P6, elrobot_deploy's Python | `docs/infra_logic/ik_solvers.md` | `examples/custom_modules/ik_solver.py` |
 | how overlapping chunks merge | `[control] blend = "pkg.mod:fn"` | P6 | `docs/infra_logic/chunk_blending.md` | `examples/custom_modules/blend.py` |
 | the 500 Hz smoother / torque feedforward | `[control.servo] smoother`, `feedforward` | P7 | `docs/infra_logic/500hz_execution.md` | `examples/custom_modules/servo.py` |
 | an inspection comparison | `--mode pkg.mod:Class` | the inspection server | `docs/deploying_a_policy/rollout_inspection.md` | `examples/inspect_mode/` |
@@ -117,7 +117,7 @@ takes over when it lands; inference must be shorter than a replan period
 Every plug-in is named `"pkg.module:attr"` (importable) or
 `"path/file.py:attr"` (relative to the deploy file; for `--mode`, to the
 working directory), and imported at launch, so a typo fails before anything
-moves. Plug-ins for P6 and P7 run under g1d_deploy's own Python, not the
+moves. Plug-ins for P6 and P7 run under elrobot_deploy's own Python, not the
 adapter's.
 
 **Deliberately not customizable:**
@@ -151,9 +151,9 @@ adapter's.
 
 ## Source layout
 
-| folder (`src/g1d_deploy/`) | holds |
+| folder (`src/elrobot_deploy/`) | holds |
 |---|---|
-| `cli/` | the `g1d_deploy` commands |
+| `cli/` | the `elrobot_deploy` commands |
 | `policy_contract/` | what an adapter subclasses and returns; loading, checking, the anchor, the deadline shift |
 | `config_loading/` | reading deploy, robot and machine files into one resolved config; validation |
 | `robot/` | profiles, the G1-D model and assets, kinematics, end effectors |

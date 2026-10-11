@@ -1,7 +1,7 @@
 """`[paths] records` in the machine file: one record root per box.
 
 A deploy file with no `[record] out` records to `<records>/<task>/` (task =
-`[record] task`, else the deploy file's folder), and `g1d_deploy inspect`
+`[record] task`, else the deploy file's folder), and `elrobot_deploy inspect`
 with no argument opens `<records>`. `out` / `--out` still win; with neither,
 a run records beside its deploy file as before.
 """
@@ -13,10 +13,10 @@ from pathlib import Path
 
 import pytest
 
-from g1d_deploy.config_loading import deploy_file
-from g1d_deploy.config_loading.errors import ConfigError
-from g1d_deploy.config_loading.machine_file import load_machine
-from g1d_deploy.dashboards.inspect import options
+from elrobot_deploy.config_loading import deploy_file
+from elrobot_deploy.config_loading.errors import ConfigError
+from elrobot_deploy.config_loading.machine_file import load_machine
+from elrobot_deploy.dashboards.inspect import options
 
 TESTS = Path(__file__).resolve().parent
 EXAMPLES = TESTS.parent / "examples"
@@ -40,15 +40,15 @@ def _task(tmp_path, name="pick_cup", record: str = "") -> Path:
 
 def test_a_relative_root_is_the_machine_files_and_the_env_overrides_it(
         tmp_path, monkeypatch):
-    monkeypatch.delenv("G1D_RECORDS", raising=False)
+    monkeypatch.delenv("ELROBOT_RECORDS", raising=False)
     m = load_machine(_machine(tmp_path, "recs"))
     assert m.records == str(tmp_path / "recs")
-    monkeypatch.setenv("G1D_RECORDS", "/data/elsewhere")
+    monkeypatch.setenv("ELROBOT_RECORDS", "/data/elsewhere")
     assert load_machine(_machine(tmp_path, "recs")).records == "/data/elsewhere"
 
 
 def test_no_out_records_under_the_root_by_task(tmp_path, monkeypatch):
-    monkeypatch.delenv("G1D_RECORDS", raising=False)
+    monkeypatch.delenv("ELROBOT_RECORDS", raising=False)
     machine = str(_machine(tmp_path, str(tmp_path / "recs")))
     r = deploy_file.resolve(_task(tmp_path), machine=machine)
     assert r.record_dir == tmp_path / "recs" / "pick_cup"
@@ -58,7 +58,7 @@ def test_no_out_records_under_the_root_by_task(tmp_path, monkeypatch):
 
 
 def test_out_and_the_flag_still_win(tmp_path, monkeypatch):
-    monkeypatch.delenv("G1D_RECORDS", raising=False)
+    monkeypatch.delenv("ELROBOT_RECORDS", raising=False)
     machine = str(_machine(tmp_path, str(tmp_path / "recs")))
     f = _task(tmp_path, record='out = "here"\n')
     assert deploy_file.resolve(f, machine=machine).record_dir == f.parent / "here"
@@ -67,21 +67,21 @@ def test_out_and_the_flag_still_win(tmp_path, monkeypatch):
 
 
 def test_without_a_root_it_records_beside_the_deploy_file(tmp_path, monkeypatch):
-    monkeypatch.delenv("G1D_RECORDS", raising=False)
+    monkeypatch.delenv("ELROBOT_RECORDS", raising=False)
     f = _task(tmp_path)
     r = deploy_file.resolve(f, machine=str(_machine(tmp_path, None)))
     assert r.record_dir == f.parent / "rollout_record"
 
 
 def test_a_task_must_be_one_plain_name(tmp_path, monkeypatch):
-    monkeypatch.delenv("G1D_RECORDS", raising=False)
+    monkeypatch.delenv("ELROBOT_RECORDS", raising=False)
     with pytest.raises(ConfigError, match="one plain name"):
         deploy_file.resolve(_task(tmp_path, record='task = "a/b"\n'),
                             machine=str(_machine(tmp_path, str(tmp_path))))
 
 
 def test_inspect_with_no_root_opens_the_machines_records(tmp_path, monkeypatch):
-    monkeypatch.delenv("G1D_RECORDS", raising=False)
+    monkeypatch.delenv("ELROBOT_RECORDS", raising=False)
     o = options.resolve(None, machine=str(_machine(tmp_path, str(tmp_path / "r"))))
     assert o.root == tmp_path / "r"
     with pytest.raises(ConfigError, match=r"\[paths\] records"):

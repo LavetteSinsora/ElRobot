@@ -21,16 +21,16 @@ import uuid
 import numpy as np
 import pytest
 
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.config_loading.derive import derive, servo_gains
-from g1d_deploy.config_loading.errors import ConfigError
-from g1d_deploy.config_loading.validate import validate
-from g1d_deploy.runtime.shared_memory import Arena, build, open_all, schema
-from g1d_deploy.runtime.execution import servo_filter as shaping
-from g1d_deploy.runtime.processes.p7_body import BodyServo
-from g1d_deploy.runtime.processes.p9_record import Recorder
-from g1d_deploy.runtime.execution.servo_segment import Segment
-from g1d_deploy.runtime.drivers.arm_command import FakeLowCmd, ZeroComp
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.config_loading.derive import derive, servo_gains
+from elrobot_deploy.config_loading.errors import ConfigError
+from elrobot_deploy.config_loading.validate import validate
+from elrobot_deploy.runtime.shared_memory import Arena, build, open_all, schema
+from elrobot_deploy.runtime.execution import servo_filter as shaping
+from elrobot_deploy.runtime.processes.p7_body import BodyServo
+from elrobot_deploy.runtime.processes.p9_record import Recorder
+from elrobot_deploy.runtime.execution.servo_segment import Segment
+from elrobot_deploy.runtime.drivers.arm_command import FakeLowCmd, ZeroComp
 
 PERIOD = 1.0 / 500.0
 DT = 1.0 / 30.0
@@ -41,7 +41,7 @@ def rings(cfg, hw):
     """A deploy-sized target ring (128 slots): the shared fixture's 16 would
     wrap under the 40-target lines these tests walk."""
     big = cfgmod.replace(cfg, action_horizon=50, replan_period_ticks=25)
-    a = Arena.create(f"g1d-sv{os.getpid()}-{uuid.uuid4().hex[:8]}",
+    a = Arena.create(f"elr-sv{os.getpid()}-{uuid.uuid4().hex[:8]}",
                      build(big, derive(big, hw)))
     try:
         yield open_all(a, big)

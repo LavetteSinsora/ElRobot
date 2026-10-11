@@ -1,10 +1,10 @@
-# g1d_deploy
+# elrobot_deploy
 
 在 Unitree G1-D 真机上运行策略的部署框架。
 
 ## 简介
 
-策略输出末端位姿（eef）或关节角度，g1d_deploy 负责把这些动作在 G1-D 上执行出来。框架涵盖：
+策略输出末端位姿（eef）或关节角度，elrobot_deploy 负责把这些动作在 G1-D 上执行出来。框架涵盖：
 
 - 获取观测：对齐相机画面和关节状态的时间戳
 - 执行策略的输出：
@@ -20,7 +20,7 @@
 
 1. **安装**：运行 `scripts/install.sh`，然后 `source .venv/bin/activate`。详见 `docs/setup/install.md`。
 2. **准备 `robot.toml`**，描述所使用的 G1-D 的配置：相机、末端执行器类型、机载电脑的 IP 地址等。
-    - 常见的机器人配置（如 G1-D + Dex-1 + 鱼眼腕部相机）在 `src/g1d_deploy/robot/profiles/` 中，若硬件配置一致可直接使用。
+    - 常见的机器人配置（如 G1-D + Dex-1 + 鱼眼腕部相机）在 `src/elrobot_deploy/robot/profiles/` 中，若硬件配置一致可直接使用。
 3. **准备 `machine.toml`**（可选），描述所使用的部署机器（即执行策略推理、下发控制指令的机器）。
     - 用于指定 rollout 数据的存放目录、控制面板使用的端口等。
 4. **编写 `policy.py`**，即策略适配器：把框架给出的观测转换成策略的输入，把策略的输出转换成框架规定的动作格式。
@@ -31,11 +31,11 @@
 ## 运行
 
 ```bash
-g1d_deploy check-policy path/to/deploy.toml   # 离线检查，不连接机器人
-g1d_deploy run path/to/deploy.toml            # 启动
+elrobot_deploy check-policy path/to/deploy.toml   # 离线检查，不连接机器人
+elrobot_deploy run path/to/deploy.toml            # 启动
 ```
 
-启动之后，g1d_deploy 依次检查相机视频流和关节状态的接收，把机械臂移动到 home 姿态，同时加载并预热策略。
+启动之后，elrobot_deploy 依次检查相机视频流和关节状态的接收，把机械臂移动到 home 姿态，同时加载并预热策略。
 
 准备就绪后，打开控制面板 `localhost:8080`（端口可在 `machine.toml` 中修改）：
 
@@ -46,10 +46,10 @@ g1d_deploy run path/to/deploy.toml            # 启动
 
 ## rollout 回看
 
-g1d_deploy 会记录每次 rollout 的全部数据：相机画面、关节状态、策略输出的动作、下发的指令。默认存放在 `deploy.toml` 同目录下的 `rollout_record/`，也可以在 `machine.toml` 中指定统一的存放目录。
+elrobot_deploy 会记录每次 rollout 的全部数据：相机画面、关节状态、策略输出的动作、下发的指令。默认存放在 `deploy.toml` 同目录下的 `rollout_record/`，也可以在 `machine.toml` 中指定统一的存放目录。
 
 ```bash
-g1d_deploy inspect path/to/records    # 打开 localhost:8770
+elrobot_deploy inspect path/to/records    # 打开 localhost:8770
 ```
 
 页面上可以拖动时间轴回放一次 rollout，相机画面和 3D 机器人同步显示。
@@ -63,7 +63,7 @@ g1d_deploy inspect path/to/records    # 打开 localhost:8770
 
 ## 更换模块
 
-g1d_deploy 为以下模块提供了统一接口，可以替换成自己的实现而不改框架代码：IK 求解器、500 Hz 平滑器、异步推理时动作块的融合方式。说明在 `docs/infra_logic/`，例子在 `examples/`。
+elrobot_deploy 为以下模块提供了统一接口，可以替换成自己的实现而不改框架代码：IK 求解器、500 Hz 平滑器、异步推理时动作块的融合方式。说明在 `docs/infra_logic/`，例子在 `examples/`。
 
 ## 文档
 

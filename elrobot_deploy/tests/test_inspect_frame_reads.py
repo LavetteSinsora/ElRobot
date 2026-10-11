@@ -12,7 +12,7 @@ import io
 
 import numpy as np
 
-from g1d_deploy.dashboards.inspect.loader import Camera
+from elrobot_deploy.dashboards.inspect.loader import Camera
 
 N = 300
 

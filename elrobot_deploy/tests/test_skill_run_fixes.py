@@ -19,8 +19,8 @@ from pathlib import Path
 
 import pytest
 
-from g1d_deploy.cli import main as cli
-from g1d_deploy.policy_contract.describe import describe
+from elrobot_deploy.cli import main as cli
+from elrobot_deploy.policy_contract.describe import describe
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
@@ -37,7 +37,7 @@ def test_level_one_constructs_the_class_and_catches_its_init(tmp_path, capfd):
     from . import example_files
     example_files.task(tmp_path, policy=None)
     (tmp_path / "policy.py").write_text(textwrap.dedent("""
-        from g1d_deploy import policy_contract as g1d
+        from elrobot_deploy import policy_contract as g1d
 
         class Policy(g1d.Policy):
             action_mode, end_effector, anchor_camera = "eef", "dex1", "head_left"
@@ -59,7 +59,7 @@ def test_level_one_constructs_the_class_and_catches_its_init(tmp_path, capfd):
 
 
 def test_an_adapter_builds_offline_as_p5_builds_it():
-    from g1d_deploy.policy_contract.offline import build
+    from elrobot_deploy.policy_contract.offline import build
     policy, cfg, hw = build(EXAMPLES / "policies" / "history.toml")
     assert policy.cameras["rwrist"].crop_source == "fallback_lens_circle"
     assert policy.settings.replan_period == cfg.P

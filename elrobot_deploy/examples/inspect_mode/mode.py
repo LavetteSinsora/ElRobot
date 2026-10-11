@@ -1,6 +1,6 @@
 """An inspection mode of your own: inference latency per replan, on the strip.
 
-    g1d_deploy inspect --mode examples/inspect_mode/mode.py:LatencyMode
+    elrobot_deploy inspect --mode examples/inspect_mode/mode.py:LatencyMode
 
 A mode is a class (`docs/deploying_a_policy/rollout_inspection.md`, "Writing a
 mode"): it registers routes on the server and ships a `mode_<name>.js` that
@@ -23,7 +23,7 @@ from pathlib import Path
 
 import numpy as np
 
-from g1d_deploy.dashboards.inspect.modes import describe
+from elrobot_deploy.dashboards.inspect.modes import describe
 
 
 def latency_strip(loaded) -> dict:

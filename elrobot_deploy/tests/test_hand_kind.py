@@ -18,13 +18,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from g1d_deploy.cli import main as entry
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.config_loading.errors import ConfigError
-from g1d_deploy.runtime.teleop import intervention as iv
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.runtime.drivers import gripper as wire_hand
-from g1d_deploy.runtime.drivers import robot_state as wire_state
+from elrobot_deploy.cli import main as entry
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.config_loading.errors import ConfigError
+from elrobot_deploy.runtime.teleop import intervention as iv
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.drivers import gripper as wire_hand
+from elrobot_deploy.runtime.drivers import robot_state as wire_state
 
 DEPLOY = Path(__file__).resolve().parents[1] / "examples" / "deploy.toml"
 DEX1_CMD = ("rt/dex1/left/cmd", "rt/dex1/right/cmd")
@@ -62,7 +62,7 @@ def test_an_unknown_hand_is_refused(hw, tmp_path):
         cfgmod.for_hand(hw, "inspire")
     f = tmp_path / "r.toml"
     f.write_text('extends = "g1d_base"\n[end_effector]\ntype = "inspire"\n')
-    from g1d_deploy.config_loading import robot_file as robot
+    from elrobot_deploy.config_loading import robot_file as robot
     with pytest.raises(ConfigError, match="inspire"):
         robot.load_robot(str(f))
 
@@ -114,7 +114,7 @@ def test_changing_type_drops_the_inherited_tcp(tmp_path):
 
 def test_end_effector_keys_other_than_type_and_tcp_are_refused(tmp_path):
     """Per-type specifics are built in; only `type` and `tcp` belong here."""
-    from g1d_deploy.config_loading import robot_file as robot
+    from elrobot_deploy.config_loading import robot_file as robot
     for body in ('[end_effector]\nhand_max = 3.0\n',
                  '[end_effector.dex1]\ntcp = [0.2, 0, 0, 1, 0, 0, 0]\n',
                  '[end_effector]\nkind = "dex1"\n'):
@@ -127,7 +127,7 @@ def test_end_effector_keys_other_than_type_and_tcp_are_refused(tmp_path):
 def test_a_rig_with_no_end_effector_is_refused(tmp_path):
     f = tmp_path / "r.toml"
     f.write_text('extends = "g1d_base"\n')
-    from g1d_deploy.config_loading import robot_file as robot
+    from elrobot_deploy.config_loading import robot_file as robot
     with pytest.raises(ConfigError, match="names no end effector"):
         robot.load_robot(str(f))
 
@@ -160,7 +160,7 @@ class _FakePublisher:
 
 def _publisher(monkeypatch, hw):
     pytest.importorskip("cyclonedds")      # the message types are real
-    from g1d_deploy.runtime.drivers.dds import channel
+    from elrobot_deploy.runtime.drivers.dds import channel
 
     monkeypatch.setattr(channel, "ChannelPublisher", _FakePublisher)
     monkeypatch.setattr(channel, "ChannelFactoryInitialize",
@@ -222,7 +222,7 @@ def test_brainco_state_reports_the_grip_as_the_mean_of_the_four_fingers(
     """So the measured grip is comparable to the commanded one, which the
     fingers follow 1:1 — the squeeze bound compares exactly these two."""
     pytest.importorskip("cyclonedds")      # the message types are real
-    from g1d_deploy.runtime.drivers.dds import channel
+    from elrobot_deploy.runtime.drivers.dds import channel
 
     monkeypatch.setattr(channel, "ChannelSubscriber", _Sub6)
     monkeypatch.setattr(channel, "ChannelFactoryInitialize",
@@ -258,7 +258,7 @@ def test_on_brainco_up_still_closes_and_the_squeeze_bound_is_a_ceiling():
 
 
 def test_p11_gives_the_brainco_the_dex1s_feel_in_its_own_units(rings, cfg, hw):
-    from g1d_deploy.runtime.processes.p11_pico import PicoLoop
+    from elrobot_deploy.runtime.processes.p11_pico import PicoLoop
 
     dex = PicoLoop(rings, cfg, hw, None).grippers[0]
     brainco = cfgmod.for_hand(hw, "brainco")
@@ -276,7 +276,7 @@ def test_the_tcp_is_the_end_effectors_own_and_pico_does_not_need_it(rings, cfg, 
     """`Hardware.tcp` comes from `[end_effector] tcp`: the Dex-1's measured jaw
     midpoint, and NOT carried over to a hand that states none. The
     intervention drives the flange, so a hand without a TCP is not refused."""
-    from g1d_deploy.runtime.processes.p11_pico import PicoLoop
+    from elrobot_deploy.runtime.processes.p11_pico import PicoLoop
 
     assert hw.tcp[:3] == pytest.approx([0.184759, 0.0, 0.0])
     bc = cfgmod.for_hand(hw, "brainco")

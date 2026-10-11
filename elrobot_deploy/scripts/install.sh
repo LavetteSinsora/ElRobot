@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# scripts/install.sh — set up g1d_deploy on a new box, from a fresh clone.
+# scripts/install.sh — set up elrobot_deploy on a new box, from a fresh clone.
 #
 #   scripts/install.sh [--realsense] [--intervene] [--no-dev]
 #
 #   --realsense   also install pyrealsense2 (a RealSense camera on this box:
 #                 the g1d_fisheye_dex1_exo profile)
 #   --intervene   also install pybind11 and build the PICO bindings
-#                 (scripts/build_xrobotoolkit.sh), for `g1d_deploy run --intervene`
+#                 (scripts/build_xrobotoolkit.sh), for `elrobot_deploy run --intervene`
 #   --no-dev      leave out pytest/ruff/scipy
 #
 # What it does, each step skipped when already done (safe to re-run):
@@ -95,8 +95,8 @@ echo "==> CYCLONEDDS_HOME=$CYCLONEDDS_HOME ${sync[*]}"
 ( cd "$ROOT" && "${sync[@]}" )
 
 venv="${UV_PROJECT_ENVIRONMENT:-$ROOT/.venv}"
-"$venv/bin/python" -c "import cyclonedds.domain, g1d_deploy" \
-    || die "the environment synced but cyclonedds / g1d_deploy do not import"
+"$venv/bin/python" -c "import cyclonedds.domain, elrobot_deploy" \
+    || die "the environment synced but cyclonedds / elrobot_deploy do not import"
 
 # --- 3. the PICO bindings -----------------------------------------------------
 
@@ -107,16 +107,16 @@ fi
 
 cat <<EOF
 
-Installed. The \`g1d_deploy\` command lives in this project's venv, so it is
+Installed. The \`elrobot_deploy\` command lives in this project's venv, so it is
 NOT on your PATH until you activate that venv (in every new shell):
 
   source $venv/bin/activate
 
-or run it without activating: \`uv run g1d_deploy ...\` from $ROOT.
+or run it without activating: \`uv run elrobot_deploy ...\` from $ROOT.
 
 Next:
-  g1d_deploy check --no-robot                     # this box
-  g1d_deploy check --robot g1d_fisheye_dex1       # and the robot, once it is cabled
+  elrobot_deploy check --no-robot                     # this box
+  elrobot_deploy check --robot g1d_fisheye_dex1       # and the robot, once it is cabled
 
 A later \`uv sync\` that has to rebuild cyclonedds needs the same variable:
   CYCLONEDDS_HOME=$INSTALL uv sync --extra runtime

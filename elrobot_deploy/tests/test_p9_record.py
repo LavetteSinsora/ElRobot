@@ -16,9 +16,9 @@ import time
 import numpy as np
 import pytest
 
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.runtime.processes import p9_record
-from g1d_deploy.runtime.processes.p9_record import FRAME_IDX, Recorder
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.processes import p9_record
+from elrobot_deploy.runtime.processes.p9_record import FRAME_IDX, Recorder
 
 
 def _read(stream):
@@ -201,8 +201,8 @@ def test_the_manifest_carries_the_launchs_provenance(rings, cfg, hw, tmp_path):
     infra version, and a `rollouts` list ready for per-rollout settings."""
     from pathlib import Path
 
-    from g1d_deploy.config_loading import deploy_file as deployfile
-    from g1d_deploy.rollout_record_utils import manifest as provenance
+    from elrobot_deploy.config_loading import deploy_file as deployfile
+    from elrobot_deploy.rollout_record_utils import manifest as provenance
 
     deploy = Path(__file__).resolve().parents[1] / "examples" / "deploy.toml"
     r = deployfile.resolve(deploy)
@@ -213,7 +213,7 @@ def test_the_manifest_carries_the_launchs_provenance(rings, cfg, hw, tmp_path):
     rec.close(hw)
     m = json.loads((tmp_path / "rec" / "manifest.json").read_text())
 
-    assert m["infra"]["name"] == "g1d_deploy" and m["infra"]["version"]
+    assert m["infra"]["name"] == "elrobot_deploy" and m["infra"]["version"]
     assert "sha" in m["infra"]["git"]
     assert [Path(f["path"]).stem for f in m["robot"]["files"]] == [
         "g1d_base", "g1d_fisheye_dex1"]
@@ -231,7 +231,7 @@ def test_the_manifest_carries_the_launchs_provenance(rings, cfg, hw, tmp_path):
     assert m["crops"]["lwrist"]["used"] == "refit"
     # A Recorder handed no latched block still names the settings it ran
     # with: its own config's, which is the launch config here.
-    from g1d_deploy.config_loading.rollout_settings import RolloutSettings
+    from elrobot_deploy.config_loading.rollout_settings import RolloutSettings
     assert m["rollouts"] == [{
         "index": 2, "dir": "rec", "prompt": cfg.prompt, "generation": None,
         "active_config": RolloutSettings.of(cfg).as_dict(), "started": "t"}]
@@ -448,7 +448,7 @@ def test_the_session_log_reads_back_from_its_own_manifest_descriptor(
     without a line of reader code being written. A list of transitions in the
     manifest would have needed bespoke parsing in each of them.
     """
-    from g1d_deploy.rollout_record_utils import reader as record_read
+    from elrobot_deploy.rollout_record_utils import reader as record_read
 
     control = rings["control"]
     rec = Recorder(tmp_path, cfg, rings)
@@ -644,7 +644,7 @@ def test_each_record_stores_the_settings_and_prompt_its_rollout_ran_with(
     the tick line with its `P` and `dt`."""
     import dataclasses
 
-    from g1d_deploy.config_loading.rollout_settings import RolloutSettings
+    from elrobot_deploy.config_loading.rollout_settings import RolloutSettings
 
     control = rings["control"]
     control.session = schema.READY
@@ -766,7 +766,7 @@ def test_both_action_modes_are_recorded_and_read_back_by_mode(
     """The chunk stream is the ring's own dtype, so a joint chunk's `arm_q`,
     `mode` and `waist` reach disk with no recorder change; `record_read`
     then hands each chunk back in the half of the contract it spoke."""
-    from g1d_deploy.rollout_record_utils import reader as record_read
+    from elrobot_deploy.rollout_record_utils import reader as record_read
 
     rec = Recorder(tmp_path, cfg, rings)
     n = cfg.P
@@ -796,7 +796,7 @@ def test_both_action_modes_are_recorded_and_read_back_by_mode(
 
 def test_a_record_from_before_the_mode_column_reads_as_eef_with_its_waist():
     """Arena schema < 9: no `mode`, and the `waist` column WAS the command."""
-    from g1d_deploy.rollout_record_utils import reader as record_read
+    from elrobot_deploy.rollout_record_utils import reader as record_read
 
     old = np.dtype([(name, *rest) for name, *rest in schema.chunk_dtype(4).descr
                     if name not in ("mode", "arm_q")])

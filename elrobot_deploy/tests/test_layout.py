@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-import g1d_deploy
+import elrobot_deploy
 
-PKG = Path(g1d_deploy.__file__).resolve().parent
+PKG = Path(elrobot_deploy.__file__).resolve().parent
 
 GROUPS = {"cli", "policy_contract", "config_loading", "robot", "runtime",
           "rollout_record_utils", "dashboards"}
@@ -33,4 +33,4 @@ def test_the_top_level_is_the_role_groups():
     "processes", "provenance", "record_read", "records", "settings", "wbik",
     "wire"])
 def test_no_pre_relayout_name_is_importable(old):
-    assert importlib.util.find_spec(f"g1d_deploy.{old}") is None
+    assert importlib.util.find_spec(f"elrobot_deploy.{old}") is None

@@ -1,6 +1,6 @@
-"""g1d_deploy names nothing outside itself.
+"""elrobot_deploy names nothing outside itself.
 
-Nothing in `g1d_deploy/` imports or names the repository it is
+Nothing in `elrobot_deploy/` imports or names the repository it is
 developed in, its `experiments/`, the frozen `deploy_v2/`, its `envs/` machine
 profiles or the box they were written for — not in an import, not in a string,
 a regex, a launcher path, a comment or a doc — because the package is about to
@@ -52,14 +52,14 @@ def _files():
     yield ROOT / "pyproject.toml"
 
 
-def test_nothing_names_what_g1d_deploy_leaves_behind():
+def test_nothing_names_what_elrobot_deploy_leaves_behind():
     bad = []
     for p in _files():
         rel = p.relative_to(ROOT).as_posix()
         for n, line in enumerate(p.read_text(errors="replace").splitlines(), 1):
             if FORBIDDEN.search(line):
                 bad.append(f"{rel}:{n}: {line.strip()[:100]}")
-    assert not bad, "g1d_deploy names what it may not:\n" + "\n".join(bad)
+    assert not bad, "elrobot_deploy names what it may not:\n" + "\n".join(bad)
 
 
 def test_the_pattern_catches_what_it_must_and_nothing_else():

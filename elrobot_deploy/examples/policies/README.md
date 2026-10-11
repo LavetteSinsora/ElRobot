@@ -10,8 +10,8 @@ shipped. The contract they follow: `docs/deploying_a_policy/policy_contract.md`.
 | `sine_joint.py` | `sine_joint.toml` | joint actions: both elbows bend on a sinusoid, with the waist commanded upright |
 | `history.py` | `history.toml` | past observations: declaring `history` and reading earlier frames and a window of states through `reader` |
 
-    g1d_deploy check-policy examples/policies/sine_eef.toml     # offline
-    g1d_deploy run examples/policies/sine_eef.toml              # MOVES THE ARM
+    elrobot_deploy check-policy examples/policies/sine_eef.toml     # offline
+    elrobot_deploy run examples/policies/sine_eef.toml              # MOVES THE ARM
 
 `examples/deploy.toml` is the fully commented deploy file; the ones here set
 only what they need.

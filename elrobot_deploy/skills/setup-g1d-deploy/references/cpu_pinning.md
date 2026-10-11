@@ -1,6 +1,6 @@
 # CPU pinning: writing a table by hand
 
-Read this when `g1d_deploy check` refuses to derive a CPU table for the
+Read this when `elrobot_deploy check` refuses to derive a CPU table for the
 user's computer, or when the user asks to tune one. On a computer the
 derivation accepts, there is nothing to do.
 
@@ -16,13 +16,13 @@ what the computer will be slower at as a result.
 - [Trade-offs when cores are short](#trade-offs-when-cores-are-short)
 - [What to tell the user](#what-to-tell-the-user)
 
-The code is `src/g1d_deploy/runtime/cpu_pinning.py`; the user-facing
+The code is `src/elrobot_deploy/runtime/cpu_pinning.py`; the user-facing
 description is `docs/setup/machine_toml.md`, "CPU pinning". A complete worked
 table for a 24-core hybrid CPU is `tests/machine.toml`.
 
 ## Why processes are pinned
 
-g1d_deploy is about a dozen processes. One of them sends a motor command
+elrobot_deploy is about a dozen processes. One of them sends a motor command
 every 2 ms. If the operating system moves a camera decoder or the policy onto
 that process's core for a few milliseconds, the command is late and the arm
 jitters. Pinning gives each process fixed cores so that this cannot happen. A
@@ -64,7 +64,7 @@ it cannot give:
 
 So it needs about 6 hyperthreaded performance cores on a hybrid CPU, or about
 10 hyperthreaded cores on a uniform one, and it always refuses a CPU without
-hyperthreading. `python -m g1d_deploy.runtime.cpu_pinning` prints what this
+hyperthreading. `python -m elrobot_deploy.runtime.cpu_pinning` prints what this
 computer has and either the table it derives or why it cannot.
 
 ## The rules a hand-written table must satisfy
@@ -86,7 +86,7 @@ A table stated in `machine.toml` skips derivation and is checked at launch:
 
 ## Procedure
 
-1. Read the topology: `python -m g1d_deploy.runtime.cpu_pinning` and
+1. Read the topology: `python -m elrobot_deploy.runtime.cpu_pinning` and
    `lscpu -e` (columns CPU and CORE show which logical CPUs share a physical
    core).
 2. Leave physical core 0 alone if there are cores to spare.
@@ -115,7 +115,7 @@ A table stated in `machine.toml` skips derivation and is checked at launch:
    p4_camera = 24
    ```
 
-9. Run `g1d_deploy check --no-robot`; it validates the table against this
+9. Run `elrobot_deploy check --no-robot`; it validates the table against this
    machine and names any rule that is broken.
 
 ## Trade-offs when cores are short
@@ -126,7 +126,7 @@ None needs a code change.
 | free a core by | what it costs |
 |---|---|
 | leaving `p10_dashboard`, `p0_launcher`, `p9_record` unpinned | they may briefly land on a busy core; a small risk of a late state sample |
-| running without recording (`g1d_deploy run … --no-record`) | no recordings, so nothing to inspect afterwards |
+| running without recording (`elrobot_deploy run … --no-record`) | no recordings, so nothing to inspect afterwards |
 | a robot file with fewer cameras | the policy must not need the camera that is dropped |
 | giving `p5_policy` one CPU instead of several | slower inference. Use sync mode, or a longer replan period |
 | a lower control rate, or the lighter `arm_qp` IK solver in the deploy file | less work per tick for `p6_target` (it still occupies its core) |
@@ -141,7 +141,7 @@ recording. These numbers are estimates, not measurements.
 
 ## What to tell the user
 
-Keep it to the outcome: that this computer has fewer cores than g1d_deploy
+Keep it to the outcome: that this computer has fewer cores than elrobot_deploy
 lays out automatically, that you wrote a core assignment into `machine.toml`,
 and which compromises it contains in practical terms ("recording may
 occasionally be delayed", "the policy will infer more slowly than on a larger

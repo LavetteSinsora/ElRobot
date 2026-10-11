@@ -8,7 +8,7 @@ actions is due (real-time chunking), P6's joint targets, P7's 500 Hz commands
 — and for anyone writing a tool that reads a live run.
 
 - **Read first:** `docs/overview.md` (the processes), `docs/deploying_a_policy/policy_contract.md`.
-- **Code:** `src/g1d_deploy/runtime/shared_memory/` — `schema.py` (every
+- **Code:** `src/elrobot_deploy/runtime/shared_memory/` — `schema.py` (every
   record dtype, `VERSION`), `layout.py` (the region table, the layout hash,
   `ReadOnlyArena`), `primitives.py` (`Seqlock`), `rings.py` (one accessor
   class per region, `ArenaRings`, `open_read_only`).
@@ -30,7 +30,7 @@ actions is due (real-time chunking), P6's joint targets, P7's 500 Hz commands
 ## Getting at it from an adapter
 
 `reader.arena` in `infer` is an
-`src/g1d_deploy/runtime/shared_memory/rings.py::ArenaRings`:
+`src/elrobot_deploy/runtime/shared_memory/rings.py::ArenaRings`:
 
 ```python
 def infer(self, obs, reader):
@@ -68,7 +68,7 @@ def infer(self, obs, reader):
 ## Ticks and clocks
 
 **Every time is box-monotonic seconds** (`time.monotonic()` on the deploy
-box, `src/g1d_deploy/runtime/timing.py`), stamped when data reaches the box.
+box, `src/elrobot_deploy/runtime/timing.py`), stamped when data reaches the box.
 The robot's own clock appears only as `state.tick`.
 
 **A tick** is one action period, `1 / control_hz`. Ticks are counted by `k`
@@ -107,7 +107,7 @@ from the end of homing (`k = 0`); homing and the exit ramp run at negative `k`.
 ## The regions
 
 In layout order. `N` is a ring's slot count, computed at launch
-(`src/g1d_deploy/config_loading/derive.py::derive`) and printed at startup as
+(`src/elrobot_deploy/config_loading/derive.py::derive`) and printed at startup as
 `derived:`, with each region's size.
 
 | region(s) | record | N | writer | read rules |
@@ -196,7 +196,7 @@ one view per wire camera that carries it), `pixels (h, w, 3)` **BGR**.
 does.
 
 **A fisheye view is the square around its lens circle**, never the sensor
-(`src/g1d_deploy/runtime/processes/p2_camera.py::_loop_crop`): P2 decodes the whole
+(`src/elrobot_deploy/runtime/processes/p2_camera.py::_loop_crop`): P2 decodes the whole
 frame and cuts the square into the slot, black where it runs off the sensor.
 The square is fitted at INIT, before the arena is created (P0 reads the camera
 itself), so it is the ring's shape and costs the arena nothing else. The JPEG

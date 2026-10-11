@@ -28,10 +28,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from g1d_deploy.runtime import timing as clock
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.robot.kinematics import ForwardKinematics
-from g1d_deploy.config_loading.rollout_settings import RolloutSettings
+from elrobot_deploy.runtime import timing as clock
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.robot.kinematics import ForwardKinematics
+from elrobot_deploy.config_loading.rollout_settings import RolloutSettings
 
 SWITCH_TICKS = 3
 SWITCH_STEP = 0.15          # rad per tick, left elbow

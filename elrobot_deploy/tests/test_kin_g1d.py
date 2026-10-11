@@ -3,7 +3,7 @@ IK) and pinocchio (gravity) both build from.
 
 Until 2026-08-27 the deploy loop posed a humanoid G1 model instead. The
 before/after comparisons against it were dropped with the humanoid assets
-(g1d_deploy ships only `unitree_g1d` and `unitree_dex1`); what is pinned here is
+(elrobot_deploy ships only `unitree_g1d` and `unitree_dex1`); what is pinned here is
 the G1-D model's own geometry, collision sets, waist and hand.
 """
 
@@ -14,8 +14,8 @@ import pathlib
 import numpy as np
 import pytest
 
-from g1d_deploy.robot import kinematics as kin
-from g1d_deploy.robot import mujoco_model as g1, g1d_model as g1d
+from elrobot_deploy.robot import kinematics as kin
+from elrobot_deploy.robot import mujoco_model as g1, g1d_model as g1d
 
 def _postures(n: int = 24, seed: int = 0) -> np.ndarray:
     """`n` arm postures, well inside every joint's range on both models."""
@@ -45,8 +45,8 @@ def test_the_waist_names_gravity_comp_uses_are_the_ones_kin_uses():
 
     Needs no pinocchio: it compares two tuples of strings.
     """
-    from g1d_deploy.robot.kinematics import WAIST_JOINT_NAMES
-    from g1d_deploy.runtime.drivers.arm_command import PinocchioComp
+    from elrobot_deploy.robot.kinematics import WAIST_JOINT_NAMES
+    from elrobot_deploy.runtime.drivers.arm_command import PinocchioComp
 
     actuated = tuple(n for n in WAIST_JOINT_NAMES if n is not None)
     assert PinocchioComp.WAIST_JOINT_NAMES == actuated
@@ -133,7 +133,7 @@ def test_the_feedforward_carries_the_dex1_and_not_the_shipped_hand():
     pytest.importorskip("pinocchio")
     import pinocchio as pin
 
-    from g1d_deploy.runtime.drivers import arm_command as lowcmd
+    from elrobot_deploy.runtime.drivers import arm_command as lowcmd
 
     def reduced(model):
         lock = [model.getJointId(n) for n in model.names
@@ -183,7 +183,7 @@ def test_the_wrist_payload_is_off_until_somebody_weighs_it():
     pytest.importorskip("pinocchio")
     import pinocchio as pin
 
-    from g1d_deploy.runtime.drivers import arm_command as lowcmd
+    from elrobot_deploy.runtime.drivers import arm_command as lowcmd
 
     def build(mass, com_x):
         model = pin.buildModelFromXML(
@@ -222,7 +222,7 @@ def test_the_swap_refuses_a_urdf_whose_hand_it_cannot_find():
     pytest.importorskip("pinocchio")
     import xml.etree.ElementTree as ET
 
-    from g1d_deploy.runtime.drivers.arm_command import _real_end_effector
+    from elrobot_deploy.runtime.drivers.arm_command import _real_end_effector
 
     tree = ET.parse(str(g1d.URDF))
     for el in tree.getroot().iter("link"):

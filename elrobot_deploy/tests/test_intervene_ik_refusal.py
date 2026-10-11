@@ -17,11 +17,11 @@ from __future__ import annotations
 from pathlib import Path
 import pytest
 
-from g1d_deploy.cli import main as entry
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.config_loading.errors import ConfigError
-from g1d_deploy.config_loading.validate import check_intervene_ik
-from g1d_deploy.runtime.launcher import Launcher
+from elrobot_deploy.cli import main as entry
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.config_loading.errors import ConfigError
+from elrobot_deploy.config_loading.validate import check_intervene_ik
+from elrobot_deploy.runtime.launcher import Launcher
 
 DEPLOY = Path(__file__).resolve().parents[1] / "examples" / "deploy.toml"
 
@@ -29,7 +29,7 @@ DEPLOY = Path(__file__).resolve().parents[1] / "examples" / "deploy.toml"
 def _launch(monkeypatch, argv, *, sdk=True):
     """Run the CLI with a fake Launcher. Returns the kwargs it got, or None if
     it was never constructed. `sdk` fakes whether `xrobotoolkit_sdk` imports."""
-    from g1d_deploy.runtime.processes import p11_pico
+    from elrobot_deploy.runtime.processes import p11_pico
     monkeypatch.setattr(p11_pico, "sdk_available", lambda: sdk)
     seen = {}
 
@@ -97,7 +97,7 @@ def test_the_check_is_silent_without_intervene(cfg):
 def test_intervene_without_the_sdk_says_how_to_build_it(monkeypatch, capsys):
     """`xrobotoolkit_sdk` is a native extension no package install provides;
     the refusal names the build script in this checkout, and it exists."""
-    from g1d_deploy.runtime.processes import p11_pico
+    from elrobot_deploy.runtime.processes import p11_pico
 
     with pytest.raises(SystemExit) as exc:
         _launch(monkeypatch, ["--intervene"], sdk=False)

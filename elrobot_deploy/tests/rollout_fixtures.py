@@ -16,8 +16,8 @@ from pathlib import Path
 
 import numpy as np
 
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.runtime.processes import p9_record
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.processes import p9_record
 
 # The dtypes P9 actually writes, not the raw ring dtypes: the recorder appends
 # `t_observed` to every stream and `seq` to the targets, so a fixture built from
@@ -242,8 +242,8 @@ def write_record(root: Path, *, n_chunks: int = 5, cap_chunk: int = 2,
         "model": {"urdf": "assets/unitree_g1d/g1_d.urdf",
                   "waist_joint_names": ["torso_Joint", "Yaw_Joint", None]},
     }
-    from g1d_deploy.rollout_record_utils import manifest as provenance
-    from g1d_deploy.config_loading.robot_file import load_robot
+    from elrobot_deploy.rollout_record_utils import manifest as provenance
+    from elrobot_deploy.config_loading.robot_file import load_robot
     manifest["robot"] = provenance.robot_block(
         "g1d_fisheye_dex1", load_robot("g1d_fisheye_dex1"))
     (run / "manifest.json").write_text(json.dumps(manifest, indent=2))

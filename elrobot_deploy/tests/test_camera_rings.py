@@ -16,19 +16,19 @@ import uuid
 import numpy as np
 import pytest
 
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.config_loading.derive import derive
-from g1d_deploy.config_loading.errors import ConfigError
-from g1d_deploy.config_loading.validate import validate
-from g1d_deploy.config_loading import deploy_file as deployfile
-from g1d_deploy.runtime.shared_memory import (Arena, ShmTooSmall, build, check_shm,
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.config_loading.derive import derive
+from elrobot_deploy.config_loading.errors import ConfigError
+from elrobot_deploy.config_loading.validate import validate
+from elrobot_deploy.config_loading import deploy_file as deployfile
+from elrobot_deploy.runtime.shared_memory import (Arena, ShmTooSmall, build, check_shm,
                                               open_all, rings as rings_mod, schema)
-from g1d_deploy.policy_contract import (DummyReader, EefActions, Frame, FrameTimes,
+from elrobot_deploy.policy_contract import (DummyReader, EefActions, Frame, FrameTimes,
                                         Policy, PolicyError, Reader, check_against,
                                         dummy_observation, nearest_to_times,
                                         subsample_every)
-from g1d_deploy.runtime.processes import p2_camera
-from g1d_deploy.runtime.processes.p5_policy import history_reader
+from elrobot_deploy.runtime.processes import p2_camera
+from elrobot_deploy.runtime.processes.p5_policy import history_reader
 
 HZ = 30.0
 T0 = 1000.0
@@ -51,7 +51,7 @@ class _Arena:
     def __init__(self, cfg, hw):
         self.cfg = cfg
         self.layout = build(cfg, derive(cfg, hw))
-        self.arena = Arena.create(f"g1d-t{os.getpid()}-{uuid.uuid4().hex[:8]}",
+        self.arena = Arena.create(f"elr-t{os.getpid()}-{uuid.uuid4().hex[:8]}",
                                   self.layout)
         self.rings = open_all(self.arena, cfg)
 
@@ -96,7 +96,7 @@ def test_history_reaches_the_layout_through_the_config(cfg, hw):
 
 def test_resolve_copies_the_policy_classes_camera_history(tmp_path):
     (tmp_path / "pol.py").write_text(
-        "from g1d_deploy.policy_contract import Policy\n"
+        "from elrobot_deploy.policy_contract import Policy\n"
         "class P(Policy):\n"
         "    action_mode = 'eef'\n"
         "    end_effector = 'dex1'\n"
@@ -116,7 +116,7 @@ def test_resolve_copies_the_policy_classes_camera_history(tmp_path):
 
 def test_resolve_refuses_history_for_the_unsplit_name(tmp_path):
     (tmp_path / "pol.py").write_text(
-        "from g1d_deploy.policy_contract import Policy\n"
+        "from elrobot_deploy.policy_contract import Policy\n"
         "class P(Policy):\n"
         "    action_mode = 'eef'\n"
         "    end_effector = 'dex1'\n"
@@ -249,9 +249,9 @@ def test_an_arena_dev_shm_cannot_hold_is_refused_with_the_numbers(layout):
 
 
 def test_p0_refuses_before_the_arena_exists(cfg, hw):
-    from g1d_deploy.runtime.launcher import Launcher
+    from elrobot_deploy.runtime.launcher import Launcher
 
-    name = f"g1d-shm-{uuid.uuid4().hex[:8]}"
+    name = f"elr-shm-{uuid.uuid4().hex[:8]}"
     lch = Launcher(cfg, hw, arena_name=name, log=lambda *_: None,
                    shm_free=lambda: (1 << 20, 1 << 30))
     with pytest.raises(ConfigError, match="not enough"):
@@ -263,7 +263,7 @@ def test_p0_refuses_before_the_arena_exists(cfg, hw):
 def test_a_realistic_config_fits_and_says_how_much(hw):
     """The box's rig: two 720x1280 fisheye wrists and the split head, with 4 s
     of both eyes. The numbers the operator will see at INIT."""
-    robot = __import__("g1d_deploy.config_loading.robot_file", fromlist=["load_robot"]).load_robot(
+    robot = __import__("elrobot_deploy.config_loading.robot_file", fromlist=["load_robot"]).load_robot(
         "g1d_fisheye_dex1")
     c = cfgmod.DeployConfig(
         prompt="", checkpoint="", sync=True, replan_period_ticks=25,
@@ -356,8 +356,8 @@ def test_p2_splits_the_head_into_its_two_eyes(cfg, hw):
 
 
 def test_the_recorder_and_dashboard_keep_the_whole_head(cfg, hw, tmp_path):
-    from g1d_deploy.dashboards.live.server import Live
-    from g1d_deploy.runtime.processes.p9_record import Recorder
+    from elrobot_deploy.dashboards.live.server import Live
+    from elrobot_deploy.runtime.processes.p9_record import Recorder
 
     c = _split_cfg(cfg)
     with _Arena(c, hw) as a:
@@ -475,7 +475,7 @@ def test_a_toy_policy_reads_four_seconds_of_both_head_views(cfg, hw):
 
     # Warmup first: the dummy has the declared history at full length, so the
     # shapes the policy stacks at warmup are the shapes it stacks live.
-    from g1d_deploy.policy_contract import bind_runtime
+    from elrobot_deploy.policy_contract import bind_runtime
     dummy = dummy_observation({v: c.views[v] for v in pol.uses_cameras}, "")
     bind_runtime(pol, dummy, DummyReader(c.views, pol.history))
     pol.warmup()

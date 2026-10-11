@@ -5,7 +5,7 @@ organised; entries will move into the other docs once there are enough of
 them to see where they belong. Newest first.
 
 - **Read first:** `docs/deploying_a_policy/running_and_live_dashboard.md`.
-- **Code:** `src/g1d_deploy/runtime/launcher/startup_checks.py` (the startup
+- **Code:** `src/elrobot_deploy/runtime/launcher/startup_checks.py` (the startup
   checks whose refusals these notes are about).
 
 ---
@@ -28,5 +28,5 @@ if it does, work through the checklist in the message.
 The same goes for a camera that "connected, but no frame" or a state stream
 that is silent in the first minute after power-on: relaunch before debugging.
 
-(Code: `src/g1d_deploy/runtime/launcher/startup_checks.py`, the gripper-state
+(Code: `src/elrobot_deploy/runtime/launcher/startup_checks.py`, the gripper-state
 refusal.)

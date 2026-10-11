@@ -8,8 +8,8 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from g1d_deploy.config_loading import deploy_file
-from g1d_deploy.policy_contract import (CameraInfo, Policy, bind_runtime,
+from elrobot_deploy.config_loading import deploy_file
+from elrobot_deploy.policy_contract import (CameraInfo, Policy, bind_runtime,
                                         camera_info)
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
@@ -30,7 +30,7 @@ def test_every_view_is_described_and_the_head_halves_know_their_columns():
 
 
 def test_without_a_fit_a_fisheye_gets_the_robot_files_circle():
-    from g1d_deploy.runtime.drivers.fisheye_circle_fit import crop_for
+    from elrobot_deploy.runtime.drivers.fisheye_circle_fit import crop_for
 
     cfg = _cfg()
     rw = camera_info(cfg)["rwrist"]

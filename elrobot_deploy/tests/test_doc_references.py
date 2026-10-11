@@ -1,7 +1,7 @@
 """Every code reference in the docs, the skill AND the source still points at
 something.
 
-The docs and `skills/` name files (`src/g1d_deploy/runtime/ik/arm_qp.py`),
+The docs and `skills/` name files (`src/elrobot_deploy/runtime/ik/arm_qp.py`),
 symbols in them (`...::DualArmSolver`), other docs (`docs/infra_logic/ik_solvers.md`),
 folders (`examples/custom_modules/ik_solver.py`) and modules run with `python -m`. So do the
 comments, docstrings and messages of the source, the examples, the scripts and
@@ -15,11 +15,11 @@ What is checked, in every file below:
 * a path rooted at the checkout (`docs/`, `skills/`, `examples/`, `scripts/`,
   `src/`, `tests/`) exists;
 * in source files, a path rooted at the package (`runtime/`, `robot/`,
-  `config_loading/`, ...) exists under `src/g1d_deploy/`, and a bare
+  `config_loading/`, ...) exists under `src/elrobot_deploy/`, and a bare
   `assets/...` (what a robot profile writes, relative to the package's
   `robot/` directory) exists there;
 * `path.py::symbol` is defined in that file;
-* a module run with `python -m` (a `g1d_deploy` one) is importable.
+* a module run with `python -m` (a `elrobot_deploy` one) is importable.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-PKG = ROOT / "src" / "g1d_deploy"
+PKG = ROOT / "src" / "elrobot_deploy"
 
 DOCS = sorted([*ROOT.glob("docs/**/*.md"), *ROOT.glob("skills/**/*.md"),
                ROOT / "README.md"])
@@ -40,7 +40,7 @@ DOCS = sorted([*ROOT.glob("docs/**/*.md"), *ROOT.glob("skills/**/*.md"),
 #: A path rooted at the checkout: under one of these folders.
 _PATH = re.compile(r"(?<![\w/.-])((?:src|examples|tests|skills|scripts|docs)/"
                    r"[\w./-]*[\w/])(?:::([A-Za-z_]\w*))?")
-_MODULE = re.compile(r"python -m (g1d_deploy(?:\.\w+)+)")
+_MODULE = re.compile(r"python -m (elrobot_deploy(?:\.\w+)+)")
 
 #: The package's own top-level folders: how source comments name a sibling
 #: module (`runtime/ik/arm_qp.py`). Read off the tree, so a new folder is
@@ -161,7 +161,7 @@ def test_every_path_the_source_names_exists():
 
 def test_every_package_relative_path_the_source_names_exists():
     """`runtime/drivers/cameras.py`, `robot/g1d_model.py::BASE_BODY`: how the
-    source names a sibling module, relative to `src/g1d_deploy/`."""
+    source names a sibling module, relative to `src/elrobot_deploy/`."""
     bad = []
     for p in SOURCES:
         text = p.read_text(errors="replace")
@@ -190,7 +190,7 @@ def test_the_source_check_catches_a_stale_pointer_and_passes_a_live_one():
     assert [r for _, r in _missing(stale, _PATH, (ROOT,))] == [doc]
     assert [r for _, r in _missing(stale, _PKG_PATH, (PKG,))] == [mod, sym]
     assert [r for _, r in _missing(stale, _ASSET_PATH, (PKG / "robot",))] == [asset]
-    assert not _importable("g1d_deploy.gone.module")
+    assert not _importable("elrobot_deploy.gone.module")
     live = ("docs/overview.md, `runtime/timing.py::sleep_until`, "
             "`robot/assets/unitree_g1d/g1_d.urdf`, assets/unitree_g1d/g1_d.urdf, "
             "https://docs.astral.sh/uv/")

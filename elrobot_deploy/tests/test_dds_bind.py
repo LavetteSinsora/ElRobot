@@ -5,7 +5,7 @@ address, bound by name, received zero `rt/lowstate` samples while P0 waited in
 CHECK forever.
 """
 
-from g1d_deploy.runtime.drivers.dds import domain as dds
+from elrobot_deploy.runtime.drivers.dds import domain as dds
 
 
 def test_a_nic_with_office_and_robot_addresses_binds_by_the_robot_one():

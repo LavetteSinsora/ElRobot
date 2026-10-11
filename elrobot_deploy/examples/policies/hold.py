@@ -1,8 +1,8 @@
 """A policy that holds still, for bringing up the intervention.
 
-    g1d_deploy run examples/deploy.toml --intervene
+    elrobot_deploy run examples/deploy.toml --intervene
     # the test robot, no fisheye rig (head camera only):
-    g1d_deploy run examples/deploy.toml --intervene \
+    elrobot_deploy run examples/deploy.toml --intervene \
         --robot g1d_normal_dex1
 
 Step one of the intervention bring-up: the whole system, the real
@@ -46,8 +46,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from g1d_deploy import policy_contract as g1d
-from g1d_deploy.policy_contract import EefActions
+from elrobot_deploy import policy_contract as g1d
+from elrobot_deploy.policy_contract import EefActions
 
 #: Latch only once per process. Off by default — see the module docstring.
 LATCH_ONCE = False

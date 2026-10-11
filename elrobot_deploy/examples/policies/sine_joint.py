@@ -1,6 +1,6 @@
 """A toy JOINT policy: both elbows bend on a small sinusoid.
 
-    g1d_deploy run examples/policies/sine_joint.toml
+    elrobot_deploy run examples/policies/sine_joint.toml
 
 The smallest policy that exercises joint mode: `JointActions.arm_q` in the
 per-arm order of `docs/deploying_a_policy/policy_contract.md`, "Joint order and
@@ -26,10 +26,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from g1d_deploy import policy_contract as g1d
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.robot.kinematics import arm_limits
-from g1d_deploy.policy_contract import JointActions
+from elrobot_deploy import policy_contract as g1d
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.robot.kinematics import arm_limits
+from elrobot_deploy.policy_contract import JointActions
 
 AMPLITUDE_RAD = 0.15
 PERIOD_S = 4.0

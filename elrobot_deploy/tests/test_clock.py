@@ -17,7 +17,7 @@ import time
 
 import pytest
 
-from g1d_deploy.runtime import timing as clock
+from elrobot_deploy.runtime import timing as clock
 
 
 def _lateness(period: float, n: int) -> list[float]:

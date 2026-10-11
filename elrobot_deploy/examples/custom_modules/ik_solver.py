@@ -1,7 +1,7 @@
 """An IK solver of your own: `ik = "ik_solver.py:timed_arm_qp"`.
 
-    g1d_deploy check-policy examples/custom_modules/deploy.toml
-    python -m g1d_deploy.dashboards.inspect.producers.ik_bench RECORD \\
+    elrobot_deploy check-policy examples/custom_modules/deploy.toml
+    python -m elrobot_deploy.dashboards.inspect.producers.ik_bench RECORD \\
         --methods /abs/path/to/examples/custom_modules/ik_solver.py:timed_arm_qp
 
 The smallest complete solver: it wraps the shipped per-tick QP and records how
@@ -15,7 +15,7 @@ solver starts from. What P6 asks of it is the whole interface
   (q_arm (14,), err_m, ok)`;
 * optionally `plans_chunks = True` and `plan_chunk(...)` (not used here).
 
-It runs in P6, under g1d_deploy's own Python, so it may import MuJoCo and
+It runs in P6, under elrobot_deploy's own Python, so it may import MuJoCo and
 mink; it is imported at launch, so a typo fails before anything moves.
 """
 
@@ -50,8 +50,8 @@ class TimedSolver:
 
 
 def timed_arm_qp(cfg, *, urdf=None, qdot_max=None, tcp=None):
-    """The factory P6 calls (`g1d_deploy.runtime.ik.build`)."""
-    from g1d_deploy.runtime.ik.arm_qp import arm_qp    # MuJoCo: imported here
+    """The factory P6 calls (`elrobot_deploy.runtime.ik.build`)."""
+    from elrobot_deploy.runtime.ik.arm_qp import arm_qp    # MuJoCo: imported here
     return TimedSolver(arm_qp(cfg, urdf=urdf, qdot_max=qdot_max, tcp=tcp))
 
 

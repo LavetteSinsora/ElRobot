@@ -10,7 +10,7 @@ import json
 
 import numpy as np
 
-from g1d_deploy.dashboards.inspect import overlays
+from elrobot_deploy.dashboards.inspect import overlays
 
 
 def _bench(tmp_path, names, k, version=overlays.BENCH_VERSION):
@@ -54,7 +54,7 @@ def test_a_stale_bench_version_reads_as_absent(tmp_path):
 
 
 def test_scene_meta_carries_the_overlay_meta():
-    from g1d_deploy.dashboards.inspect import scene as scene_mod
+    from elrobot_deploy.dashboards.inspect import scene as scene_mod
 
     s = scene_mod.Scene(
         transforms=np.zeros((2, 1, 12), np.float32), geoms=[],

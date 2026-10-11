@@ -22,16 +22,16 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from g1d_deploy.runtime.execution import chunk_blend as blend
-from g1d_deploy import policy_contract as policymod
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.runtime.processes.p5_policy import PolicyLoop
-from g1d_deploy.runtime.processes.p6_target import Target
-from g1d_deploy.runtime.processes.p7_body import BodyServo
-from g1d_deploy.runtime.processes.p8_hand import HandServo
-from g1d_deploy.runtime.drivers.arm_command import FakeLowCmd, ZeroComp
-from g1d_deploy.runtime.drivers.gripper import FakeHandCmd
+from elrobot_deploy.runtime.execution import chunk_blend as blend
+from elrobot_deploy import policy_contract as policymod
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.processes.p5_policy import PolicyLoop
+from elrobot_deploy.runtime.processes.p6_target import Target
+from elrobot_deploy.runtime.processes.p7_body import BodyServo
+from elrobot_deploy.runtime.processes.p8_hand import HandServo
+from elrobot_deploy.runtime.drivers.arm_command import FakeLowCmd, ZeroComp
+from elrobot_deploy.runtime.drivers.gripper import FakeHandCmd
 
 T0 = 1000.0
 
@@ -186,7 +186,7 @@ def async_cfg(cfg):
 
 
 def _rig(cfg, hw, arena, **kw):
-    from g1d_deploy.runtime.shared_memory import open_all
+    from elrobot_deploy.runtime.shared_memory import open_all
     return Rig(cfg, hw, open_all(arena, cfg), **kw)
 
 
@@ -514,7 +514,7 @@ class HomingClock:
 
 
 def _homing_rig(cfg, hw, rings, derived, *, late_by=0.0):
-    from g1d_deploy.runtime.launcher import Launcher
+    from elrobot_deploy.runtime.launcher import Launcher
 
     # A short floor keeps the whole ramp inside the fixture's 16-slot ring.
     short = cfgmod.replace(cfg, home_min_s=0.4)

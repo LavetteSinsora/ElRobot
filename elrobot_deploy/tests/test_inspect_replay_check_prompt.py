@@ -16,9 +16,9 @@ from pathlib import Path
 
 import pytest
 
-from g1d_deploy.dashboards.web import gpu
-from g1d_deploy.dashboards.inspect.modes import replay as replay_mode
-from g1d_deploy.dashboards.inspect.modes.replay import run
+from elrobot_deploy.dashboards.web import gpu
+from elrobot_deploy.dashboards.inspect.modes import replay as replay_mode
+from elrobot_deploy.dashboards.inspect.modes.replay import run
 
 from . import inspect_fixtures as fx
 
@@ -30,7 +30,7 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 _FAKE = '''
 import json, os
 from pathlib import Path
-from g1d_deploy.policy_contract import Policy as _Base
+from elrobot_deploy.policy_contract import Policy as _Base
 
 LOG = Path(__file__).with_suffix(".log")
 
@@ -90,7 +90,7 @@ def _events(fake):
 
 def _cli(record, *extra):
     env = {**os.environ, "PYTHONPATH": str(SRC)}
-    return subprocess.run([sys.executable, "-m", "g1d_deploy", "replay-policy",
+    return subprocess.run([sys.executable, "-m", "elrobot_deploy", "replay-policy",
                            "--record", str(record), *extra],
                           capture_output=True, text=True, env=env, timeout=120)
 
@@ -147,8 +147,8 @@ def test_the_subcommand_reports_a_class_that_does_not_load(record, fake):
 
 
 def _mode(record_dir):
-    from g1d_deploy.dashboards.inspect.options import Options
-    from g1d_deploy.dashboards.inspect import server
+    from elrobot_deploy.dashboards.inspect.options import Options
+    from elrobot_deploy.dashboards.inspect import server
 
     opts = Options(root=Path(record_dir),
                    state_file=Path(record_dir).parent / "state.json")
@@ -218,9 +218,9 @@ def test_the_endpoint_answers_over_http(record, fake, counted):
     import urllib.request
     from http.server import ThreadingHTTPServer
 
-    from g1d_deploy.dashboards.web import http
-    from g1d_deploy.dashboards.inspect.options import Options
-    from g1d_deploy.dashboards.inspect import server
+    from elrobot_deploy.dashboards.web import http
+    from elrobot_deploy.dashboards.inspect.options import Options
+    from elrobot_deploy.dashboards.inspect import server
 
     opts = Options(root=Path(record), state_file=Path(record).parent / "state.json")
     app = server.build_app(opts, modes=[])

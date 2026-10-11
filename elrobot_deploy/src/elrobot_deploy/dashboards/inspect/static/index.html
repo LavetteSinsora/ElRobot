@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rollout inspection</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/modes.css">
+</head>
+<body>
+
+<header id="bar">
+  <div class="brand">rollout<span>inspection</span></div>
+
+  <div class="pickers">
+    <!-- One dropdown. Every record under the root the server was started on
+         (`elrobot_deploy inspect <root>`), grouped by its directory's
+         path relative to that root, so whatever layout the records are kept
+         in IS the grouping. Started on one record, it holds just that one. -->
+    <label class="picker wide">
+      <span id="rec-root">recording</span>
+      <select id="sel-rec" disabled></select>
+    </label>
+    <button id="btn-load" disabled>Load</button>
+
+    <!-- What the SELECTED recording was run with, read from its manifest by
+         `discover.specifics` and shipped with the listing — so it answers
+         before Load, which is when the question is actually asked: the
+         checkpoint, the rollout's own settings (active_config), the policy.
+         Click for the rest: the prompt, the rollout generation, the policy
+         entry and class, the full checkpoint path, the robot profile, the
+         servo settings and the code revisions of the infra and the policy. -->
+    <div class="rec-info">
+      <button id="rec-chip" type="button" class="rec-chip" aria-expanded="false"
+              aria-controls="rec-card" disabled>
+        <span id="rec-headline" class="rec-headline">&mdash;</span>
+        <span id="rec-subline" class="rec-subline"></span>
+      </button>
+      <div id="rec-card" class="rec-card" hidden></div>
+    </div>
+
+    <!-- The MODE: which comparison the third panel shows. None is a real
+         choice — the plain viewer, no third panel — and the default. The list
+         comes from `/api/modes`; the chosen mode's script builds what it needs
+         in `mode-banner` here and in `mode-panel` below. -->
+    <label class="picker">
+      <span>compare</span>
+      <select id="sel-mode"><option value="">nothing</option></select>
+    </label>
+    <div id="mode-banner" class="mode-banner"></div>
+  </div>
+
+  <div id="status" class="status"></div>
+</header>
+
+<main id="stage">
+  <!-- Empty on purpose: `buildCameraPanes` fills this from the loaded record.
+       Which cameras a rollout has is a property of that rollout's robot
+       file, and which of them the policy read is a property of the policy,
+       so a fixed set of figures could only ever be right for one. -->
+  <section class="pane cameras" id="cams"></section>
+
+  <section class="pane render">
+    <canvas id="gl"></canvas>
+    <div class="overlay">
+      <!-- The three SOURCES. Each switch takes everything its source draws with
+           it — the geometry, the TCP marker and the trail — so the trajectories
+           on screen are always the paths of the markers on screen. -->
+      <label title="Where the arm actually went: the robot posed at the measured joint angles, interpolated to this exact instant.">
+        <input type="checkbox" id="chk-measured" checked> measured
+      </label>
+      <label id="lbl-ghost" title="What the policy asked for: the exact blended chunk row that entered the IK, drawn as a Dex-1 with no robot behind it, at the commanded jaw width. Hidden on frames where no Cartesian target was in force. A joint-mode policy commands joint angles and no pose, so on a joint rollout this exists only where an operator intervened (PICO commands are poses), and is greyed out when nobody did.">
+        <input type="checkbox" id="chk-ghost" checked> commanded pose <span id="ghost-note" class="dim"></span>
+      </label>
+      <label title="The joint angles P6 published — `body_targets[&quot;q&quot;]`, what P7 was told to drive to: the IK's solution for the commanded pose, or a joint-mode policy's own angles — posed as a whole robot. Where it sits on the opaque arm the servo is tracking; where it pulls away, it is not. Its distance from the amber pose is the IK's own failure to reach, a different fault with a different fix. Shown through P0's joint-space ramps too. Posed on the trunk the IK solved in (`waist_ik`, the measured one) whenever the record has it, so its torso lands on the measured torso and every gap left is the arm's; records before 2026-09-03 are posed on the commanded waist.">
+        <input type="checkbox" id="chk-solved" checked> commanded joints
+      </label>
+      <div class="overlay-rule"></div>
+
+      <label title="The virtual TCP: the offset the recorded robot file gives in [end_effector.&lt;kind&gt;] tcp, from the flange. Records made before the robot file carried one use the Dex-1 jaw-tip midpoint, 184.759 mm along the wrist frame's +X. One marker per hand per source shown above.">
+        <input type="checkbox" id="chk-tcp" checked> virtual TCP <span id="tcp-note" class="dim"></span>
+      </label>
+      <label class="sub" title="The path each virtual TCP above has travelled so far, in that marker's own colour — it grows behind the marker as you play and shows nothing ahead of the playhead. One trail per marker drawn, so it follows the source switches above: six with all three sources on, two with one.">
+        <input type="checkbox" id="chk-trail"> TCP trajectory
+      </label>
+      <label title="Wheeled base and lift column. The column is drawn fully retracted for the measured and commanded overlays. The whole-body overlays below DO command it, and draw it where they put it.">
+        <input type="checkbox" id="chk-base" checked> base &amp; column
+      </label>
+
+      <!-- The third section. Empty and hidden with no mode; otherwise the
+           mode's own switches — one ghost per IK method, per solved checkpoint,
+           per executor — built by its `mode_<name>.js`. -->
+      <div id="mode-panel" class="mode-panel" hidden>
+        <div class="overlay-rule"></div>
+        <div class="overlay-head" id="mode-head"><span id="mode-title"></span>
+          <span id="mode-note"></span></div>
+        <div id="mode-body"></div>
+      </div>
+
+      <!-- The residual, at the VIRTUAL TCP and never at the flange. The TCP
+           sits 184.759 mm along the flange's +X, so orientation error turns
+           into position error over that lever arm and a flange number cannot
+           see it: one degree of wrist rotation is 3.2 mm at the fingertips.
+           Worst hand of the two, matching how every residual in this project
+           is reported.
+
+           INSIDE the overlay, at the bottom of its column. It used to be a
+           sibling after it — but `#gl` is a 100%-by-100% element in the pane's
+           normal flow, so anything after it in flow starts below the pane and
+           was never on screen: the mm the whole panel exists to show could not
+           be read at all. -->
+      <div class="tcp-readout" id="mode-readout" hidden>
+        <div class="tcp-head" id="mode-readout-head"></div>
+        <div id="mode-rows"></div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i class="dot measured"></i>measured</span>
+      <span><i class="dot commanded"></i>cmd pose</span>
+      <span><i class="dot solved"></i>cmd joints</span>
+      <span id="mode-legend"></span>
+    </div>
+    <div class="hint">drag to orbit &middot; scroll to zoom &middot; shift-drag to pan</div>
+  </section>
+</main>
+
+<footer id="transport">
+  <div id="band-row">
+    <div class="band-side" title="Every replan P5 made. Hollow triangle: P5 was triggered. Solid: the finished chunk reached the ring. The bar is the stretch of ticks that chunk drove, and the dotted line joins the write to the first tick it drove. Click any of it — here or on the strip above the scrubber — to jump there; [ and ] walk the marks.">
+      <div class="band-title">replans <span class="dim">&plusmn;1.5 s</span></div>
+      <div class="band-legend">
+        <span><i class="tri hollow"></i>trigger</span>
+        <span><i class="tri solid"></i>written</span>
+        <span><i class="cov"></i>ticks driven</span>
+      </div>
+    </div>
+    <canvas id="band"></canvas>
+  </div>
+
+  <div id="controls">
+    <button id="btn-play" disabled aria-label="play">&#9654;</button>
+    <button id="btn-reset" disabled aria-label="reset">&#8634;</button>
+    <div class="scrub">
+      <canvas id="marks"></canvas>
+      <input id="seek" type="range" min="0" max="0" value="0" step="1" disabled>
+    </div>
+    <div class="readout">
+      <span id="t-now">0.00</span><span class="dim"> / </span><span id="t-end">0.00</span><span class="dim"> s</span>
+      <span class="dim sep">frame</span><span id="f-now">0</span>
+    </div>
+  </div>
+
+  <!-- The mode's own timeline (`metric.js`): its per-tick metric over the
+       whole rollout, on the scrubber's axis and under its playhead. Hidden
+       with no mode, or a mode that plots nothing. Click or drag to seek. -->
+  <div id="metric-row" hidden>
+    <div class="metric-side">
+      <div class="band-title" id="metric-title"></div>
+      <div id="metric-tools"></div>
+    </div>
+    <canvas id="metric"></canvas>
+    <div class="metric-legend" id="metric-legend"></div>
+  </div>
+</footer>
+
+<div id="mark-tip" hidden></div>
+<div id="metric-tip" hidden></div>
+
+<div id="splash">
+  <div class="splash-card">
+    <h1>Pick a recording</h1>
+    <p>Choose a recording, then press <strong>Load</strong>. Everything is
+       built in memory when you do &mdash; nothing is written to disk.</p>
+  </div>
+</div>
+
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

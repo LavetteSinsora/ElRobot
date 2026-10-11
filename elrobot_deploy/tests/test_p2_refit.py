@@ -12,9 +12,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.runtime.drivers import fisheye_circle_fit as cr
-from g1d_deploy.config_loading import robot_file as robotmod
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.runtime.drivers import fisheye_circle_fit as cr
+from elrobot_deploy.config_loading import robot_file as robotmod
 
 
 def a_spec(cx=648.0, cy=386.0, r=375.0, *, fallback=True):
@@ -143,7 +143,7 @@ def test_luma_is_rec601_over_rgb_from_a_bgr_frame():
 
 
 def _launcher_stub(cfg, frames):
-    from g1d_deploy.runtime.launcher import Launcher
+    from elrobot_deploy.runtime.launcher import Launcher
 
     lch = Launcher.__new__(Launcher)
     lch.cfg = cfg

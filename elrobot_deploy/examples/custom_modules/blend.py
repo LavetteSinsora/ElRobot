@@ -4,7 +4,7 @@
     sync = false
     blend = "blend.py:consistent_ensemble"
 
-    g1d_deploy check-policy examples/custom_modules/deploy.toml
+    elrobot_deploy check-policy examples/custom_modules/deploy.toml
 
 The shipped default, `temporal_ensemble` (ACT's), averages every chunk's
 prediction of a tick. That is right while consecutive chunks describe the same
@@ -25,7 +25,7 @@ receives and returns"): every adopted chunk covering
 the tick, oldest first, quaternions already in the newest one's hemisphere,
 each with its `row`. What it must return: one whole `Action`, pose, hand and
 waist from the same decision — `chunk_blend.weighted` does that for any
-weights. It runs in P6, under g1d_deploy's own Python, once per tick per
+weights. It runs in P6, under elrobot_deploy's own Python, once per tick per
 re-solve: pure numpy, microseconds.
 """
 
@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from g1d_deploy.runtime.execution.chunk_blend import (TEMPORAL_ENSEMBLE_M,
+from elrobot_deploy.runtime.execution.chunk_blend import (TEMPORAL_ENSEMBLE_M,
                                                       newest, weighted)
 
 #: How far a chunk's flange may be from the newest's, at this tick, and still

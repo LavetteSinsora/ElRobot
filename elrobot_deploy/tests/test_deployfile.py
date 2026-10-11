@@ -15,11 +15,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from g1d_deploy.policy_contract import checkpoints, loading as entry
-from g1d_deploy.config_loading import deploy_file as deployfile, machine_file as machine
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.config_loading.errors import ConfigError
-from g1d_deploy.config_loading.validate import validate
+from elrobot_deploy.policy_contract import checkpoints, loading as entry
+from elrobot_deploy.config_loading import deploy_file as deployfile, machine_file as machine
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.config_loading.errors import ConfigError
+from elrobot_deploy.config_loading.validate import validate
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 DEPLOY = EXAMPLES / "deploy.toml"
@@ -44,7 +44,7 @@ HOME = "[home]\narm = [0.0,0,0,0,0,0,0, 0,0,0,0,0,0,0]\n"
 
 
 def test_a_module_entry_imports_the_module():
-    cls = entry.load_entry("g1d_deploy.policy_contract:EchoPolicy")
+    cls = entry.load_entry("elrobot_deploy.policy_contract:EchoPolicy")
     assert cls.__name__ == "EchoPolicy"
 
 
@@ -63,10 +63,10 @@ def test_a_packaged_file_is_imported_under_its_dotted_name():
 @pytest.mark.parametrize("spec, match", [
     ("no_colon", "must be"),
     ("x.py:", "must be"),
-    ("g1d_deploy.policy_contract:NoSuchThing", "defines no"),
-    ("g1d_deploy.policy_contract:LATCH", "defines no"),
-    ("g1d_deploy.no_such_module:X", "no module"),
-    ("g1d_deploy.policy_contract:__all__", "not a class"),
+    ("elrobot_deploy.policy_contract:NoSuchThing", "defines no"),
+    ("elrobot_deploy.policy_contract:LATCH", "defines no"),
+    ("elrobot_deploy.no_such_module:X", "no module"),
+    ("elrobot_deploy.policy_contract:__all__", "not a class"),
     ("/nonexistent/p.py:P", "does not exist"),
 ])
 def test_a_bad_entry_is_refused_by_name(spec, match):
@@ -303,14 +303,14 @@ def test_the_machine_file_supplies_the_nic(monkeypatch, tmp_path):
     f.write_text('[network]\niface = "eth9"\n')
     m = machine.load_machine(f)
     assert m.iface == "lo0"
-    assert m.sources["iface"] == "env", "G1D_IFACE wins over the file"
-    monkeypatch.delenv("G1D_IFACE")
+    assert m.sources["iface"] == "env", "ELROBOT_IFACE wins over the file"
+    monkeypatch.delenv("ELROBOT_IFACE")
     assert machine.load_machine(f).iface == "eth9"
 
 
 def test_the_board_address_and_login_are_the_robot_files(monkeypatch, tmp_path):
     """A fact about one robot: factory values by default, a robot file's
-    `[board]` for a unit that differs, `G1D_*` for one shell."""
+    `[board]` for a unit that differs, `ELROBOT_*` for one shell."""
     hw = cfgmod.load_hardware("g1d_fisheye_dex1", machine.load_machine())
     assert (hw.camera_host, hw.board_ssh_user) == ("192.168.123.164", "unitree")
     rig = tmp_path / "rig.toml"
@@ -318,7 +318,7 @@ def test_the_board_address_and_login_are_the_robot_files(monkeypatch, tmp_path):
                    'ssh_user = "me"\n')
     hw = cfgmod.load_hardware(str(rig), machine.load_machine())
     assert (hw.camera_host, hw.board_ssh_user) == ("10.1.2.3", "me")
-    monkeypatch.setenv("G1D_ROBOT_IP", "10.9.9.9")
+    monkeypatch.setenv("ELROBOT_ROBOT_IP", "10.9.9.9")
     assert cfgmod.load_hardware(str(rig), machine.load_machine()).camera_host == "10.9.9.9"
     rig.write_text('extends = "g1d_fisheye_dex1"\n[board]\nadress = "x"\n')
     with pytest.raises(ConfigError, match="unknown keys"):
@@ -333,14 +333,14 @@ def test_a_machine_file_still_carrying_the_moved_keys_is_refused(tmp_path):
 
 
 def test_a_named_machine_file_that_is_missing_is_an_error(monkeypatch):
-    monkeypatch.setenv("G1D_MACHINE", "/nonexistent.toml")
-    with pytest.raises(ConfigError, match="G1D_MACHINE"):
+    monkeypatch.setenv("ELROBOT_MACHINE", "/nonexistent.toml")
+    with pytest.raises(ConfigError, match="ELROBOT_MACHINE"):
         machine.load_machine()
 
 
 def test_no_machine_file_means_the_defaults(monkeypatch, tmp_path):
     """The file is optional, and nothing is created for anyone."""
-    monkeypatch.delenv("G1D_MACHINE")
+    monkeypatch.delenv("ELROBOT_MACHINE")
     monkeypatch.setattr(machine, "DEFAULT_PATH", tmp_path / "machine.toml")
     assert machine.machine_path() is None
     m = machine.load_machine()
@@ -362,7 +362,7 @@ def test_the_template_parses_and_derives_its_cpu_table(monkeypatch):
 
 
 def test_auto_iface_refuses_when_no_nic_is_on_the_subnet(monkeypatch, tmp_path):
-    monkeypatch.delenv("G1D_IFACE")
+    monkeypatch.delenv("ELROBOT_IFACE")
     f = tmp_path / "m.toml"
     f.write_text('[network]\niface = "auto"\nsubnet = "203.0.113."\n')
     with pytest.raises(ConfigError, match="203.0.113"):
@@ -376,7 +376,7 @@ def test_auto_iface_refuses_when_no_nic_is_on_the_subnet(monkeypatch, tmp_path):
 def test_p5_builds_the_class_the_entry_names(cfg, hw, rings):
     """The resolved entry travels in the config; P5's construction step loads
     it from there (`policy_contract.make_policy`)."""
-    from g1d_deploy.policy_contract import make_policy
+    from elrobot_deploy.policy_contract import make_policy
 
     spec = f"{EXAMPLES / 'policies' / 'hold.py'}:Policy"
     # The example anchors on `head_left`: the head as every robot file declares
@@ -391,8 +391,8 @@ def test_p5_builds_the_class_the_entry_names(cfg, hw, rings):
 def test_latest_uses_the_numbered_rule_for_a_policy_without_its_own_layout(tmp_path):
     """The base `Policy.resolve_checkpoint` answers None, so a class that does
     not override it gets the highest numbered step, not `run/latest`."""
-    from g1d_deploy.policy_contract import checkpoints
-    from g1d_deploy.policy_contract import Policy
+    from elrobot_deploy.policy_contract import checkpoints
+    from elrobot_deploy.policy_contract import Policy
 
     for step in (1000, 20000, 3000):
         (tmp_path / str(step)).mkdir()

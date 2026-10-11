@@ -20,14 +20,14 @@ here as the smallest example of the blend interface
   action that chunk holds for the tick;
 * it returns ONE whole action (pose or joint angles, hand, waist), all from
   the same decision;
-* it runs in P6, under g1d_deploy's own Python, once per tick: numpy only.
+* it runs in P6, under elrobot_deploy's own Python, once per tick: numpy only.
 
 `README.md` beside this file explains the whole example.
 """
 
 from __future__ import annotations
 
-from g1d_deploy.runtime.execution.chunk_blend import Action
+from elrobot_deploy.runtime.execution.chunk_blend import Action
 
 
 def _copy(a):

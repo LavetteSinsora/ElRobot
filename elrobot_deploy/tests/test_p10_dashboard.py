@@ -18,10 +18,10 @@ import urllib.request
 import numpy as np
 import pytest
 
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.dashboards.live.scene import LiveScene
-from g1d_deploy.dashboards.live.server import Live, serve
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.dashboards.live.scene import LiveScene
+from elrobot_deploy.dashboards.live.server import Live, serve
 
 T0 = 1000.0
 
@@ -501,7 +501,7 @@ def test_concurrent_frames_do_not_crash_the_process(live, rings, hw):
 def _seed(rings, cfg):
     """What P0 writes at INIT, before P10 exists: the launch settings in both
     blocks and the launch prompt as the one in use."""
-    from g1d_deploy.config_loading.rollout_settings import RolloutSettings
+    from elrobot_deploy.config_loading.rollout_settings import RolloutSettings
     launch = RolloutSettings.of(cfg).to_record()
     rings["control"].request_config(launch)
     rings["control"].activate(launch, cfg.prompt)

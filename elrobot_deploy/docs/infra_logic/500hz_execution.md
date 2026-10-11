@@ -7,9 +7,9 @@ position, velocity and torque at 500 Hz. The smoother and the feedforward can
 be your own; the walk itself is fixed.
 
 - **Read first:** `docs/overview.md`.
-- **Code:** `src/g1d_deploy/runtime/processes/p7_body.py` (`BodyServo`),
-  `src/g1d_deploy/runtime/execution/servo_segment.py` (`Segment`: which
-  target is in flight), `src/g1d_deploy/runtime/execution/servo_filter.py`
+- **Code:** `src/elrobot_deploy/runtime/processes/p7_body.py` (`BodyServo`),
+  `src/elrobot_deploy/runtime/execution/servo_segment.py` (`Segment`: which
+  target is in flight), `src/elrobot_deploy/runtime/execution/servo_filter.py`
   (`Shaping`, `Smoother`, `Feedforward`, `CritDamped`, `ModelFeedforward`,
   `build`, `load`).
 - **Related:** `docs/deploying_a_policy/deploy_toml.md` (`[control.servo]`),
@@ -99,7 +99,7 @@ The 17 joints are the 14 arm joints (left then right) and the 3 waist slots.
   while `filter_hz > 0` / `torque_ff > 0`, so setting either to 0 on the
   dashboard still gives the plain straight-line servo for an A/B, and
   `--intervene` is unaffected.
-- **It runs in P7**, under g1d_deploy's Python, inside a 2 ms period, at
+- **It runs in P7**, under elrobot_deploy's Python, inside a 2 ms period, at
   500 Hz: pure numpy, allocation-light, no imports of the IK stack. It is
   imported at launch (a bad path is refused before anything moves).
 - **It shapes everything**, including the first homing move and the exit

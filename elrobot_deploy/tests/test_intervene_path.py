@@ -15,13 +15,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from g1d_deploy.runtime.teleop import intervention as iv
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.runtime.processes.p6_target import Target
-from g1d_deploy.runtime.processes.p7_body import BodyServo
-from g1d_deploy.runtime.processes.p8_hand import HandServo
-from g1d_deploy.runtime.launcher.startup_checks import _CHECK_WINDOW_S
-from g1d_deploy.runtime.processes.p11_pico import PicoLoop
+from elrobot_deploy.runtime.teleop import intervention as iv
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.processes.p6_target import Target
+from elrobot_deploy.runtime.processes.p7_body import BodyServo
+from elrobot_deploy.runtime.processes.p8_hand import HandServo
+from elrobot_deploy.runtime.launcher.startup_checks import _CHECK_WINDOW_S
+from elrobot_deploy.runtime.processes.p11_pico import PicoLoop
 from tests.test_p6_target import (BODY, T0, FakeClock, FakeSolver,
                                             publish)
 
@@ -445,7 +445,7 @@ def test_async_re_founds_its_epoch_after_a_handback(rings, cfg, hw):
     while `k` and the clock advance together; an intervention breaks that, and
     every policy deadline afterwards lands in the PAST — P7 discards all of them
     and the arm holds forever, silently, in async only."""
-    from g1d_deploy.config_loading import resolved as cfgmod
+    from elrobot_deploy.config_loading import resolved as cfgmod
     acfg = cfgmod.replace(cfg, sync=False)
     clk = FakeClock()
     rings["targets"].write(0, clk.t, np.zeros(BODY), intervene=0)
@@ -479,7 +479,7 @@ def test_an_ordinary_async_run_still_stamps_its_epoch_exactly_once(
     """The re-founding must fire at a handback and NOWHERE else: async chunks
     overlap by design and their tick line has to stay continuous, which is what
     the window extrapolation relies on."""
-    from g1d_deploy.config_loading import resolved as cfgmod
+    from elrobot_deploy.config_loading import resolved as cfgmod
     acfg = cfgmod.replace(cfg, sync=False)
     clk = FakeClock()
     rings["targets"].write(0, clk.t, np.zeros(BODY), intervene=0)
@@ -871,11 +871,11 @@ def test_waiting_out_an_intervention_still_notices_the_run_ending(cfg, hw):
 # --- P0 and P9 ---------------------------------------------------------------
 
 
-from g1d_deploy.config_loading import resolved as cfgmod                        # noqa: E402
-from g1d_deploy.runtime.teleop import pico_service                           # noqa: E402
-from g1d_deploy.config_loading.errors import ConfigError                     # noqa: E402
-from g1d_deploy.runtime.launcher import Launcher         # noqa: E402
-from g1d_deploy.runtime.processes.p9_record import Recorder           # noqa: E402
+from elrobot_deploy.config_loading import resolved as cfgmod                        # noqa: E402
+from elrobot_deploy.runtime.teleop import pico_service                           # noqa: E402
+from elrobot_deploy.config_loading.errors import ConfigError                     # noqa: E402
+from elrobot_deploy.runtime.launcher import Launcher         # noqa: E402
+from elrobot_deploy.runtime.processes.p9_record import Recorder           # noqa: E402
 
 
 def _arm_qp(cfg):

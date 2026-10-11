@@ -1,4 +1,4 @@
-"""`g1d_deploy.runtime.ik.waist_qp` — the whole-body solver, and P6's chunk path.
+"""`elrobot_deploy.runtime.ik.waist_qp` — the whole-body solver, and P6's chunk path.
 
 The properties worth testing here are the ones that were actually violated
 during development, each of which produced plausible numbers while being wrong:
@@ -19,14 +19,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from g1d_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.shared_memory import schema
 
 mujoco = pytest.importorskip("mujoco")
 pytest.importorskip("mink")
 
-from g1d_deploy.robot import kinematics as kin                                    # noqa: E402
-from g1d_deploy.robot import mujoco_model as g1, g1d_model as g1d                          # noqa: E402
-from g1d_deploy.runtime.ik.waist_qp import (GROUPS, TIERS, WbikWeights, WholeBodySolver,
+from elrobot_deploy.robot import kinematics as kin                                    # noqa: E402
+from elrobot_deploy.robot import mujoco_model as g1, g1d_model as g1d                          # noqa: E402
+from elrobot_deploy.runtime.ik.waist_qp import (GROUPS, TIERS, WbikWeights, WholeBodySolver,
                                             _banded_retime)
 
 
@@ -243,7 +243,7 @@ def _straight_line_chunk(solver, seed, waist, n=25, step=0.002):
 
 def test_off_tier_reproduces_the_arm_only_solver():
     """`TIERS['off']` must BE the deployed solver, not merely resemble it."""
-    from g1d_deploy.runtime.ik.arm_qp import DualArmSolver
+    from elrobot_deploy.runtime.ik.arm_qp import DualArmSolver
 
     cfg = Cfg()
     wb = WholeBodySolver(cfg, groups=TIERS["off"])

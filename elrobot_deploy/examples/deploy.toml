@@ -2,9 +2,9 @@
 # if it has one), where the arm starts and ends, and the default rollout
 # settings. Every key: docs/deploying_a_policy/deploy_toml.md.
 #
-#     g1d_deploy run examples/deploy.toml
-#     g1d_deploy run examples/deploy.toml --robot g1d_normal_dex1
-#     g1d_deploy run examples/deploy.toml --set control.replan_period=10
+#     elrobot_deploy run examples/deploy.toml
+#     elrobot_deploy run examples/deploy.toml --robot g1d_normal_dex1
+#     elrobot_deploy run examples/deploy.toml --set control.replan_period=10
 #
 # Copy it next to your policy and edit. Relative paths in this file are
 # relative to THIS file, wherever the command is run from.
@@ -25,7 +25,7 @@ prompt = "Hold still."
 # "pkg.module:Class" (importable) or "path/to/file.py:Class".
 entry = "policies/hold.py:Policy"
 # The interpreter P5 runs under: your policy's own venv (torch, jax, numpy 2,
-# ...), which needs only g1d_deploy's minimal core installed
+# ...), which needs only elrobot_deploy's minimal core installed
 # (docs/deploying_a_policy/policy_contract.md, "The adapter's own Python").
 # Unset = the runtime's own interpreter.
 # python = "~/projects/my_policy/.venv/bin/python"
@@ -99,7 +99,7 @@ arm_gain_scale = 1.0
 
 [record]
 # Every real rollout is recorded (one directory each, a manifest.json
-# saying exactly what ran); `g1d_deploy inspect` opens them. Where, first
+# saying exactly what ran); `elrobot_deploy inspect` opens them. Where, first
 # found wins: `out` (relative to this file) or --out; else the machine
 # file's [paths] records / <task> (task = `task`, else this folder's name);
 # else rollout_record/ beside this file.

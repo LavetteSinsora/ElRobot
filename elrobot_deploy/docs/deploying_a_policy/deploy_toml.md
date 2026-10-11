@@ -6,11 +6,11 @@ rollout, and where the recordings go. It sits beside the adapter; every
 relative path in it is relative to the file itself, not to where a command is
 run.
 
-    g1d_deploy check-policy my_task/deploy.toml     # offline, no robot
-    g1d_deploy run my_task/deploy.toml               # on the robot
+    elrobot_deploy check-policy my_task/deploy.toml     # offline, no robot
+    elrobot_deploy run my_task/deploy.toml               # on the robot
 
 - **Read first:** `docs/deploying_a_policy/policy_contract.md` (the adapter this file names).
-- **Code:** `src/g1d_deploy/config_loading/deploy_file.py` (parsing, layers,
+- **Code:** `src/elrobot_deploy/config_loading/deploy_file.py` (parsing, layers,
   `--set`), `resolved.py::DeployConfig` (every field and its default),
   `validate.py` (the refusals).
 - **Related:** `examples/deploy.toml` (a complete commented file),
@@ -47,7 +47,7 @@ Four layers, later winning:
 ## Per launch or per rollout
 
 **Per launch** values size shared memory, pick the adapter and checkpoint, or
-place the robot; changing one means restarting `g1d_deploy run`. **Per
+place the robot; changing one means restarting `elrobot_deploy run`. **Per
 rollout** values are only the first rollout's default here: the live dashboard
 can change them between rollouts without reloading the model
 (`docs/deploying_a_policy/running_and_live_dashboard.md`):
@@ -93,7 +93,7 @@ Per rollout. Flag `--prompt`.
 | key | meaning | default |
 |---|---|---|
 | `entry` | the adapter class: `"policy.py:MyPolicy"` (path relative to this file) or `"my_pkg.adapter:MyPolicy"` | empty = the built-in `EchoPolicy`, which holds the arm still |
-| `python` | the interpreter P5 runs under: usually the model's own venv, with g1d_deploy's core installed (`docs/deploying_a_policy/policy_contract.md`, "The adapter's own Python") | g1d_deploy's own |
+| `python` | the interpreter P5 runs under: usually the model's own venv, with elrobot_deploy's core installed (`docs/deploying_a_policy/policy_contract.md`, "The adapter's own Python") | elrobot_deploy's own |
 | `anchor_camera` | overrides the class's declaration: whose frame time is `t_anchor` | the class's |
 | `uses_cameras` | overrides the class's declaration: exactly the cameras delivered in `obs.frames` (all are still recorded); must include the anchor | the class's |
 
@@ -152,7 +152,7 @@ is where it goes when the session ends (keys left out take the home value).
   (`docs/deploying_a_policy/policy_contract.md`, "Joint order"); `hand` in the end effector's
   units (Dex-1 gear radians, 0 = closed).
 - **`arm` is optional.** Left out, the arm goes to the infra's default home
-  (`src/g1d_deploy/config_loading/deploy_file.py::DEFAULT_HOME_ARM`): forearms
+  (`src/elrobot_deploy/config_loading/deploy_file.py::DEFAULT_HOME_ARM`): forearms
   forward and a little down in front of the torso, a posture suited to
   tabletop work. Set it when a task needs a different start (the first
   observation is taken there). `waist` defaults to zeros, `hand` to open.
@@ -250,7 +250,7 @@ How overlapping chunks become one action per tick (`docs/infra_logic/chunk_blend
 - `"newest"`: the newest chunk takes over outright; for real-time chunking or
   the fastest reaction;
 - your own, as `"pkg.module:function"` or `"path/file.py:function"` (relative
-  to this file), imported at launch in g1d_deploy's Python (P6 runs it).
+  to this file), imported at launch in elrobot_deploy's Python (P6 runs it).
 
 `temporal_ensemble_m` (default 0.01, ACT's): the ensemble's `m`, per tick of a
 prediction's age; 0 is a plain mean, larger leans on older predictions.
@@ -294,7 +294,7 @@ dashboard; the defaults are the tuned ones.
 
 ## `[intervene]`: the PICO takeover
 
-Used only with `g1d_deploy run --intervene`, where an operator with a PICO
+Used only with `elrobot_deploy run --intervene`, where an operator with a PICO
 headset can take over the arms mid-rollout and hand back. Defaults are this
 rig's measured values.
 
@@ -315,7 +315,7 @@ rig's measured values.
 Every real rollout is recorded: one directory per rollout holding every camera
 frame as the robot sent it, the state stream, the chunks, P6's targets, P7's
 commands and a `manifest.json` saying exactly what ran. About 1 GB per rollout
-with three cameras. `g1d_deploy inspect` opens them
+with three cameras. `elrobot_deploy inspect` opens them
 (`docs/deploying_a_policy/rollout_inspection.md`).
 
 | key | default | what it does |

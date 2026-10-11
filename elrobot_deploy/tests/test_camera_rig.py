@@ -15,10 +15,10 @@ from pathlib import Path
 
 import pytest
 
-from g1d_deploy.cli import main as entry
-from g1d_deploy.config_loading import resolved as cfgmod
-from g1d_deploy.config_loading.errors import ConfigError
-from g1d_deploy.config_loading import robot_file as robotmod
+from elrobot_deploy.cli import main as entry
+from elrobot_deploy.config_loading import resolved as cfgmod
+from elrobot_deploy.config_loading.errors import ConfigError
+from elrobot_deploy.config_loading import robot_file as robotmod
 
 DEPLOY = Path(__file__).resolve().parents[1] / "examples" / "deploy.toml"
 
@@ -162,7 +162,7 @@ def test_a_robot_file_uncrosses_the_wrists_by_exchanging_their_ports(tmp_path):
 
 
 def test_a_zmq_camera_may_name_its_own_host(hw, cfg):
-    from g1d_deploy.runtime.processes import p2_camera
+    from elrobot_deploy.runtime.processes import p2_camera
 
     spec = cfgmod.CameraSpec(8, 8, source="zmq", host="10.0.0.9")
     c = cfgmod.replace(cfg, cameras={"rwrist": spec})

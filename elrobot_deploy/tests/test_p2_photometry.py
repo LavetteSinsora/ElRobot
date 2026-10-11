@@ -13,7 +13,7 @@ import math
 
 import pytest
 
-from g1d_deploy.runtime.drivers.board.fisheye_image_server import photometry as ph
+from elrobot_deploy.runtime.drivers.board.fisheye_image_server import photometry as ph
 
 
 def meas(p995, *, mean=140.0, clip=0.0, pixels=90_000):

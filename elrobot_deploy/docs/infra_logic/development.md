@@ -1,4 +1,4 @@
-# Developing g1d_deploy
+# Developing elrobot_deploy
 
 For someone changing the infra itself: the project layout, the tests, and
 where things are.
@@ -15,8 +15,8 @@ where things are.
   ruff, scipy). The IK stack is held at tested versions by
   `[tool.uv] constraint-dependencies` (`pyproject.toml` says why).
 - The model assets are inside the package:
-  `src/g1d_deploy/robot/assets/unitree_g1d` (the G1-D URDF and meshes) and
-  `src/g1d_deploy/robot/assets/unitree_dex1` (the Dex-1 meshes). Each has a
+  `src/elrobot_deploy/robot/assets/unitree_g1d` (the G1-D URDF and meshes) and
+  `src/elrobot_deploy/robot/assets/unitree_dex1` (the Dex-1 meshes). Each has a
   `PROVENANCE.md`.
 - `.gitignore` keeps out `machine.toml`, the venv, `.cyclonedds/`,
   `.xrobotoolkit/`, rollout records and checkpoints.

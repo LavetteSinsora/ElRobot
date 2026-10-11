@@ -28,8 +28,8 @@ import dataclasses
 import numpy as np
 import pytest
 
-from g1d_deploy.runtime.shared_memory import schema
-from g1d_deploy.runtime.processes.p6_target import Target
+from elrobot_deploy.runtime.shared_memory import schema
+from elrobot_deploy.runtime.processes.p6_target import Target
 
 from .test_p6_target import FakeClock, FakeSolver, publish  # shared helpers
 

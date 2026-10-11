@@ -14,7 +14,7 @@ import sys
 import numpy as np
 import pytest
 
-from g1d_deploy.dashboards.inspect.modes import ik as I
+from elrobot_deploy.dashboards.inspect.modes import ik as I
 
 
 class _Rollout:
@@ -68,7 +68,7 @@ _REG = {"methods": [
 
 def test_the_defaults_are_exactly_the_infra_solvers():
     """The bench runs the infra's own solvers and nothing an experiment owns."""
-    from g1d_deploy.runtime import ik as ik_solvers
+    from elrobot_deploy.runtime import ik as ik_solvers
     assert I.default_methods() == tuple(ik_solvers.SOLVERS)
     assert set(I.default_methods()) >= {"arm_planner", "arm_qp", "waist_planner",
                                         "waist_qp"}
@@ -186,8 +186,8 @@ def test_a_bench_that_will_not_list_is_reported_not_raised(tmp_path):
 def test_the_registry_resolves_names_through_ik_solvers():
     """Resolved at run time by name: the bench offers exactly what
     `runtime/ik` `SOLVERS` ships, each with its mode."""
-    from g1d_deploy.runtime import ik as ik_solvers
-    from g1d_deploy.dashboards.inspect.producers import ik_bench
+    from elrobot_deploy.runtime import ik as ik_solvers
+    from elrobot_deploy.dashboards.inspect.producers import ik_bench
 
     reg = ik_bench.registry()
     assert not reg["error"]

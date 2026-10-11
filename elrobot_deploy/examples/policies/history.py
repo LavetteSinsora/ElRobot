@@ -1,7 +1,7 @@
 """An adapter that reads HISTORY: stacked frames and a state window.
 
-    g1d_deploy check-policy examples/policies/history.toml
-    g1d_deploy run examples/policies/history.toml
+    elrobot_deploy check-policy examples/policies/history.toml
+    elrobot_deploy run examples/policies/history.toml
 
 It holds the arm still (like `examples/policies/hold.py`) — the point is the reading a
 policy with a temporal input does before it computes its actions:
@@ -25,8 +25,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from g1d_deploy import policy_contract as g1d
-from g1d_deploy.policy_contract import EefActions, nearest_to_times
+from elrobot_deploy import policy_contract as g1d
+from elrobot_deploy.policy_contract import EefActions, nearest_to_times
 
 H, CONTROL_HZ = 50, 30.0
 FRAME_OFFSETS_S = np.array([1.0, 0.5, 0.0])     # frames at t_anchor - these
