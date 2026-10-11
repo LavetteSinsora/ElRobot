@@ -5,8 +5,19 @@ page says what has to change to run it on the ElRobot follower: one 7-DoF arm
 plus a gripper, all ST3215 servos on one serial bus, iPhone teleoperation, a
 210° fisheye wrist camera, and no robot board (everything runs on the Mac).
 
-Paths below are relative to `src/g1d_deploy/` unless they start with
-`elrobot_deploy/` or `ElRobotRepo/`.
+Paths below are relative to `src/g1d_deploy/` (now `src/elrobot_deploy/`) unless they start
+with `elrobot_deploy/` or `ElRobotRepo/`.
+
+**Status (2026-10-11):**
+- **Done: our URDF.** `ElRobotRepo/description/elrobot_ours/`, generated from upstream plus
+  calibration plus the printed camera mount. It has the TCP frame and no flange.
+- **Done: the package rename** (part of step 0) to `elrobot_deploy`, and the G1-D-only
+  dependencies are dropped. The rest of step 0, the prune, is not done yet.
+- **Done: the IK** (workstream B; workstream 1 originally planned only a provisional one).
+  `robot/elrobot_model.py` and `runtime/ik/tcp_qp.py`, a single-arm, TCP-only QP. It is not
+  wired into P6 yet.
+- **Next:** the rest of step 0 (prune), workstream 1 (single-arm schema, simulated bus), then
+  workstream C (teleop).
 
 ---
 
