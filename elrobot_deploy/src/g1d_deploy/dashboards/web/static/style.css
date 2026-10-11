@@ -1,0 +1,728 @@
+/* Dark, quiet, and out of the way. The rollout is the content; every pixel
+   spent on chrome is a pixel not spent on the wrist views or the robot. */
+
+:root {
+  --bg:        #0d1117;
+  --panel:     #151b23;
+  --edge:      #232c38;
+  --edge-soft: #1b2330;
+  --ink:       #e6edf3;
+  --ink-dim:   #8b98a8;
+  --ink-faint: #5b6673;
+  --accent:    #4cc2ff;
+  --accent-dim:#1e4b63;
+  --warn:      #f0a04b;
+  --bar-h:     56px;
+  --transport-h: 152px;   /* zoom band (88) + controls (64) */
+  --band-h:      88px;
+  --gap:       10px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 13px/1.45 ui-sans-serif, -apple-system, "SF Pro Text", Inter,
+        "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------------- header */
+
+#bar {
+  height: var(--bar-h);
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 0 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--edge);
+}
+
+.brand {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  color: var(--ink-faint);
+}
+.brand span { color: var(--accent); margin-left: 4px; }
+
+.pickers { display: flex; align-items: flex-end; gap: 10px; }
+
+.picker { display: flex; flex-direction: column; gap: 3px; }
+/* Every picker ellipsizes rather than widening the bar: record paths
+   are long, and what gets pushed off the end is whatever was added last. */
+.picker select { max-width: 260px; }
+.picker > span {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-faint);
+}
+
+select, button {
+  font: inherit;
+  color: var(--ink);
+  background: #0f151d;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  padding: 5px 9px;
+  height: 30px;
+  transition: border-color .12s, background .12s, opacity .12s;
+}
+/* A fixed-height button centres its label itself: padding alone leaves the text
+   riding high or low depending on the font's line box. */
+button {
+  display: inline-flex; align-items: center; justify-content: center;
+  line-height: 1; padding-top: 0; padding-bottom: 0;
+}
+select { min-width: 150px; }
+/* A `<select>` sizes itself to its WIDEST option, and a recording's label
+   carries the date, the IK, the step and the megabytes. Capped, so the bar's
+   own row — the mode dropdown and whatever that mode puts in the banner beside
+   it — keeps its place instead of being pushed off the right edge on a screen
+   that has room for all of it. The text ellipsizes; the full label is still
+   there when the list is open. */
+.picker.wide select { min-width: 210px; max-width: 360px; }
+select:hover:not(:disabled), button:hover:not(:disabled) { border-color: #35435a; }
+select:disabled, button:disabled { opacity: .4; cursor: not-allowed; }
+select:focus-visible, button:focus-visible {
+  outline: 2px solid var(--accent-dim);
+  outline-offset: 1px;
+}
+
+#btn-load {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06202c;
+  font-weight: 600;
+  padding: 5px 18px;
+  cursor: pointer;
+}
+#btn-load:hover:not(:disabled) { background: #6ccfff; border-color: #6ccfff; }
+#btn-load.busy { background: var(--accent-dim); border-color: var(--accent-dim); color: var(--ink-dim); }
+
+/* The selected recording's run, beside the button that loads it. Two lines of
+   11 px inside the 30 px control row, so it reads as part of the picker strip
+   rather than as a second status area — the real status stays on the right.
+   The chip is a button because it opens the card; it is styled flat so it does
+   not compete with Load, which is the only thing in the bar that should look
+   pressable at a glance. */
+.rec-info { position: relative; }
+
+.rec-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  height: 30px;
+  max-width: 300px;
+  padding: 3px 9px;
+  background: #0f151d;
+  border: 1px solid var(--edge-soft);
+  border-radius: 6px;
+  text-align: left;
+  cursor: pointer;
+}
+.rec-chip:disabled { cursor: default; }
+/* Both lines truncate rather than wrap: the bar has a fixed height, and a
+   30-character prompt must not be able to push the render pane down. */
+.rec-chip > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rec-headline { font-size: 11.5px; line-height: 1.15; color: var(--ink); }
+.rec-headline b { color: var(--accent); font-weight: 600; }
+.rec-headline .dim { color: var(--ink-faint); font-weight: 400; }
+.rec-subline {
+  font-size: 10px;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  color: var(--ink-faint);
+}
+.rec-subline .warn { color: var(--warn); }
+.rec-chip[aria-expanded="true"] { border-color: var(--accent-dim); }
+
+/* The full manifest reading. Absolute, so opening it never reflows the bar. */
+.rec-card {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  width: 460px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .55);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.rec-card dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 92px 1fr;   /* label | value, values left-aligned */
+  gap: 2px 10px;
+}
+.rec-card dt {
+  color: var(--ink-faint);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding-top: 2px;
+}
+.rec-card dd { margin: 0; color: var(--ink); }
+/* A checkpoint path is long, absolute, and from another machine as often as
+   not. It wraps anywhere rather than widening the card or being cut off — it
+   is the one value here somebody copies. */
+.rec-card dd.path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: var(--ink-dim);
+  overflow-wrap: anywhere;
+}
+.rec-card dd .warn { color: var(--warn); }
+.rec-card dd .dim { color: var(--ink-faint); }
+.rec-card .rule {
+  grid-column: 1 / -1;
+  height: 1px;
+  margin: 7px 0;
+  background: var(--edge-soft);
+}
+
+.status {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--ink-dim);
+  text-align: right;
+  max-width: 46vw;
+  line-height: 1.35;
+}
+.status .bit { white-space: nowrap; }
+.status .k { color: var(--ink-faint); }
+.status .v { color: var(--ink); }
+.status .warn { color: var(--warn); }
+.status .err { color: #ff7b72; }
+
+/* ----------------------------------------------------------------- stage */
+
+#stage {
+  position: absolute;
+  top: var(--bar-h);
+  bottom: var(--transport-h);
+  left: 0; right: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;   /* cameras | render, half and half */
+  gap: var(--gap);
+  padding: var(--gap);
+}
+
+.pane {
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel);
+  border: 1px solid var(--edge-soft);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* TWO STACKED BANDS: the scene views on top, the wrist views below.
+   `cameras.js` decides which is which, by where a camera IS rather than by
+   whether the policy reads it — the head and the exo watch the scene from a
+   fixed place, the wrists swing with the arms. Equal halves, because neither is
+   the subordinate of the other.
+
+   A band with nothing in it is never rendered, so a record with only the two
+   wrists still fills the pane with exactly two panes side by side, as it did
+   before the head was ever declared. */
+.cameras {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--edge-soft);
+  border: 1px solid var(--edge-soft);
+}
+
+.cam-row {
+  flex: 1 1 0;      /* the halves, and `0` so a tall image cannot claim more */
+  min-height: 0;
+  display: flex;
+  gap: 1px;
+  background: var(--edge-soft);
+}
+
+.cam {
+  flex: 1 1 0;      /* equal widths within a band, whatever it holds */
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+}
+
+.cam figcaption {
+  padding: 7px 10px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  border-bottom: 1px solid var(--edge-soft);
+  display: flex;
+  justify-content: space-between;
+  white-space: nowrap;
+}
+.cam figcaption em {
+  font-style: normal;
+  color: var(--ink-dim);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* What this view WAS for: the policy input slot it filled, whether it anchored the
+   observation, or that the run only recorded it. */
+.cam figcaption .role {
+  margin-left: 7px;
+  color: var(--accent);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* A view the policy never saw. Dimmed, not hidden — it is context for reading
+   the run, and the one thing it must never be mistaken for is an input. */
+.cam.record-only figcaption .role { color: var(--ink-faint); }
+.cam.record-only .shot img { opacity: 0.85; }
+
+/* A binocular frame is ONE image carrying both eyes, left eye in columns
+   0-639. Nothing splits it on the way in: P2 decodes at native resolution and
+   the recorder stores the wire JPEG verbatim, so there is no half a JPEG to
+   store and the split belongs here.
+
+   `--aspect` is already the LEFT EYE's shape, so the element's box is that
+   shape, letterboxed into the pane by the `max-` constraints above. COVER then
+   scales the frame until it covers that box: the frame is twice as wide
+   relative to the box as it is tall, so height binds and the rendered image
+   comes out exactly twice the box's width. Anchoring it left puts the box on
+   columns 0-639 — the left eye, at its true proportions. The scale is uniform,
+   so nothing is stretched, and the only thing discarded is the eye we are not
+   showing. Both stay on disk.
+
+   This replaces a hand-rolled `width: 200%` and a centring transform, which
+   filled the pane by cropping the eye's top and bottom away. */
+.cam.binocular .shot img {
+  object-fit: cover;
+  object-position: left center;
+}
+
+.shot {
+  flex: 1;
+  min-height: 0;
+  /* The containing block the image is fitted against, and the backstop that
+     stops a pane painting over its neighbour if it ever fails to fit. */
+  position: relative;
+  overflow: hidden;
+  background: #05080c;
+}
+/* ABSOLUTELY POSITIONED, and that is what makes the fit reliable rather than
+   nearly reliable. As an ordinary flex/grid child the image's `max-height: 100%`
+   had no definite height to resolve against, so only `max-width` bound: the
+   head came out as wide as its pane and 578 px tall in a 330 px band, painting
+   straight over the wrist row below it. An absolutely positioned box resolves
+   its percentages against the containing block above, which has a definite used
+   size, and `margin: auto` with all four insets zero centres what is left. */
+.shot img {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  /* The shape to SHOW, set per camera by `cameras.js` from the run's own spec —
+     half the frame's width for a binocular one, since only the left eye is
+     shown. `auto`, the fallback for a record that states no camera shapes,
+     means the frame's own shape, which the two constraints above already
+     letterbox. Nothing here ever crops or stretches: a pane that fills its box
+     by discarding the edges of the frame can hide the thing you opened it to
+     see, so what is left over stays black. */
+  aspect-ratio: var(--aspect, auto);
+  object-fit: contain;
+  image-rendering: auto;
+  display: block;
+}
+
+/* A fisheye's lens square and circle (`cameras.js` `lensOverlay`): the same
+   box as the image, letterboxed the same way, so the outline sits on it. */
+.shot svg.lens {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: hidden;
+}
+.shot svg.lens rect,
+.shot svg.lens circle {
+  fill: none;
+  stroke: #ffd24a;
+  stroke-width: 4;
+  vector-effect: non-scaling-stroke;
+}
+.shot svg.lens rect { stroke-width: 2; }
+.shot svg.lens circle { stroke-width: 1; stroke-dasharray: 4 4; opacity: 0.8; }
+
+.render { position: relative; background: #05080c; }
+#gl { display: block; width: 100%; height: 100%; }
+
+/* Shares its line with `.legend`, which is pinned to the opposite corner and
+   grew to six entries. Capped so the two cannot meet in the middle, and
+   dropped entirely when the pane is too narrow to hold both — the legend
+   names what the colours mean and is worth more than a mouse hint. */
+.hint {
+  position: absolute;
+  left: 12px; bottom: 10px;
+  max-width: 38%;
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  pointer-events: none;
+  opacity: .75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 900px) { .hint { display: none; } }
+
+.overlay {
+  position: absolute;
+  top: 10px; right: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  font-size: 10.5px;
+  color: var(--ink-dim);
+}
+.overlay label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: rgba(13, 17, 23, .6);
+  border: 1px solid var(--edge-soft);
+  user-select: none;
+}
+.overlay label:hover { color: var(--ink); border-color: var(--edge); }
+/* A modifier on the row above it rather than a peer, and the indent says so.
+   It goes on the RIGHT because the panel is right-aligned. */
+.overlay label.sub { margin-right: 13px; }
+.overlay label.off { opacity: .42; cursor: default; }
+/* Separates the three SOURCES above from the annotations that decorate them.
+   A rule rather than a heading: the grouping needs to be visible, not named. */
+.overlay-rule {
+  width: 92px;
+  height: 1px;
+  background: var(--edge);
+  margin: 3px 0;
+}
+.overlay label.off:hover { color: var(--ink-dim); border-color: var(--edge-soft); }
+.overlay input { accent-color: var(--accent); margin: 0; }
+
+.legend {
+  position: absolute;
+  right: 12px; bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 58%;
+  gap: 4px 12px;
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  pointer-events: none;
+}
+.legend span { display: flex; align-items: center; gap: 5px; }
+.dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dot.measured  { background: #4ddbf2; }
+.dot.commanded { background: #ffa82e; }
+.dot.solved    { background: #c17dff; }
+
+/* ------------------------------------------------------------- transport */
+
+#transport {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: var(--transport-h);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-top: 1px solid var(--edge);
+}
+
+#controls {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 18px;
+}
+
+/* --- the zoom band ------------------------------------------------------ */
+
+#band-row {
+  height: var(--band-h);
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 6px 18px 0;
+  border-bottom: 1px solid var(--edge-soft);
+}
+
+.band-side {
+  width: 116px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+}
+
+.band-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-faint);
+}
+.band-title .dim { text-transform: none; letter-spacing: 0; }
+
+.band-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+.band-legend span { display: flex; align-items: center; gap: 5px; }
+
+/* The legend glyphs are the same shapes the canvas draws: a triangle pointing
+   down, hollow for the trigger and solid for the ring write. */
+.tri { width: 0; height: 0; border-left: 4px solid transparent;
+       border-right: 4px solid transparent; }
+.tri.solid  { border-top: 6px solid var(--accent); }
+.tri.hollow { border-top: 6px solid var(--warn); opacity: .55; }
+.cov { width: 12px; height: 5px; border-radius: 1px;
+       background: rgba(76, 194, 255, .3); }
+
+#band {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: block;
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--edge-soft);
+}
+
+/* --- the mark tooltip --------------------------------------------------- */
+
+#mark-tip {
+  position: fixed;
+  z-index: 20;
+  pointer-events: none;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+  padding: 7px 9px;
+  font-size: 11px;
+  color: var(--ink-dim);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .45);
+  white-space: nowrap;
+}
+#mark-tip b { color: var(--ink); font-weight: 600; }
+#mark-tip .kind { font-size: 10px; text-transform: uppercase;
+                  letter-spacing: .06em; margin-left: 4px; }
+#mark-tip .kind.trigger { color: var(--warn); }
+#mark-tip .kind.written { color: var(--accent); }
+#mark-tip table { border-collapse: collapse; margin-top: 5px;
+                  font-variant-numeric: tabular-nums; }
+#mark-tip td { padding: 1px 0; }
+#mark-tip td:first-child { color: var(--ink-faint); padding-right: 10px; }
+#mark-tip td + td { color: var(--ink); padding-right: 8px; }
+
+#btn-play, #btn-reset {
+  width: 38px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0;
+}
+
+.scrub {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* Sits directly on top of the slider, sharing its width — `marks.js` insets
+   its drawing by half a thumb so a mark and the playhead agree at both ends. */
+#marks {
+  display: block;
+  width: 100%;
+  height: 24px;
+  margin-bottom: -2px;
+}
+
+#seek {
+  width: 100%;
+  appearance: none;
+  height: 22px;
+  background: transparent;
+  cursor: pointer;
+}
+#seek::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 3px;
+  background: linear-gradient(to right,
+              var(--accent) 0 var(--pct, 0%), #222c39 var(--pct, 0%) 100%);
+}
+#seek::-moz-range-track { height: 5px; border-radius: 3px; background: #222c39; }
+#seek::-moz-range-progress { height: 5px; border-radius: 3px; background: var(--accent); }
+#seek::-webkit-slider-thumb {
+  appearance: none;
+  width: 13px; height: 13px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--ink);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+#seek::-moz-range-thumb {
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  background: var(--ink);
+  border: 2px solid var(--bg);
+}
+#seek:disabled { opacity: .35; cursor: not-allowed; }
+
+.readout {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  white-space: nowrap;
+  min-width: 190px;
+  text-align: right;
+}
+.readout .dim { color: var(--ink-faint); }
+.readout .sep { margin-left: 12px; margin-right: 5px; }
+
+/* ---------------------------------------------------------------- splash */
+
+#splash {
+  position: absolute;
+  top: var(--bar-h); bottom: var(--transport-h);
+  left: 0; right: 0;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  z-index: 5;
+  transition: opacity .18s;
+}
+#splash.hidden { opacity: 0; pointer-events: none; }
+
+.splash-card {
+  max-width: 440px;
+  text-align: center;
+  padding: 0 24px;
+  color: var(--ink-dim);
+}
+.splash-card h1 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 10px;
+}
+.splash-card p { margin: 0; font-size: 12.5px; line-height: 1.6; }
+.splash-card strong { color: var(--ink); font-weight: 600; }
+
+/* An "exact" frame: one that IS a commanded deadline, where the orange ghost is
+   the pose P6 actually published rather than one held over from an earlier
+   tick. The commanded-vs-measured gap only means what it looks like it means on
+   these, so the frame counter says which kind you are on. */
+#f-now.anchor {
+  color: #ffa82e;   /* the commanded ghost's own hue, same as .dot.commanded */
+  font-weight: 600;
+}
+#f-now.anchor::after {
+  content: "\00a0\25c6";        /* a small filled diamond */
+  font-size: 0.7em;
+  vertical-align: 0.15em;
+}
+
+
+/* --- re-solved IK overlays -----------------------------------------------
+   Their colours come from gl.js's `wbikColour` and are written inline on each
+   swatch by app.js at load, so a method the bench adds tomorrow is coloured
+   consistently in the switch, the legend, the readout and the render. */
+#wb-switches { display: contents; }
+#wb-switches label .dot { margin-right: 4px; }
+#wb-legend { display: contents; }
+
+/* The section title, and the note that says why the switches under it are
+   dead. Both need the same translucent panel every `.overlay label` has: the
+   parent is `position: absolute` over the canvas with `align-items: flex-end`,
+   so an unstyled child is sized by its text and grows LEFTWARDS across the
+   render with nothing behind it. "not solved for this recording" is long
+   enough to reach the middle of the robot, which is exactly what it did. */
+.overlay-head {
+  max-width: 210px;
+  text-align: right;
+  font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  margin: 2px 0 1px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: rgba(13, 17, 23, .6);
+  border: 1px solid var(--edge-soft);
+  color: var(--ink-dim);
+}
+.overlay-head span {
+  display: block;
+  text-transform: none; letter-spacing: 0;
+  opacity: .75;
+  /* wraps inside the panel rather than widening it */
+  white-space: normal;
+  line-height: 1.45;
+  margin-top: 1px;
+}
+.overlay-head span:empty { display: none; }
+
+.tcp-readout {
+  margin-top: 8px; padding: 8px 10px; border-radius: 6px;
+  background: rgba(0, 0, 0, .28); font-variant-numeric: tabular-nums;
+}
+.tcp-head {
+  font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+  opacity: .5; margin-bottom: 5px;
+}
+.tcp-row {
+  display: flex; align-items: baseline; gap: 7px;
+  font-size: 12px; line-height: 1.7;
+}
+.tcp-row .dot { flex: none; }
+.tcp-row .who { flex: 1; opacity: .8; }
+.tcp-row .mm { font-family: ui-monospace, SFMono-Regular, monospace; }
+.tcp-row .win { color: rgb(92, 227, 128); }
+.tcp-row.dim { opacity: .35; }

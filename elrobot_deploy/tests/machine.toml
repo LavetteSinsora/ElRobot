@@ -1,0 +1,36 @@
+# The machine file every test runs against (tests/conftest.py).
+#
+# It STATES a CPU pin table — an i9-14900KF's (8 P cores x 2 threads, then 16 E
+# cores in four L2 clusters of four) — because a laptop has no /sys topology to
+# derive one from, and a test must not depend on the machine it runs on. The
+# rules behind the table: docs/setup/machine_toml.md, "CPU pinning".
+
+
+[network]
+iface = "auto"
+subnet = "192.168.123."
+
+[dashboard]
+port = 8080
+
+[env]
+XLA_PYTHON_CLIENT_PREALLOCATE = "true"
+XLA_PYTHON_CLIENT_MEM_FRACTION = "0.9"
+
+[cpu]
+reserved = [9, 11]       # the idle siblings of p7_body (8) and p8_hand (10)
+
+[cpu.pin]
+p1_state  = 6
+p2_camera = 16           # one camera per E-core L2 cluster: 16-19, 20-23, 24-27
+p3_camera = 20
+p4_camera = 24
+exo = 17                 # the exo RealSense shares p2_camera's cluster
+p5_policy = [4, 12, 14]
+p6_target = 2
+p7_body   = 8            # the two favoured (6.0 GHz) physical cores
+p8_hand   = 10
+p9_record = 31           # the far E cluster, away from the decoders
+p11_pico      = 18
+p10_dashboard = 22
+p0_launcher   = 26

@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+# per-run logs from calibration and motion tools
+calibration/logs/
+# Xcode user state
+*.xcuserstate
+xcuserdata/

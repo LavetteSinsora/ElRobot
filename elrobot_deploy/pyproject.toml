@@ -1,0 +1,94 @@
+# g1d_deploy — a deployment runtime for the Unitree G1-D.
+#
+# It depends on no learning framework or training stack: those are a policy's
+# dependencies, never the runtime's. Installing: docs/setup/install.md.
+#
+# Two installs of the same package:
+#
+#   the runtime (the deploy box):   the `runtime` extra — IK, DDS, cameras, the
+#       dashboards. `scripts/install.sh` does everything (builds the CycloneDDS C
+#       library, then `uv sync --extra runtime`). By hand:
+#           CYCLONEDDS_HOME=$PWD/.cyclonedds/install uv sync --extra runtime [--extra realsense] [--extra intervene]
+#   a policy's own venv:            plain `pip install g1d_deploy` — the core only
+#       (numpy): the arena, the policy API and P5, which the runtime launches
+#       under the policy's interpreter (`[policy] python`,
+#       docs/deploying_a_policy/policy_contract.md, "The adapter's own Python").
+#       Add `[replay]` to run inspection's policy replay under that venv.
+[project]
+name = "g1d_deploy"
+version = "0.1.0"
+description = "Deployment runtime for the Unitree G1-D: policy in, torques out, everything recorded"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    # The core: what a policy's venv needs (tests/test_policy_interpreter.py
+    # enforces that P5's import graph stays numpy + stdlib + the core).
+    "numpy>=1.22.4",
+]
+
+[project.scripts]
+g1d_deploy = "g1d_deploy.cli.main:main"
+
+[project.optional-dependencies]
+# Everything the deploy box runs besides P5's policy.
+runtime = [
+    "numpy>=1.22.4,<2",
+    "mujoco>=3.10",
+    "mink",
+    "qpsolvers[daqp]",
+    # The DDS transport (src/g1d_deploy/runtime/drivers/dds/, with the vendored
+    # IDL in its idl/). Ships
+    # no wheels: it builds against the CycloneDDS C library, CYCLONEDDS_HOME +
+    # a C toolchain (scripts/install.sh builds the library).
+    "cyclonedds==0.10.2",
+    "pin",             # pinocchio: gravity comp in runtime/drivers/arm_command.py
+    "opencv-python",   # JPEG decode in runtime/drivers/cameras.py
+    "pyzmq",           # board cameras arrive over ZMQ
+    "paramiko",        # drivers/board/image_server_launch.py: the fisheye server over SSH
+    "pyyaml",          # fisheye_image_server/cameras.yaml, read on the board
+]
+# In a policy's venv, to run inspection's policy replay there (it poses the
+# replayed actions on the model and decodes the recorded frames).
+replay = ["opencv-python-headless", "mujoco>=3.10"]
+# PICO intervention. The native half (xrobotoolkit_sdk) is built by
+# scripts/build_xrobotoolkit.sh, which needs pybind11 in the interpreter.
+# Declared here so the pybind11 that compiles the extension is the locked one.
+intervene = ["pybind11>=2.12"]
+# A RealSense camera on this box (only the g1d_fisheye_dex1_exo profile has
+# one). Imported only when that camera is opened; a run declaring one without
+# it is refused at startup (config_loading/resolved.py, missing_camera_driver).
+realsense = ["pyrealsense2"]
+
+[dependency-groups]
+# `uv sync` installs this by default; `uv sync --no-dev` on a box that only runs.
+dev = [
+    "pytest",
+    "ruff",
+    "scipy",           # one test: tests/test_kin_g1d.py's convex hulls
+]
+
+[tool.uv]
+# The IK stack at the versions the reference deploy box has run. Newer releases move the
+# QP's answer: with mujoco 3.14 / mink 1.3 / qpsolvers 4.13 / daqp 0.10,
+# tests/test_ik_solvers.py::test_a_miss_is_traded_at_the_tcp_not_the_flange
+# fails (checked 2026-09-28), and so would every rollout's arm path change.
+# Lift these deliberately, together, with the IK tests and a bench.
+constraint-dependencies = [
+    "mujoco==3.10.0",
+    "mink==1.2.0",
+    "qpsolvers==4.12.0",
+    "daqp==0.8.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/g1d_deploy"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: loads a real checkpoint and compiles (tens of seconds)"]

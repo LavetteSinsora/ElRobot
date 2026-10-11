@@ -1,0 +1,26 @@
+# custom_modules — the sine eef policy, run on three parts of your own: an IK
+# solver, a blend for overlapping chunks (async), and a 500 Hz smoother and
+# feedforward. Each line below can be used on its own.
+# Every key: docs/deploying_a_policy/deploy_toml.md. The fully commented file: examples/deploy.toml.
+robot = "g1d_fisheye_dex1"
+prompt = "Wave."
+
+[policy]
+entry = "../policies/sine_eef.py:Policy"
+
+[checkpoint]
+path = ""                       # no model
+
+[control]
+sync = false                    # async, so that chunks overlap and the blend runs
+replan_period = 10
+action_horizon = 50
+control_hz = 30.0
+ik = "ik_solver.py:timed_arm_qp"         # docs/infra_logic/ik_solvers.md
+blend = "blend.py:consistent_ensemble"   # docs/infra_logic/chunk_blending.md
+
+[control.servo]
+filter_hz = 6.0                 # > 0 turns the smoother on; ours reads it as its cutoff
+torque_ff = 0.3                 # > 0 turns the feedforward on; ours reads it as its scale
+smoother = "servo.py:make_smoother"          # docs/infra_logic/500hz_execution.md
+feedforward = "servo.py:make_feedforward"

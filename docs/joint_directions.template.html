@@ -1,0 +1,403 @@
+<title>ElRobot Joint Directions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: workbench split. Live 3D arm on the left, one joint's instructions + result log on the right. */
+:root {
+  --bg: #f3f2ef;          /* bench: warm grey, leans toward the printed beige */
+  --panel: #fbfaf8;
+  --ink: #1f2226;
+  --muted: #62666c;
+  --line: #d9d6d0;
+  --accent: #2b5fc7;      /* cobalt: the moving part and its + arrow */
+  --accent-ink: #ffffff;
+  --part: #e8e2da;        /* static printed parts, like the Jade White / beige prints */
+  --servo: #3a3d42;
+  --good: #1f7a4d;
+  --warn: #9a5b00;
+  --display: "Barlow Semi Condensed", "Arial Narrow", sans-serif;
+  --body: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #16181b; --panel: #1d2024; --ink: #e9e7e3; --muted: #a2a6ac; --line: #33373d;
+  --accent: #7ea2ff; --accent-ink: #0f1420; --part: #b9b2a8; --servo: #2a2d31;
+  --good: #5cc48f; --warn: #e0a64a; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #16181b; --panel: #1d2024; --ink: #e9e7e3; --muted: #a2a6ac; --line: #33373d;
+  --accent: #7ea2ff; --accent-ink: #0f1420; --part: #b9b2a8; --servo: #2a2d31;
+  --good: #5cc48f; --warn: #e0a64a; color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--body); margin: 0 }
+.wrap { padding-inline: 16px; padding-block: 18px 28px; max-width: 1240px; margin-inline: auto; display: grid; gap: 16px }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px }
+h1 { font: 600 1.9rem/1.1 var(--display); letter-spacing: .01em; margin: 0; text-wrap: balance }
+header p { margin: 0; color: var(--muted); max-width: 70ch }
+.bench { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start }
+@media (max-width: 860px) { .bench { grid-template-columns: minmax(0, 1fr) } }
+
+.stage { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; aspect-ratio: 4 / 3.4; max-width: 100% }
+.stage canvas { display: block; width: 100%; height: 100% }
+.hud { position: absolute; inset: 10px 10px auto 10px; display: flex; justify-content: space-between; gap: 8px; pointer-events: none; flex-wrap: wrap }
+.chip { font: 500 .78rem/1 var(--mono); padding: 6px 8px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); color: var(--muted) }
+.chip.dir { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-size: .9rem }
+.loading { position: absolute; inset: auto 10px 10px 10px; font: .8rem var(--mono); color: var(--muted) }
+.controls { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--panel); flex-wrap: wrap }
+.controls label { font: .8rem var(--mono); color: var(--muted) }
+.controls input[type=range] { flex: 1 1 200px; accent-color: var(--accent) }
+.stagebox { display: grid; border-radius: 10px; overflow: hidden; border: 1px solid var(--line) }
+.stagebox .stage { border: 0; border-radius: 0 }
+
+.joints { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px }
+.jbtn { all: unset; cursor: pointer; display: grid; gap: 2px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel) }
+.jbtn b { font: 600 1.05rem/1 var(--display) }
+.jbtn span { font-size: .75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.jbtn em { font: 500 .72rem var(--mono); font-style: normal; color: var(--muted) }
+.jbtn em.set { color: var(--good) }
+.jbtn[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent) }
+.jbtn:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 12px; min-width: 0 }
+.card h2 { font: 600 1.45rem/1.15 var(--display); margin: 0 }
+.card h3 { font: 600 .74rem/1 var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 }
+.plus { font-size: 1.02rem }
+.plus strong { color: var(--accent) }
+.note { color: var(--muted); font-size: .9rem; margin: 0 }
+ol { margin: 0; padding-left: 1.2em; display: grid; gap: 6px }
+code, .cmd { font: .86rem var(--mono) }
+.cmd { display: block; padding: 8px 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); overflow-x: auto; white-space: nowrap }
+.answer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px }
+.answer button, .copy { font: 500 .88rem var(--body); padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; text-align: left }
+.answer button:hover, .copy:hover { border-color: var(--accent) }
+.answer button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent) }
+.verdict { font: 500 .9rem var(--mono); padding: 8px 10px; border-radius: 6px; border: 1px dashed var(--line) }
+.verdict.ok { color: var(--good); border-color: var(--good); border-style: solid }
+.summary { display: grid; gap: 8px }
+.summary pre { margin: 0; font: .82rem/1.5 var(--mono); padding: 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); overflow-x: auto; white-space: pre }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>ElRobot joint directions</h1>
+    <p>The blue part shows which way each joint turns when its URDF angle goes <b>up (+)</b>, starting from the rest pose (shoulder −90°, elbow 0°, wrist pitch +90°). Move the real joint a little that way with torque off, watch the servo reading, and record whether it went up or down.</p>
+  </header>
+
+  <div class="bench">
+    <div class="stagebox">
+      <div class="stage" id="stage">
+        <div class="hud"><span class="chip" id="angle">rest pose</span><span class="chip dir" id="dir">toward +</span></div>
+        <div class="loading" id="loading">Loading meshes…</div>
+      </div>
+      <div class="controls">
+        <button class="copy" id="play" type="button">Pause</button>
+        <label for="scrub">angle from rest</label>
+        <input type="range" id="scrub" min="-1" max="1" step="0.001" value="0">
+      </div>
+    </div>
+
+    <div style="display:grid; gap:12px; min-width:0">
+      <div class="joints" id="joints" role="group" aria-label="Joint"></div>
+      <div class="card" id="card"></div>
+      <div class="card summary">
+        <h3>Results to paste back to Claude</h3>
+        <pre id="summary"></pre>
+        <button class="copy" id="copy" type="button">Copy results</button>
+      </div>
+      <div class="card summary">
+        <h3>Check the calibration</h3>
+        <p class="note">Run <code>uv run python -m elrobot.calibration --show</code>, paste its output here and press the button. The model takes the pose the calibration thinks the arm is in. If it matches the real arm, the calibration is right.</p>
+        <label class="note" for="paste">Output of calibration --show</label>
+        <textarea id="paste" rows="6" spellcheck="false" style="font:.8rem var(--mono); padding:8px; border-radius:6px; border:1px solid var(--line); background:var(--bg); color:var(--ink); width:100%; resize:vertical"></textarea>
+        <div class="answer">
+          <button type="button" id="showpose">Show my arm</button>
+          <button type="button" id="backanim">Back to joint animation</button>
+        </div>
+        <div class="verdict" id="posemsg">Nothing pasted yet.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="text/plain" id="urdf">__URDF__</script>
+<script type="importmap">{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const D = Math.PI / 180;
+// Rest pose (elrobot/poses.py, changed 2026-10-11): shoulder -90, elbow 0, wrist pitch +90.
+const REST = { rev_motor_02: -90 * D, rev_motor_04: 90 * D };
+
+const JOINTS = [
+  { id: 1, name: "Base yaw", plus: "turns the whole arm toward <strong>its own left</strong>: counterclockwise, seen from above.",
+    free: "Both ways are free.", move: "Turn the arm a few degrees counterclockwise (seen from above)." },
+  { id: 2, name: "Shoulder", plus: "turns the upper arm so the <strong>elbow end (at the back) rises</strong> and the gripper end dips.",
+    free: "In the rest pose the shoulder sits on its stop near −92°, so only + is free.", move: "Support the arm and lift the elbow end slightly." },
+  { id: 3, name: "Elbow", plus: "swings the forearm so the <strong>gripper end dips</strong>. − lifts it.",
+    free: "In the rest pose the elbow is at 0°, mid-range, so both ways are free.", move: "Lift or lower the gripper end a few degrees at the elbow." },
+  { id: 4, name: "Wrist pitch", plus: "folds the forearm further over, so the <strong>gripper end dips</strong>. − lifts it.",
+    free: "In the rest pose it sits at +90°, about 8° from its + limit, so testing − (lifting the gripper end) is easier.", move: "Lift the gripper end a few degrees at the wrist pitch joint (that is −)." },
+  { id: 5, name: "Forearm roll", plus: "rolls everything past the forearm <strong>counterclockwise</strong>, looking from the base toward the gripper.",
+    free: "Both ways are free within the cable's slack.", move: "Roll it a few degrees counterclockwise (looking from the base toward the gripper).",
+    zero: "At 0° the wrist-bend joint (6) has a horizontal axis. With the forearm level, bending joint 6 then swings the gripper straight up and down, not sideways. In the view from behind, joint 6's axis runs left to right." },
+  { id: 6, name: "Wrist bend", plus: "tips the gripper <strong>downward</strong>.",
+    free: "Both ways are free.", move: "Tip the gripper down a few degrees." },
+  { id: 7, name: "Wrist roll", plus: "rolls the gripper <strong>counterclockwise</strong>, looking from the base toward the gripper.",
+    free: "Both ways are free within the cable's slack.", move: "Roll the gripper a few degrees counterclockwise (looking from the base toward the gripper).",
+    zero: "At 0° the jaws open and close horizontally, left and right, when joints 5 and 6 are also at 0°. In the view from behind, the jaws sit side by side." },
+  { id: 8, name: "Gripper", plus: "<strong>closes</strong> the jaws. 0° is fully open, about 126° is closed.",
+    free: "At rest the gripper is fully open against its stop, so only + (closing) is free.", move: "Close the jaws a little." },
+];
+// Known from the 2026-10-11 runs: gripper readings rise when it opens (opening is − in the URDF).
+const PRESET = { 8: { moved: -1, reading: 1, source: "from the 2026-10-11 runs" } };
+
+/* ---------- results (per-viewer convenience storage) ---------- */
+let results = {};
+try { results = JSON.parse(localStorage.getItem("elrobot-signs") || "{}") } catch { results = {} }
+for (const [k, v] of Object.entries(PRESET)) if (!results[k]) results[k] = v;
+const save = () => { try { localStorage.setItem("elrobot-signs", JSON.stringify(results)) } catch {} };
+const signOf = r => r && r.moved && r.reading ? r.moved * r.reading : null;
+
+/* ---------- scene ---------- */
+const stage = document.getElementById("stage");
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+stage.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(32, 1, 0.01, 10);
+camera.position.set(0.46, 0.30, -0.02);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.11, -0.09);
+controls.enableDamping = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x80776c, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.8); sun.position.set(0.6, 1, 0.4); scene.add(sun);
+const grid = new THREE.GridHelper(0.6, 12); grid.material.transparent = true; grid.material.opacity = 0.25; scene.add(grid);
+
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const mat = { part: new THREE.MeshStandardMaterial({ roughness: .75, flatShading: true }), servo: new THREE.MeshStandardMaterial({ roughness: .5, flatShading: true }),
+  moving: new THREE.MeshStandardMaterial({ roughness: .55, flatShading: true }), arrow: new THREE.MeshBasicMaterial() };
+function applyTheme() {
+  mat.part.color.set(css("--part")); mat.servo.color.set(css("--servo"));
+  mat.moving.color.set(css("--accent")); mat.arrow.color.set(css("--accent"));
+  grid.material.color.set(css("--muted"));
+}
+applyTheme();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+/* ---------- URDF -> scene graph ---------- */
+const doc = new DOMParser().parseFromString(document.getElementById("urdf").textContent.trim(), "application/xml");
+const nums = s => (s || "0 0 0").trim().split(/\s+/).map(Number);
+const root = new THREE.Group(); root.rotation.x = -Math.PI / 2; scene.add(root);  // URDF z-up -> three y-up
+const linkGroup = {}, joints = {}, meshesOf = {};
+for (const l of doc.querySelectorAll("robot > link")) { linkGroup[l.getAttribute("name")] = new THREE.Group(); meshesOf[l.getAttribute("name")] = [] }
+const children = new Set();
+for (const j of doc.querySelectorAll("robot > joint")) {
+  const o = j.querySelector("origin"), a = j.querySelector("axis"), lim = j.querySelector("limit"), mim = j.querySelector("mimic");
+  const frame = new THREE.Group(), motion = new THREE.Group();
+  frame.position.fromArray(nums(o && o.getAttribute("xyz")));
+  const [r, p, y] = nums(o && o.getAttribute("rpy")); frame.rotation.set(r, p, y, "ZYX");
+  const parent = j.querySelector("parent").getAttribute("link"), child = j.querySelector("child").getAttribute("link");
+  linkGroup[parent].add(frame); frame.add(motion); motion.add(linkGroup[child]); children.add(child);
+  joints[j.getAttribute("name")] = { type: j.getAttribute("type"), frame, motion, child,
+    axis: new THREE.Vector3().fromArray(nums(a ? a.getAttribute("xyz") : "1 0 0")).normalize(),
+    lower: lim ? +lim.getAttribute("lower") : 0, upper: lim ? +lim.getAttribute("upper") : 0,
+    mimic: mim ? { joint: mim.getAttribute("joint"), k: +(mim.getAttribute("multiplier") || 1), off: +(mim.getAttribute("offset") || 0) } : null };
+}
+root.add(linkGroup[Object.keys(linkGroup).find(n => !children.has(n))]);
+
+function setPose(q) {
+  for (const [name, j] of Object.entries(joints)) {
+    const v = j.mimic ? (q[j.mimic.joint] || 0) * j.mimic.k + j.mimic.off : (q[name] || 0);
+    if (j.type === "revolute" || j.type === "continuous") j.motion.quaternion.setFromAxisAngle(j.axis, v);
+    else if (j.type === "prismatic") j.motion.position.copy(j.axis).multiplyScalar(v);
+  }
+}
+
+// Meshes: the upstream STLs, packed into meshes.json (quantized to 16 bits, indexed).
+const files = [];
+for (const l of doc.querySelectorAll("robot > link")) {
+  const v = l.querySelector("visual"); if (!v) continue;
+  files.push({ link: l.getAttribute("name"), fn: v.querySelector("mesh").getAttribute("filename"),
+    xyz: nums(v.querySelector("origin")?.getAttribute("xyz")) });
+}
+const loadingEl = document.getElementById("loading");
+const bytes = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer;
+fetch("meshes.json").then(r => { if (!r.ok) throw new Error(r.status); return r.json() }).then(pack => {
+  for (const f of files) {
+    const m = pack[f.fn]; if (!m) continue;
+    const q = new Uint16Array(bytes(m.pos)), pos = new Float32Array(q.length);
+    for (let i = 0; i < q.length; i++) pos[i] = m.lo[i % 3] + q[i] * m.scale[i % 3];
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setIndex(new THREE.BufferAttribute(m.idx32 ? new Uint32Array(bytes(m.idx)) : new Uint16Array(bytes(m.idx)), 1));
+    geo.computeVertexNormals();
+    const isServo = f.link.startsWith("ST3215");
+    const mesh = new THREE.Mesh(geo, isServo ? mat.servo : mat.part);
+    mesh.userData.base = isServo ? mat.servo : mat.part;
+    mesh.position.fromArray(f.xyz); mesh.scale.setScalar(0.001);
+    linkGroup[f.link].add(mesh); meshesOf[f.link].push(mesh);
+  }
+  loadingEl.textContent = ""; highlight();
+}).catch(e => { loadingEl.textContent = `Could not load the arm meshes (${e.message}). The instructions on the right still apply.` });
+
+/* ---------- + arrow around the selected joint's axis ---------- */
+let arrow = null;
+function makeArrow(axis) {
+  const g = new THREE.Group(), r = 0.052, sweep = 4.0;
+  const u = new THREE.Vector3(0, 0, 1).cross(axis); if (u.lengthSq() < 1e-6) u.set(1, 0, 0).cross(axis);
+  u.normalize(); const v = axis.clone().cross(u);   // u x v = axis, so increasing theta = positive rotation
+  const at = t => u.clone().multiplyScalar(Math.cos(t) * r).add(v.clone().multiplyScalar(Math.sin(t) * r));
+  const pts = []; for (let i = 0; i <= 48; i++) pts.push(at(sweep * i / 48));
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 64, 0.0028, 8), mat.arrow));
+  const tan = u.clone().multiplyScalar(-Math.sin(sweep)).add(v.clone().multiplyScalar(Math.cos(sweep))).normalize();
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(0.008, 0.02, 16), mat.arrow);
+  cone.position.copy(at(sweep)); cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tan); g.add(cone);
+  const c = document.createElement("canvas"); c.width = c.height = 128; const x = c.getContext("2d");
+  x.fillStyle = css("--accent"); x.beginPath(); x.arc(64, 64, 56, 0, 7); x.fill();
+  x.fillStyle = css("--accent-ink"); x.font = "bold 92px sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("+", 64, 70);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
+  s.scale.setScalar(0.022); s.position.copy(at(sweep).multiplyScalar(1.35)); g.add(s);
+  return g;
+}
+
+/* ---------- selection, animation ---------- */
+let sel = 1, playing = !matchMedia("(prefers-reduced-motion: reduce)").matches, t0 = performance.now(), offset = 0;
+const urdfName = id => `rev_motor_0${id}`;
+function span(id) {
+  const n = urdfName(id), j = joints[n], rest = REST[n] || 0;
+  return { rest, up: Math.max(0, Math.min(25 * D, j.upper - rest - 2 * D)), down: Math.max(0, Math.min(25 * D, rest - j.lower - 2 * D)) };
+}
+function subtree(link, out = []) {
+  out.push(...meshesOf[link]);
+  for (const j of Object.values(joints)) if (j.frame.parent === linkGroup[link]) subtree(j.child, out);
+  return out;
+}
+function highlight() {
+  const moving = new Set(subtree(joints[urdfName(sel)].child));
+  for (const ms of Object.values(meshesOf)) for (const m of ms) m.material = moving.has(m) ? mat.moving : m.userData.base;
+}
+function select(id) {
+  sel = id;
+  if (arrow) arrow.removeFromParent();
+  arrow = makeArrow(joints[urdfName(id)].axis); joints[urdfName(id)].frame.add(arrow);
+  highlight(); renderList(); renderCard(); t0 = performance.now();
+}
+// Cycle: rest -> +max, hold, rest, hold, -max (if there is room), hold, rest, hold.
+function cycle(t) {
+  const { up, down } = span(sel), e = x => 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, Math.max(0, x)));
+  const seg = [[1.6, s => e(s) * up], [0.8, () => up], [1.6, s => (1 - e(s)) * up], [0.5, () => 0]];
+  if (down > 3 * D) seg.push([1.6, s => -e(s) * down], [0.8, () => -down], [1.6, s => -(1 - e(s)) * down], [0.5, () => 0]);
+  const total = seg.reduce((a, s) => a + s[0], 0); let x = t % total;
+  for (const [d, f] of seg) { if (x < d) return f(x / d); x -= d }
+  return 0;
+}
+const scrub = document.getElementById("scrub"), angleEl = document.getElementById("angle"), dirEl = document.getElementById("dir");
+scrub.addEventListener("input", () => { playing = false; playBtn.textContent = "Play"; });
+const playBtn = document.getElementById("play");
+playBtn.addEventListener("click", () => { playing = !playing; playBtn.textContent = playing ? "Pause" : "Play"; t0 = performance.now() });
+
+let checkPose = null;   // URDF angles from pasted calibration output, or null
+function frame() {
+  if (checkPose) {
+    setPose(checkPose); angleEl.textContent = "your arm, from the calibration"; dirEl.textContent = "check";
+    dirEl.style.opacity = 1;
+    const w = stage.clientWidth, h = stage.clientHeight;
+    if (renderer.domElement.width !== Math.floor(w * renderer.getPixelRatio())) { renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix() }
+    controls.update(); renderer.render(scene, camera); requestAnimationFrame(frame); return;
+  }
+  const { rest, up, down } = span(sel);
+  if (playing) { offset = cycle((performance.now() - t0) / 1000); scrub.value = offset >= 0 ? (up ? offset / up : 0) : (down ? offset / down : 0) }
+  else { const s = +scrub.value; offset = s >= 0 ? s * up : s * down }
+  const q = { ...REST }; q[urdfName(sel)] = rest + offset; setPose(q);
+  angleEl.textContent = `joint ${sel}: ${((rest + offset) / D).toFixed(0)}°  (rest ${(rest / D).toFixed(0)}°)`;
+  dirEl.textContent = Math.abs(offset) < 0.5 * D ? "at rest" : offset > 0 ? "toward +" : "toward −";
+  dirEl.style.opacity = Math.abs(offset) < 0.5 * D ? .55 : 1;
+  const w = stage.clientWidth, h = stage.clientHeight;
+  if (renderer.domElement.width !== Math.floor(w * renderer.getPixelRatio())) { renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix() }
+  controls.update(); renderer.render(scene, camera); requestAnimationFrame(frame);
+}
+
+/* ---------- panel ---------- */
+const jointsEl = document.getElementById("joints"), card = document.getElementById("card");
+function renderList() {
+  jointsEl.innerHTML = JOINTS.map(j => {
+    const s = signOf(results[j.id]);
+    return `<button class="jbtn" type="button" id="j${j.id}" aria-pressed="${j.id === sel}"><b>${j.id}</b><span>${j.name}</span>
+      <em class="${s ? "set" : ""}">${s ? `sign ${s > 0 ? "+1" : "−1"}` : "not tested"}</em></button>`;
+  }).join("");
+  JOINTS.forEach(j => document.getElementById(`j${j.id}`).onclick = () => select(j.id));
+}
+function renderCard() {
+  const j = JOINTS[sel - 1], r = results[sel] || {}, s = signOf(r);
+  card.innerHTML = `
+    <h2>Joint ${j.id} · ${j.name}</h2>
+    <p class="plus" style="margin:0">+ ${j.plus}</p>
+    <p class="note">${j.free}</p>
+    <h3>Test it</h3>
+    <ol>
+      <li>Make sure torque is off everywhere (<code>uv run python -m elrobot.relax</code> if unsure).</li>
+      <li>Start the live reading:<code class="cmd">uv run python -m elrobot.probe --watch --ids ${j.id}</code></li>
+      <li>${j.move} About 5–10° is enough.</li>
+      <li>Did the number go up or down? A jump from around 4095 to around 0 counts as <b>up</b>; 0 to 4095 counts as <b>down</b>.</li>
+    </ol>
+    <h3>Which way did you move it?</h3>
+    <div class="answer">
+      <button type="button" id="m+" aria-pressed="${r.moved === 1}">Toward + (as animated)</button>
+      <button type="button" id="m-" aria-pressed="${r.moved === -1}">Toward − (the other way)</button>
+    </div>
+    <h3>What did the reading do?</h3>
+    <div class="answer">
+      <button type="button" id="r+" aria-pressed="${r.reading === 1}">Went up</button>
+      <button type="button" id="r-" aria-pressed="${r.reading === -1}">Went down</button>
+    </div>
+    ${j.zero ? `<h3>What 0° looks like</h3>
+    <p class="note" style="color:var(--ink)">${j.zero}</p>
+    <button class="copy" type="button" id="zero">Show 0° from behind the gripper</button>` : ""}
+    <div class="verdict ${s ? "ok" : ""}">${s ? `sign = ${s > 0 ? "+1: reading rises when the URDF angle rises" : "−1: reading falls when the URDF angle rises"}${r.source ? ` (${r.source})` : ""}` : "Pick both answers to get this joint's sign."}</div>`;
+  const set = (k, v) => () => { results[sel] = { ...(results[sel] || {}), [k]: v }; delete results[sel].source; save(); renderList(); renderCard(); renderSummary() };
+  card.querySelector("#m\\+").onclick = set("moved", 1); card.querySelector("#m-").onclick = set("moved", -1);
+  card.querySelector("#r\\+").onclick = set("reading", 1); card.querySelector("#r-").onclick = set("reading", -1);
+  const z = card.querySelector("#zero");
+  if (z) z.onclick = () => {
+    playing = false; playBtn.textContent = "Play"; scrub.value = 0;
+    // Behind the gripper, looking along the forearm toward the jaws (URDF -y side, three +z).
+    camera.position.set(0.0, 0.19, 0.22); controls.target.set(0, 0.127, -0.17); controls.update();
+  };
+}
+const summaryEl = document.getElementById("summary");
+function renderSummary() {
+  summaryEl.textContent = "Joint signs (servo reading vs URDF angle):\n" + JOINTS.map(j => {
+    const r = results[j.id], s = signOf(r);
+    return `  ${j.id} ${j.name.padEnd(13)} ${s ? (s > 0 ? "+1" : "-1") : "?"}${s ? `   (moved ${r.moved > 0 ? "+" : "-"}, reading ${r.reading > 0 ? "up" : "down"}${r.source ? ", " + r.source : ""})` : ""}`;
+  }).join("\n");
+}
+document.getElementById("copy").addEventListener("click", async e => {
+  try { await navigator.clipboard.writeText(summaryEl.textContent); e.target.textContent = "Copied" }
+  catch { const rg = document.createRange(); rg.selectNodeContents(summaryEl); getSelection().removeAllRanges(); getSelection().addRange(rg); e.target.textContent = "Selected: press Cmd+C" }
+  setTimeout(() => e.target.textContent = "Copy results", 1800);
+});
+
+const poseMsg = document.getElementById("posemsg");
+document.getElementById("showpose").addEventListener("click", () => {
+  const q = {}, found = [];
+  for (const line of document.getElementById("paste").value.split("\n")) {
+    const m = line.match(/^\s*([1-8])\s+\S.*\s([+-]\d+(?:\.\d+)?)\s*$/);
+    if (m) { q[urdfName(+m[1])] = +m[2] * D; found.push(`${m[1]}: ${(+m[2]).toFixed(1)}°`) }
+  }
+  if (!found.length) { poseMsg.className = "verdict"; poseMsg.textContent = "No joint angles found. Paste the whole table, including the angle column."; return }
+  checkPose = q;
+  for (const ms of Object.values(meshesOf)) for (const m of ms) m.material = m.userData.base;
+  if (arrow) arrow.visible = false;
+  poseMsg.className = "verdict ok"; poseMsg.textContent = `Showing ${found.length} joints: ${found.join(", ")}`;
+});
+document.getElementById("backanim").addEventListener("click", () => {
+  checkPose = null; if (arrow) arrow.visible = true; highlight(); poseMsg.className = "verdict"; poseMsg.textContent = "Back to the joint animation.";
+});
+
+setPose(REST); select(1); renderSummary(); requestAnimationFrame(frame);
+</script>

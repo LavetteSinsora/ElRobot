@@ -1,0 +1,31 @@
+# This box's machine file: copied from machine.example.toml, never committed.
+/machine.toml
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Native builds done in the checkout by scripts/install.sh and
+# scripts/build_xrobotoolkit.sh
+/.cyclonedds/
+/.xrobotoolkit/
+
+# Rollout records and everything written beside them
+**/rollout_record/
+**/policy_replays/
+ik_bench.npz
+wbik_overlay.npz
+
+# Checkpoints and training runs, if one is copied into the checkout
+**/checkpoints/
+**/runs/
+
+# MuJoCo's crash log, dropped in the working directory
+MUJOCO_LOG.TXT

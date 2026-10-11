@@ -1,0 +1,40 @@
+# machine.toml — OPTIONAL: this deploy box's overrides of the defaults.
+# Every key: docs/setup/machine_toml.md.
+#
+# Without this file everything below is detected or defaulted, and g1d_deploy
+# runs. Copy it only to change something:
+#
+#     cp machine.example.toml machine.toml     # then keep what you change
+#
+# Found in order: `--machine PATH`, $G1D_MACHINE, <project root>/machine.toml.
+# `g1d_deploy check` prints what was resolved and from where. Never committed.
+# (The robot's address and login are NOT here: they are the robot file's
+# `[board]`, docs/setup/robot_toml.md.)
+
+[network]
+iface = "auto"                 # NIC for DDS; "auto" = first on subnet   G1D_IFACE
+subnet = "192.168.123."
+
+[dashboard]
+port = 8080                    # live dashboard, loopback     G1D_DASHBOARD_PORT
+
+[paths]
+# Where this box keeps recordings. Every real rollout is recorded (a deploy
+# file can opt out: [record] enabled = false), about 1 GB each with three
+# cameras, so put it on a big disk. A deploy file without [record] out records
+# to <records>/<task>/ (task = [record] task, else the deploy file's folder
+# name), and `g1d_deploy inspect` with no argument opens this directory.
+# Unset: each deploy file records beside itself, in rollout_record/.
+# records = "/data/g1d_records"                                 G1D_RECORDS
+
+[env]                          # exported into the policy process (P5)
+# For every policy run on this box; one policy's own belong in its deploy
+# file's [policy.env]. Example, for a JAX policy (its GPU allocator):
+# XLA_PYTHON_CLIENT_PREALLOCATE = "false"   # allocate on demand (a shared GPU)
+
+[cpu]
+# rt_priority = 80             # SCHED_FIFO for p7/p8; needs CAP_SYS_NICE
+# No [cpu.pin]: the table is derived from this CPU. A CPU the derivation
+# refuses (too few cores, no hyperthreading) needs one stated here: start from
+# `python -m g1d_deploy.runtime.cpu_pinning` (docs/setup/machine_toml.md,
+# "CPU pinning").

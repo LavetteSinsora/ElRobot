@@ -1,0 +1,16 @@
+# sine_eef — eef actions: both flanges trace a small sinusoid.
+# Every key: docs/deploying_a_policy/deploy_toml.md. The fully commented file: examples/deploy.toml.
+robot = "g1d_fisheye_dex1"
+prompt = "Wave."
+
+[policy]
+entry = "sine_eef.py:Policy"
+
+[checkpoint]
+path = ""                       # no model
+
+[control]
+sync = true
+replan_period = 25
+action_horizon = 50
+control_hz = 30.0

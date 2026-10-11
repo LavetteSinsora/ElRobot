@@ -1,0 +1,54 @@
+# g1d_normal_dex1 — a G1-D WITHOUT the fisheye rig, cameras served by the
+# vendor's teleimager, and the Dex-1.
+#
+# P0 never SSHes to the board for this rig: teleimager is a systemd unit that
+# serves by default, and our autostart would STOP it — the only server these
+# cameras have. CHECK still waits for every camera listed below.
+#
+# THE HEAD ALONE, because that is what a stock unit brought up on 2026-09-10 has:
+# `lsusb` on its board lists only the head unit (1bcf:2d4f), teleimager's config
+# has both wrists `enable_zmq: false`, and only 55555 is listening. Declaring
+# wrists there is a CHECK that waits forever for a camera that does not exist.
+extends = "g1d_base"
+
+[image_server]
+type = "teleimager"
+
+[end_effector]
+type = "dex1"
+# ROBOT (Dex-1) — flange -> the end effector's VIRTUAL TCP, [x, y, z, qw, qx,
+# qy, qz] in the flange (wrist-yaw link) frame, the same for both arms
+# (`Hardware.tcp`). The midpoint of the two jaw tips at their furthest
+# extent, 0.184759 m along +X with identity rotation: 0.041500 wrist_yaw ->
+# dex1_base_link + 0.143259 base -> tip midpoint, measured off a MuJoCo model
+# with the Dex-1 mounted, at three arm poses; both arms agree.
+# `robot/g1d_model.py`'s FLANGE_TO_TCP_X is this number.
+#
+# Optional. When given, every IK solve targets this point (the policy's flange
+# target composed with it) and every IK error is measured here; without it,
+# at the flange. Policies still command the FLANGE
+# (docs/deploying_a_policy/policy_contract.md, "The actions"); the PICO
+# intervention always drives the flange.
+tcp = [0.184759, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+
+[cameras.head]
+source = "zmq"
+port = 55555                    # CAMCFG: teleimager's head, a bare JPEG
+shape = [480, 1280]
+kind = "normal"
+layout = "side_by_side"
+
+# A robot that DOES have the stock 480x640 wrist cameras enabled in teleimager
+# adds them in its own file (`extends = "g1d_normal_dex1"`):
+#
+#   [cameras.lwrist]
+#   source = "zmq"
+#   port = 55556
+#   shape = [480, 640]
+#   kind = "normal"
+#
+#   [cameras.rwrist]
+#   source = "zmq"
+#   port = 55557
+#   shape = [480, 640]
+#   kind = "normal"

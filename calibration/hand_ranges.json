@@ -1,0 +1,125 @@
+{
+  "measured": "2026-10-11, by hand, torque off, probe --watch",
+  "joints": {
+    "1": {
+      "name": "base yaw",
+      "ends_reported": [
+        1051,
+        3057
+      ],
+      "span_steps": 2006,
+      "span_deg": 176.3,
+      "midpoint_reported": 2054,
+      "offset_at_measurement": 85,
+      "midpoint_encoder": 2139,
+      "centring_offset": 91,
+      "urdf_width_deg": 177.7,
+      "urdf_midpoint_deg": 0.0
+    },
+    "2": {
+      "name": "shoulder",
+      "ends_reported": [
+        2191,
+        217
+      ],
+      "span_steps": 2122,
+      "span_deg": 186.5,
+      "midpoint_reported": 3252,
+      "offset_at_measurement": 85,
+      "midpoint_encoder": 3337,
+      "centring_offset": 1289,
+      "urdf_width_deg": 184.7,
+      "urdf_midpoint_deg": 0.0
+    },
+    "3": {
+      "name": "elbow",
+      "ends_reported": [
+        3462,
+        1674
+      ],
+      "span_steps": 2308,
+      "span_deg": 202.9,
+      "midpoint_reported": 520,
+      "offset_at_measurement": 85,
+      "midpoint_encoder": 605,
+      "centring_offset": -1443,
+      "urdf_width_deg": 201.8,
+      "urdf_midpoint_deg": 0.0
+    },
+    "4": {
+      "name": "wrist pitch",
+      "ends_reported": [
+        4009,
+        2213
+      ],
+      "span_steps": 2300,
+      "span_deg": 202.1,
+      "midpoint_reported": 1063,
+      "offset_at_measurement": -2002,
+      "midpoint_encoder": 3157,
+      "centring_offset": 1109,
+      "urdf_width_deg": 200.9,
+      "urdf_midpoint_deg": 0.0
+    },
+    "5": {
+      "name": "forearm roll",
+      "ends_reported": [
+        3813,
+        3449
+      ],
+      "span_steps": 3732,
+      "span_deg": 328.0,
+      "midpoint_reported": 1583,
+      "offset_at_measurement": 85,
+      "midpoint_encoder": 1668,
+      "centring_offset": -380,
+      "urdf_width_deg": 336.4,
+      "urdf_midpoint_deg": 18.1
+    },
+    "6": {
+      "name": "wrist bend",
+      "ends_reported": [
+        1318,
+        3359
+      ],
+      "span_steps": 2041,
+      "span_deg": 179.4,
+      "midpoint_reported": 2338,
+      "offset_at_measurement": 85,
+      "midpoint_encoder": 2423,
+      "centring_offset": 375,
+      "urdf_width_deg": 180.0,
+      "urdf_midpoint_deg": 11.1
+    },
+    "7": {
+      "name": "wrist roll",
+      "ends_reported": [
+        2492,
+        2114
+      ],
+      "span_steps": 3718,
+      "span_deg": 326.8,
+      "midpoint_reported": 255,
+      "offset_at_measurement": 85,
+      "midpoint_encoder": 340,
+      "centring_offset": -1708,
+      "urdf_width_deg": 340.1,
+      "urdf_midpoint_deg": -13.4
+    },
+    "8": {
+      "name": "gripper",
+      "ends_reported": [
+        1241,
+        2866
+      ],
+      "span_steps": 1625,
+      "span_deg": 142.8,
+      "midpoint_reported": 2053,
+      "offset_at_measurement": 479,
+      "midpoint_encoder": 2532,
+      "centring_offset": 484,
+      "urdf_width_deg": 126.2,
+      "urdf_midpoint_deg": 63.1
+    }
+  }
+}

@@ -1,0 +1,312 @@
+/* The banner and the controls — everything the inspector has no equivalent of.
+ *
+ * `style.css` is loaded first and supplies the panes, the camera figures, the
+ * canvas overlay and the palette. This file adds the control surface and gets
+ * out of the way, so the two views stay recognisably the same page.
+ */
+
+.dashboard #bar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+/* --- the controls ---------------------------------------------------------
+ * First in the bar and visually heaviest, because they are what the page is
+ * for. Everything else in the banner exists to tell you whether pressing one is
+ * a good idea. */
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* `style.css` gives EVERY button `height: 30px`, and `* { box-sizing:
+ * border-box }` makes that a hard outer height — so vertical padding here would
+ * not make these taller, it would only crush the label inside a 30px box. The
+ * height is therefore stated, and the label centred by the button's own flexbox
+ * rather than by padding that has no room to act.
+ *
+ * All three share every metric that decides their size — height, min-width,
+ * border, font — so they cannot come out different sizes, and the row centres
+ * them against the chips beside it. */
+.ctl {
+  height: 34px;
+  min-width: 96px;
+  padding: 0 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 13px/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms, opacity 120ms;
+}
+
+.ctl:disabled {
+  cursor: not-allowed;
+  opacity: 0.32;
+}
+
+.ctl.start { background: #1c6b45; border-color: #2e9e68; color: #eafff4; }
+.ctl.start:not(:disabled):hover { background: #237f52; }
+
+.ctl.reset { background: #6b551c; border-color: #a1832c; color: #fff8e6; }
+.ctl.reset:not(:disabled):hover { background: #7f6523; }
+
+.ctl.exit { background: #6b2320; border-color: #a13a34; color: #ffeceb; }
+.ctl.exit:not(:disabled):hover { background: #7f2a26; }
+
+/* --- the chips ------------------------------------------------------------
+ * Both the phase and the request are read back from the arena. The `lit` class
+ * is applied when a request is PENDING — i.e. P0 has not consumed it yet — so a
+ * chip that stays lit means P0 is not looking, and one that never lights means
+ * the press did not land. */
+
+.chips {
+  display: flex;
+  gap: 10px;
+}
+
+/* The same 34px the buttons are, so the banner reads as one row rather than as
+ * controls with labels of a different size stacked beside them. */
+.chip {
+  height: 34px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 11px;
+  border: 1px solid #2a2f36;
+  border-radius: 5px;
+  background: #14171b;
+}
+
+.chip-key {
+  font: 500 9px/1 ui-monospace, SFMono-Regular, monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6b7480;
+}
+
+.chip-val {
+  font: 600 13px/1 ui-monospace, SFMono-Regular, monospace;
+  color: #d6dde5;
+}
+
+.chip.req.lit { border-color: #a1832c; background: #241f12; }
+.chip.req.lit .chip-val { color: #f2c94c; }
+
+/* The phase colours track the session word, so the bar reads at a glance from
+ * across the room — which is where the operator usually is. */
+.dashboard[data-phase="READY"]   .chip.phase .chip-val { color: #4ec98a; }
+.dashboard[data-phase="ACTIVE"]  .chip.phase .chip-val { color: #f2c94c; }
+.dashboard[data-phase="HOME"]    .chip.phase .chip-val { color: #6ea8fe; }
+.dashboard[data-phase="WARMUP"]  .chip.phase .chip-val { color: #6ea8fe; }
+.dashboard[data-phase="EXITING"] .chip.phase .chip-val { color: #e2725b; }
+.dashboard[data-phase="STOPPED"] .chip.phase .chip-val { color: #8a939e; }
+
+/* --- what is loaded ------------------------------------------------------- */
+
+.ident {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  font: 500 11px/1.35 ui-monospace, SFMono-Regular, monospace;
+}
+
+.ident-name { color: #d6dde5; font-weight: 600; }
+.ident-step { color: #8a939e; }
+.ident-ckpt {
+  color: #6b7480;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 34ch;
+}
+
+.dashboard .status { margin-left: auto; }
+.dashboard .status.bad { color: #e2725b; }
+
+/* An overlay toggle for something that cannot be shown right now. Greyed rather
+ * than hidden: the switch still says what it would draw, and the state says why
+ * it is not drawing it. */
+.dashboard .overlay label.inactive {
+  opacity: 0.38;
+}
+
+.dashboard .cam figcaption.bad::after {
+  content: " · stream lost";
+  color: #e2725b;
+}
+
+/* --- the prompt --------------------------------------------------
+ * A primary control, so it sits in the control row at the buttons' height. The
+ * line under it is READ BACK: the policy's verdict on what was typed. */
+
+.prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 18ch;
+  flex: 1 1 32ch;
+  max-width: 60ch;
+}
+
+.prompt input {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid #2a2f36;
+  border-radius: 5px;
+  background: #14171b;
+  color: #d6dde5;
+  font: 500 13px/1 ui-sans-serif, system-ui, sans-serif;
+}
+
+.prompt input:focus { outline: none; border-color: #4cc2ff; }
+.prompt input:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.prompt-read {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  font: 500 10px/1.2 ui-monospace, SFMono-Regular, monospace;
+}
+
+.prompt-state { color: #8a939e; white-space: nowrap; }
+.prompt-state[data-kind="accepted"] { color: #4ec98a; }
+.prompt-state[data-kind="refused"]  { color: #e2725b; white-space: normal; }
+.prompt-state[data-kind="checking"] { color: #f2c94c; }
+
+
+/* --- Deploy settings ----------------------------------------------
+ * Secondary: one quiet button, and a panel that drops over the stage. A dot on
+ * the button says the request differs from what the last rollout ran with. */
+
+.ctl.settings {
+  background: #1b2330;
+  border-color: #2a3646;
+  color: #c9d3de;
+  min-width: 0;
+}
+.ctl.settings:not(:disabled):hover { background: #232d3c; }
+.ctl.settings.pending::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: #f2c94c;
+}
+
+.settings-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(var(--bar-h, 56px) + 4px);
+  left: 12px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - var(--bar-h, 56px) - 24px);
+  overflow: auto;
+  padding: 12px 14px;
+  border: 1px solid #2a3646;
+  border-radius: 8px;
+  background: #11161d;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.settings-table {
+  border-collapse: collapse;
+  font: 500 12px/1.3 ui-monospace, SFMono-Regular, monospace;
+  color: #c9d3de;
+}
+
+.settings-table th,
+.settings-table td { padding: 4px 10px; text-align: left; }
+.settings-table thead th {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6b7480;
+}
+.settings-table tbody th { font-weight: 500; color: #8a939e; white-space: nowrap; }
+.settings-table small { color: #5b6673; margin-left: 4px; }
+.settings-table tr.group th {
+  padding-top: 10px;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6b7480;
+}
+.settings-table input[type="number"],
+.settings-table select {
+  width: 10ch;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid #2a2f36;
+  border-radius: 4px;
+  background: #14171b;
+  color: #d6dde5;
+  font: inherit;
+}
+.settings-table td.req,
+.settings-table td.act { color: #8a939e; }
+/* Requested but not yet in force: the next Start will change it. */
+.settings-table tr.pending td.req { color: #f2c94c; }
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.ctl.apply { background: #1e4b63; border-color: #2f6f90; color: #e6f5ff; }
+.ctl.apply:not(:disabled):hover { background: #245a76; }
+.ctl.ghost { background: transparent; border-color: #2a3646; color: #8a939e; }
+
+.settings-msg { font: 500 11px/1.3 ui-monospace, SFMono-Regular, monospace; }
+.settings-msg[data-kind="ok"]  { color: #4ec98a; }
+.settings-msg[data-kind="bad"] { color: #e2725b; }
+
+@media (max-width: 900px) {
+  .dashboard #bar { flex-wrap: wrap; height: auto; }
+}
+
+/* --- the status line -------------------------------------------------------
+ * Under the bar: what the current (or last) rollout runs with. The stage
+ * starts below it. */
+
+.dashboard { --status-h: 26px; }
+
+.statusline {
+  position: absolute;
+  top: var(--bar-h); left: 0; right: 0;
+  height: var(--status-h);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 16px;
+  overflow: hidden;
+  white-space: nowrap;
+  background: #10151c;
+  border-bottom: 1px solid var(--edge-soft);
+  font: 500 11px/1 ui-monospace, SFMono-Regular, monospace;
+  color: #d6dde5;
+}
+.statusline span { display: inline-flex; gap: 6px; align-items: baseline; }
+.statusline i { font-style: normal; color: #6b7480; text-transform: uppercase;
+  letter-spacing: 0.1em; font-size: 9px; }
+.statusline b { font-weight: 600; }
+.statusline .sl-prompt { min-width: 0; flex: 1; overflow: hidden; }
+.statusline .sl-prompt b { overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.dashboard[data-phase="ACTIVE"] #sl-phase { color: #f2c94c; }
+.dashboard[data-phase="READY"] #sl-phase { color: #4ec98a; }
+
+.dashboard #stage {
+  top: calc(var(--bar-h) + var(--status-h));
+  bottom: 0;
+}

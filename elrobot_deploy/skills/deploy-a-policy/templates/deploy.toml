@@ -1,0 +1,33 @@
+# TEMPLATE deploy file: fill in every TODO. Every key: docs/deploying_a_policy/deploy_toml.md.
+# Relative paths are relative to THIS file.
+#
+#     g1d_deploy check-policy deploy.toml --no-run    # level 1: resolves, no GPU
+#     g1d_deploy check-policy deploy.toml             # level 2: loads + infers (takes the GPU)
+
+robot = "g1d_fisheye_dex1"      # TODO the profile whose cameras match the training rig (docs/setup/robot_toml.md)
+prompt = "TODO the task instruction, as training phrased it"
+
+[policy]
+entry = "policy.py:Policy"
+# python = "~/path/to/model/.venv/bin/python"   # TODO the model's venv, with g1d_deploy's core installed
+#
+# [policy.env]                                  # set before the first import (e.g. JAX memory)
+# XLA_PYTHON_CLIENT_MEM_FRACTION = "0.5"
+
+[checkpoint]
+path = ""                       # TODO the step directory; "" = load nothing
+# run = "~/runs/my_task/my_run" # ... or a run directory and a step:
+# step = "latest"               # a number, "latest", or an alias resolve_checkpoint knows
+
+[home]
+# Left out: the infra's default home. Set `arm` (14 radians, left arm then
+# right) only if the user wants a different start posture.
+hand = "open"
+
+[control]
+sync = true                     # async: the arm keeps moving during inference
+replan_period = 25              # P: ticks between inferences, 2 <= P <= H
+# action_horizon = 50           # default: the class's trained_action_horizon
+# control_hz = 30.0             # default: the class's trained_control_hz
+# sample_steps = 10             # handed to on_settings / self.settings
+# ik = "arm_planner"            # eef only; docs/infra_logic/ik_solvers.md

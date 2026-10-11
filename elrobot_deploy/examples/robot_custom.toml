@@ -1,0 +1,48 @@
+# robot_custom.toml — a robot file of your own, on top of a shipped profile.
+#
+#     g1d_deploy check --robot examples/robot_custom.toml
+#     # and in a deploy.toml:   robot = "robot_custom.toml"
+#
+# `extends` names a shipped profile (or another file, relative to this one).
+# Tables merge key by key and THIS file wins; an array is replaced whole. To
+# start from no cameras at all, extend "g1d_base".
+#
+# A robot file lists the cameras that EXIST. CHECK waits for every one of them,
+# so declare only what is plugged in.
+extends = "g1d_fisheye_dex1"
+
+# A camera on this box's own USB. `device` must be a /dev/v4l/by-path/ node:
+# the fisheye units report identical serials, so by-id collides, and
+# /dev/videoN is not stable across reboots. `ls -l /dev/v4l/by-path/`.
+[cameras.table]
+source = "v4l2"
+device = "/dev/v4l/by-path/pci-0000:00:14.0-usb-0:3:1.0-video-index0"
+shape = [720, 1280]             # [height, width], native
+kind = "normal"                 # or "fisheye180": its lens square is fitted at launch
+hz = 30.0
+
+# Optional calibration, handed to the policy untouched and never read by the
+# infra. The URDF has no camera links, so these come from calibration.
+[cameras.table.intrinsics]
+fx = 910.0
+fy = 910.0
+cx = 640.0
+cy = 360.0
+model = "pinhole"
+coeffs = []
+
+[cameras.table.extrinsics]
+parent = "torso_link"
+xyz = [0.6, 0.0, 0.4]
+wxyz = [1.0, 0.0, 0.0, 0.0]
+
+# A fallback lens circle for one wrist (used only if the launch's fit fails):
+# [cameras.rwrist]
+# fallback_lens_circle = { center_x = 675.48, center_y = 342.61, radius = 343.44 }
+
+# Another end effector, or another tool centre point (flange frame; optional —
+# without it the IK solves at the flange). Changing `type` without restating
+# `tcp` drops the inherited one.
+# [end_effector]
+# type = "dex1"                                    # dex1 | brainco
+# tcp = [0.184759, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]

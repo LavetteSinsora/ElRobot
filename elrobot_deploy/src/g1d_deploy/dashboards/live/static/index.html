@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>deploy control</title>
+<!-- The inspector's stylesheet first: the panes, the canvas overlay and the
+     camera figures are the same furniture, and this view is meant to look like
+     the one the operator already reads rollouts in. `dashboard.css` adds only
+     the banner and the control buttons, which the inspector has no equivalent
+     of. -->
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body class="dashboard">
+
+<!-- The banner. The controls sit at its head because they are what this page is
+     FOR — the phase and the policy's identity are there to tell you whether pressing
+     one is a good idea. -->
+<header id="bar">
+  <div class="controls" role="group" aria-label="session control">
+    <button id="btn-start" class="ctl start" disabled>Start</button>
+    <button id="btn-reset" class="ctl reset" disabled>Reset</button>
+    <button id="btn-exit"  class="ctl exit"  disabled>Exit</button>
+  </div>
+
+  <!-- The prompt: a primary control of its own. Enter submits; the
+       POLICY judges it (only it owns a tokenizer), in P5, a dummy inference
+       later — so the verdict is read back from the arena, never assumed.
+       The prompt in use is in the status line below. Takes effect at the
+       next Start. -->
+  <form id="prompt-form" class="prompt" autocomplete="off"
+        title="The instruction for the NEXT rollout. Enter submits it; the policy accepts or refuses it; it takes effect when Start is accepted. Disabled while a rollout runs.">
+    <input id="prompt-input" type="text" placeholder="prompt — Enter to submit"
+           spellcheck="false" disabled>
+    <div class="prompt-read">
+      <span class="prompt-state" id="prompt-state"></span>
+    </div>
+  </form>
+
+  <button id="btn-settings" class="ctl settings" aria-expanded="false"
+          aria-controls="settings-panel"
+          title="Rollout settings: inference mode (sync/async), replan period, control rate, IK, servo, sample steps. Take effect at the next Start.">Deploy settings</button>
+
+  <!-- Both of these are READ BACK from the arena, never from what this page
+       believes it sent. A request that lost its race shows up here as a chip
+       that did not change. -->
+  <div class="chips">
+    <div class="chip phase" title="The session word in shared memory — P0's own answer for where the run is, not this page's guess.">
+      <span class="chip-key">phase</span>
+      <span class="chip-val" id="phase">&mdash;</span>
+    </div>
+    <div class="chip req" title="The pending request word. It clears the instant P0 takes it, so a chip that stays lit means P0 has not looked yet; one that never lit means the press did not land.">
+      <span class="chip-key">request</span>
+      <span class="chip-val" id="request">NONE</span>
+    </div>
+    <div class="chip" title="The tick P7 is executing toward. Reset puts it back to 0.">
+      <span class="chip-key">k_exec</span>
+      <span class="chip-val" id="k-exec">0</span>
+    </div>
+  </div>
+
+  <div class="ident">
+    <span class="ident-name" id="ident-name">&mdash;</span>
+    <span class="ident-step" id="ident-step"></span>
+    <span class="ident-ckpt" id="ident-ckpt" title=""></span>
+  </div>
+
+  <div id="status" class="status"></div>
+</header>
+
+<!-- The status line: what the current (or last) rollout runs with, read back
+     from the control region's ACTIVE block, never from the request. -->
+<div id="statusline" class="statusline" aria-live="polite">
+  <span><i>phase</i><b id="sl-phase">&mdash;</b></span>
+  <span title="The IK solver in force, and its mode (arm, or waist: the trunk is planned too)"><i>ik</i><b id="sl-ik">&mdash;</b></span>
+  <span title="sync or async inference (and, in async, the blend)"><i>inference mode</i><b id="sl-sync">&mdash;</b></span>
+  <span title="How many action ticks run between replans"><i>replan period</i><b id="sl-p">&mdash;</b></span>
+  <span title="The action rate"><i>rate</i><b id="sl-rate">&mdash;</b></span>
+  <span class="sl-prompt" title="The prompt in use"><i>prompt</i><b id="sl-prompt">&mdash;</b></span>
+</div>
+
+<!-- The secondary menu behind "Deploy settings". Submitting writes
+     `requested_config`; P0 copies it into `active_config` only when it accepts
+     the next Start, so the two columns differ until then. -->
+<section id="settings-panel" class="settings-panel" hidden>
+  <form id="settings-form" autocomplete="off">
+    <table class="settings-table">
+      <thead>
+        <tr><th></th><th>new</th><th>requested</th><th>active</th></tr>
+      </thead>
+      <tbody>
+        <tr data-key="sync">
+          <th>inference mode</th>
+          <td><select name="sync"><option value="true">sync</option><option value="false">async</option></select></td>
+          <td class="req"></td><td class="act"></td>
+        </tr>
+        <tr data-key="replan_period">
+          <th>replan period <small id="p-range"></small></th>
+          <td><input name="replan_period" type="number" min="2" step="1"></td>
+          <td class="req"></td><td class="act"></td>
+        </tr>
+        <tr data-key="blend" id="blend-row">
+          <th>blend <small>async: how overlapping chunks merge</small></th>
+          <td><select name="blend"></select></td>
+          <td class="req"></td><td class="act"></td>
+        </tr>
+        <tr data-key="control_hz">
+          <th>control rate, Hz</th>
+          <td><input name="control_hz" type="number" min="1" step="any"></td>
+          <td class="req"></td><td class="act"></td>
+        </tr>
+        <tr data-key="ik">
+          <th>IK solver</th>
+          <td><select name="ik"></select></td>
+          <td class="req"></td><td class="act"></td>
+        </tr>
+        <tr data-key="sample_steps">
+          <th>sample steps</th>
+          <td><input name="sample_steps" type="number" min="1" step="1"></td>
+          <td class="req"></td><td class="act"></td>
+        </tr>
+        <tr class="group"><th colspan="4">servo</th></tr>
+        <tr data-key="servo.filter_hz">
+          <th>filter, Hz <small>0 = straight line</small></th>
+          <td><input name="servo.filter_hz" type="number" min="0" step="any"></td>
+          <td class="req"></td><td class="act"></td>
+        </tr>
+        <tr data-key="servo.filter_lead">
+          <th>filter lead</th>
+          <td><input name="servo.filter_lead" type="checkbox"></td>
+          <td class="req"></td><td class="act"></td>
+        </tr>
+        <tr data-key="servo.velocity_ff">
+          <th>velocity ff</th>
+          <td><input name="servo.velocity_ff" type="number" min="0" step="any"></td>
+          <td class="req"></td><td class="act"></td>
+        </tr>
+        <tr data-key="servo.torque_ff">
+          <th>torque ff</th>
+          <td><input name="servo.torque_ff" type="number" min="0" step="any"></td>
+          <td class="req"></td><td class="act"></td>
+        </tr>
+        <tr data-key="servo.arm_gain_scale">
+          <th>arm gain scale</th>
+          <td><input name="servo.arm_gain_scale" type="number" min="0" step="any"></td>
+          <td class="req"></td><td class="act"></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="settings-actions">
+      <button type="submit" id="settings-submit" class="ctl apply">Request</button>
+      <button type="button" id="settings-reload" class="ctl ghost">Revert to requested</button>
+      <span id="settings-msg" class="settings-msg"></span>
+    </div>
+  </form>
+</section>
+
+<!-- The stage: the cameras and the 3-D scene (`live.js`). -->
+<main id="stage">
+  <!-- Filled from /api/meta: the camera set is the robot file's, and naming it
+       here would be a second place it is written down. -->
+  <section class="pane cameras" id="cameras"></section>
+
+  <section class="pane render">
+    <canvas id="gl"></canvas>
+    <div class="overlay">
+      <label title="Where the arm actually is: the robot posed at the newest measured joint angles in the state ring. Always available, in every phase.">
+        <input type="checkbox" id="chk-measured" checked> measured
+      </label>
+      <label title="The absolute flange pose the IK was given for the tick being executed, drawn as a Dex-1 with no robot behind it. Only during a rollout: outside one nothing is commanding, and P0's ramps carry no Cartesian target at all.">
+        <input type="checkbox" id="chk-ghost" checked> commanded pose
+      </label>
+      <label title="The joint angles P6 published for the tick being executed — what P7 was actually told to drive to — posed as a whole robot. Only during a rollout.">
+        <input type="checkbox" id="chk-solved" checked> commanded joints
+      </label>
+
+      <div class="overlay-rule"></div>
+
+      <label title="The virtual TCP: 184.759 mm along the wrist frame's +X, the frame the policy's actions are labelled in.">
+        <input type="checkbox" id="chk-tcp" checked> virtual TCP
+      </label>
+      <label title="Wheeled base and lift column. The column is drawn fully retracted.">
+        <input type="checkbox" id="chk-base" checked> base &amp; column
+      </label>
+    </div>
+    <div class="legend">
+      <span><i class="dot measured"></i>measured</span>
+      <span><i class="dot commanded"></i>cmd pose</span>
+      <span><i class="dot solved"></i>cmd joints</span>
+    </div>
+    <div class="hint">drag to orbit &middot; scroll to zoom &middot; shift-drag to pan</div>
+  </section>
+</main>
+
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

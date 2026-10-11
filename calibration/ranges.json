@@ -1,0 +1,61 @@
+{
+  "8": {
+    "joint": 8,
+    "name": "gripper",
+    "lower": {
+      "encoder": 3351,
+      "kind": "stop",
+      "travel": 25,
+      "torque_limit": 220,
+      "peak_load": 220,
+      "peak_current": 26
+    },
+    "upper": {
+      "encoder": 3326,
+      "kind": "rest",
+      "travel": 0,
+      "torque_limit": 0,
+      "peak_load": 0,
+      "peak_current": 0
+    },
+    "span_steps": 25,
+    "span_deg": 2.2,
+    "urdf_width_deg": 126.2,
+    "midpoint_encoder": 3363,
+    "centring_offset": 1315,
+    "problems": [
+      "end positions (3351 -> 3326) disagree with the distance travelled (25 steps)",
+      "span 2.2 deg is more than 20 deg from the URDF's 126.2"
+    ],
+    "measured_at": "2026-10-11 21:33:48"
+  },
+  "7": {
+    "joint": 7,
+    "name": "wrist roll",
+    "lower": {
+      "encoder": 2205,
+      "kind": "stop",
+      "travel": 2379,
+      "torque_limit": 300,
+      "peak_load": 300,
+      "peak_current": 47
+    },
+    "upper": {
+      "encoder": 2536,
+      "kind": "stop",
+      "travel": 331,
+      "torque_limit": 300,
+      "peak_load": 300,
+      "peak_current": 39
+    },
+    "span_steps": 331,
+    "span_deg": 29.1,
+    "urdf_width_deg": 340.1,
+    "midpoint_encoder": 2370,
+    "centring_offset": 322,
+    "problems": [
+      "span 29.1 deg is more than 20 deg from the URDF's 340.1"
+    ],
+    "measured_at": "2026-10-11 14:42:52"
+  }
+}

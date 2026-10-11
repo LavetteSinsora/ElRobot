@@ -1,0 +1,18 @@
+# g1d_fisheye_dex1_exo — g1d_fisheye_dex1 plus an exocentric RealSense on the
+# deploy box's own USB.
+#
+# The RealSense is not always plugged in, so it is its own profile rather than
+# part of g1d_fisheye_dex1: CHECK waits for every listed camera, and a camera
+# that is not there is a run that does not start.
+#
+# Its decode process is pinned by its own name: give `exo` a core under the
+# machine file's [cpu.pin] (tests/machine.toml states 17 for it).
+extends = "g1d_fisheye_dex1"
+
+[cameras.exo]
+source = "realsense"
+# "auto" = the only RealSense on this box (`rs.config()` with no serial). Put a
+# serial number here if there is ever more than one.
+serial = "auto"
+shape = [480, 640]              # [height, width]: the mode the policy expects
+kind = "normal"

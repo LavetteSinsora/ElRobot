@@ -1,0 +1,112 @@
+# deploy.toml — one deployment: which robot, which policy (and its checkpoint,
+# if it has one), where the arm starts and ends, and the default rollout
+# settings. Every key: docs/deploying_a_policy/deploy_toml.md.
+#
+#     g1d_deploy run examples/deploy.toml
+#     g1d_deploy run examples/deploy.toml --robot g1d_normal_dex1
+#     g1d_deploy run examples/deploy.toml --set control.replan_period=10
+#
+# Copy it next to your policy and edit. Relative paths in this file are
+# relative to THIS file, wherever the command is run from.
+#
+# Resolution, later wins:
+#     infra defaults < the policy class's trained_control_hz /
+#     trained_action_horizon (if it declares them) < this file < command line
+# The startup banner prints which layer each non-default value came from, and
+# every rollout manifest records all of it.
+
+# A shipped profile (g1d_fisheye_dex1, g1d_fisheye_dex1_exo, g1d_normal_dex1,
+# g1d_normal_brainco) or a path to your own (examples/robot_custom.toml).
+robot = "g1d_fisheye_dex1"
+
+prompt = "Hold still."
+
+[policy]
+# "pkg.module:Class" (importable) or "path/to/file.py:Class".
+entry = "policies/hold.py:Policy"
+# The interpreter P5 runs under: your policy's own venv (torch, jax, numpy 2,
+# ...), which needs only g1d_deploy's minimal core installed
+# (docs/deploying_a_policy/policy_contract.md, "The adapter's own Python").
+# Unset = the runtime's own interpreter.
+# python = "~/projects/my_policy/.venv/bin/python"
+# The camera whose frame time IS t_anchor, and the cameras the policy reads.
+# Normally the policy class declares these (`anchor_camera`, `uses_cameras`);
+# set them here only to override it. Unset `uses_cameras` = every camera the
+# robot file declares.
+# anchor_camera = "rwrist"
+# uses_cameras = ["rwrist", "lwrist"]
+#
+# Environment P5 sets before it imports the policy — the machine file's [env]
+# plus these, these winning (e.g. a JAX policy's allocator flags):
+# [policy.env]
+# XLA_PYTHON_CLIENT_MEM_FRACTION = "0.5"
+
+[checkpoint]
+# EITHER the step directory itself ...
+path = ""                       # "" = this policy loads nothing
+# ... OR a run directory and a step in it: a number, "latest" (the highest
+# numeric subdirectory), or an alias the policy's `resolve_checkpoint`
+# classmethod understands. `--step` on the command line sets `step`.
+# run = "~/projects/runs/my_task/my_run"
+# step = "latest"
+
+[home]
+# Where the arm goes at the start of every run, and back to on Reset. Radians,
+# left arm then right, each shoulder pitch/roll/yaw, elbow, wrist
+# roll/pitch/yaw — the order of the robot file's [joints] arm. Left out: the
+# infra's default home (`config_loading/deploy_file.py::DEFAULT_HOME_ARM`).
+# arm = [ ...14 radians... ]
+waist = [0.0, 0.0, 0.0]         # yaw, bow, (absent)
+hand = "open"                   # "open", "closed", a grip value, or [left, right]
+# How far the MEASURED posture may sit from home once homing ends before the
+# run is refused, rad. The arm droops under kp; the waist is the frame
+# everything else is expressed in, hence tighter.
+tol_arm = 0.15
+tol_waist = 0.05
+
+# Where the arm goes when the session ends. Omitted keys = the home value.
+# [exit]
+# arm = [...]
+# hand = "open"
+
+[control]
+# Every value here is a default for each rollout; the command line overrides.
+sync = true
+replan_period = 25              # P, ticks run before the next chunk; 2 <= P <= H
+action_horizon = 50             # H, ticks one chunk covers; never above the policy's declared H
+control_hz = 30.0               # the ACTION rate; != the policy's declared rate is a warning
+sample_steps = 10               # handed to the policy's sampler
+# ik = "arm_planner"            # arm_planner (default) | arm_qp | waist_planner
+                                # | waist_qp (waist_* sync only), or
+                                # module:factory — docs/infra_logic/ik_solvers.md
+# blend = "temporal_ensemble"   # async: "temporal_ensemble" (default) | "newest" | your own
+# solve_lead_ticks = 5
+# plan_lookahead_ticks = 0
+
+[control.servo]
+# How P7 turns the 30 Hz target line into 500 Hz commands
+# (docs/infra_logic/500hz_execution.md).
+filter_hz = 4.0                 # 0 = the straight-line command
+filter_lead = true
+velocity_ff = 1.0
+torque_ff = 0.5                 # needs the robot file's [servo_model]
+arm_gain_scale = 1.0
+
+# [intervene]
+# The PICO takeover (--intervene). Defaults are this rig's measured values.
+# lead_s = 0.035
+# scale = 1.0
+
+[record]
+# Every real rollout is recorded (one directory each, a manifest.json
+# saying exactly what ran); `g1d_deploy inspect` opens them. Where, first
+# found wins: `out` (relative to this file) or --out; else the machine
+# file's [paths] records / <task> (task = `task`, else this folder's name);
+# else rollout_record/ beside this file.
+# out = "rollout_record"
+# task = "my_task"
+enabled = true
+
+# [labels]
+# Free-form strings copied into every record, read by nothing.
+# ab_arm = "baseline"
