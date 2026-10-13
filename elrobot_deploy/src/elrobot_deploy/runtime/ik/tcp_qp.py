@@ -29,12 +29,23 @@ And one addition for teleoperation, where a session lasts minutes rather than on
 WHAT THIS ARM CAN AND CANNOT FOLLOW (measured on the description, 60 Hz, 5 cm circles at
 0.5 Hz, `velocity_scale` 0.5):
 
-  * gripper pitched down (the usual tabletop case): 0.05-0.1 mm, the speed cap never binds;
-  * gripper held LEVEL and pointing straight ahead while moving sideways: not feasible. Even
-    with no speed cap the joints would need 8-300 rad/s and run into their limits, because
-    the wrist (roll, bend, roll) has no yaw joint and is near its singularity there. The QP
-    then trades orientation first (cost 0.3 against 1.0 for position), stops at the limits,
-    and reports the residual: an arm that does what it can, not one that jumps.
+  * gripper pitched down (the usual tabletop case): 0.05-0.1 mm, the speed cap never binds.
+    The wrist roll's axis then has a vertical component, so it can yaw the gripper.
+  * gripper LEVEL and pointing straight ahead, moved sideways at constant heading: it depends on
+    the wrist's configuration, not on the motion. Only the base joint has a vertical axis;
+    joints 2, 3, 4 (and the wrist bend, with the forearm roll at 0) are parallel horizontal
+    pitch axes, and both rolls point along the forearm. So with a straight, un-rolled wrist,
+    nothing but the base can turn the gripper about the vertical, and the base also swings the
+    TCP sideways. A pure sideways move cannot cancel that turn: the configuration is singular
+    for it, and following it needs very fast wrist motion (measured: speed cap bound on most
+    ticks, up to ~20 mm behind).
+    Rolling the wrist first (forearm roll +90, wrist roll -90: the gripper looks the same)
+    stands the wrist-bend axis upright, turning it into a yaw joint. From there a level 5 cm
+    sideways circle tracks to 0.1 mm. Mixed sideways-and-vertical circles were still 5-15 mm
+    behind, because the solve drifts back to the un-rolled branch; holding the branch is
+    `nominal_q` / `set_nominal`'s job, and how teleop picks it is still open.
+    Whatever it cannot follow, the QP trades orientation first (cost 0.3 against 1.0 for
+    position), stops at the limits, and reports the residual. It never jumps.
 
 The target is the TCP (the midpoint of the jaw tips; `description/elrobot_ours/README.md`), in
 the base frame, as `[x y z qw qx qy qz]`. There is no flange anywhere in this package.
