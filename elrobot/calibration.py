@@ -12,7 +12,8 @@ How the zero readings were found (2026-10-11):
   joints 1-4, 6  measured range width matched the URDF, so the middle of the range is the middle
                  of the URDF limits (0 deg for 1-4, +11.1 deg for 6). Joint 4 re-swept 2026-10-13
                  after a loose screw was tightened: middle moved 37 steps (3.3 deg).
-  joint 8        fully open stop = URDF 0 (the URDF's jaw geometry is open at 0)
+  joint 8        fully open stop = URDF 0 (the URDF's jaw geometry is open at 0); closed end is the
+                 hand-swept stop (142.8 deg of travel), past upstream's 126.2 deg (decided 2026-10-17)
   joints 5, 7    set by eye to the URDF zero pose (cable limits their range); a few degrees rough
 
     uv run python -m elrobot.calibration          # build calibration.json from the measurements
@@ -81,10 +82,9 @@ def build(hand_ranges: dict, robot: Robot) -> dict[int, JointCal]:
         if j in MEASURED_ZERO:
             zero, source = MEASURED_ZERO[j], "set by eye to the URDF zero pose"
         elif j == 8:
-            zero, source = GRIPPER_OPEN_READING, "fully open stop = URDF 0"
-            # closing past the URDF's closed limit only squeezes the jaws
-            closed = round(GRIPPER_OPEN_READING + SIGNS[8] * jt.upper / RAD_PER_STEP)
-            lo = max(lo, closed)
+            # closed end: the hand-swept stop (142.8 deg), not upstream's 126.2 deg, which our
+            # gripper closes past (description/elrobot_ours uses the same stop)
+            zero, source = GRIPPER_OPEN_READING, "fully open stop = URDF 0; closed end hand-swept"
         else:
             mid = (jt.upper + jt.lower) / 2
             middle = (lo + hi) / 2

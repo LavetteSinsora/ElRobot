@@ -78,9 +78,9 @@
       "sign": -1,
       "zero_reading": 2861,
       "offset": 484,
-      "min_reading": 1459,
+      "min_reading": 1270,
       "max_reading": 2827,
-      "zero_source": "fully open stop = URDF 0"
+      "zero_source": "fully open stop = URDF 0; closed end hand-swept"
     }
   }
 }

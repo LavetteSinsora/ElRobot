@@ -456,7 +456,7 @@
     <parent link="ST3215_4_v1_1" />
     <child link="Joint_04_v1_1" />
     <axis xyz="-0.99981 0.008574 0.017527" />
-    <limit upper="1.7119" lower="-1.7119" effort="2.94" velocity="4.71" />
+    <limit upper="1.7135" lower="-1.7150" effort="2.94" velocity="4.71" />
   </joint>
   <joint name="Rigid 11" type="fixed">
     <origin xyz="0.020391 0.065663 -0.010035" rpy="0 0 0" />
