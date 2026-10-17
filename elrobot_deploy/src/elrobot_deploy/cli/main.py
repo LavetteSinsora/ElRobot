@@ -2,6 +2,8 @@
 
     elrobot_deploy run [--sim] [--no-phone] [--profile NAME|PATH] [--set section.key=value ...]
     elrobot_deploy config [--profile ...] [--set ...]        print the resolved settings
+    elrobot_deploy phone-bench                               check the phone grip, no robot
+    elrobot_deploy fake-phone ...                            a synthetic phone (for --sim)
     elrobot_deploy executor-test ...                         the executor's sine test
 
 `run` is thin on purpose: it resolves the profile and the overrides (`config_loading.config`),
@@ -49,6 +51,15 @@ def _parser() -> argparse.ArgumentParser:
     c = sub.add_parser("config", help="print the resolved profile and exit")
     _add_profile(c)
 
+    b = sub.add_parser("phone-bench", help="print the phone's motion in your axes; no robot",
+                       description="Receive the phone's packets and, while ENGAGE is held, "
+                                   "print its motion since the press in the operator's "
+                                   "forward / left / up. Check the grip before driving.")
+    _add_profile(b)
+    b.add_argument("--port", type=int, default=None)
+
+    sub.add_parser("fake-phone", help="send synthetic phone packets (its own --help)",
+                   add_help=False)
     sub.add_parser("executor-test", help="the executor's sine test (its own --help)",
                    add_help=False)
     return parser
@@ -64,12 +75,19 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:1] == ["executor-test"]:
         from elrobot_deploy.cli import executor_test
         return executor_test.main(argv[1:])
+    if argv[:1] == ["fake-phone"]:
+        from elrobot_deploy.runtime.teleop import fake_phone
+        return fake_phone.main(argv[1:])
     parser = _parser()
     args = parser.parse_args(argv)
     try:
         cfg = _config(args)
     except ConfigError as exc:
         parser.exit(2, f"elrobot_deploy: error: {exc}\n")
+    if args.command == "phone-bench":
+        from elrobot_deploy.runtime.processes.p11_phone import bench
+        bench(cfg, port=args.port)
+        return 0
     print(cfg.describe())
     if args.command == "config":
         return 0

@@ -5,17 +5,19 @@ import QuartzCore
 
 /// Runs ARKit world tracking and sends one UDP datagram per ARFrame (~60 Hz).
 ///
-/// Packet (UTF-8 JSON, one datagram):
+/// Packet v2 (UTF-8 JSON, one datagram):
 /// {
-///   "v": 1,                      // schema version
+///   "v": 2,                      // schema version
 ///   "seq": 1234,                 // monotonically increasing counter
 ///   "t": 5123.456,               // ARFrame capture time, seconds (iOS uptime clock)
 ///   "t_send": 5123.470,          // send time, same clock (echoed back for RTT)
 ///   "pose": [16 floats],         // 4x4 T_world_phone, ROW-major, metres
 ///   "track": "normal",           // ARKit tracking state
+///   "world_epoch": 0,            // bumped whenever the world frame may have changed
 ///   "buttons": {"engage": false, "grip": false}
 /// }
-/// New fields can be added freely; receivers should ignore unknown keys.
+/// The Mac echoes {"seq", "t_send", "t_mac", "state", "why", "intervene"} back.
+/// New fields can be added freely; receivers ignore unknown keys.
 final class PoseStreamer: NSObject, ObservableObject, ARSessionDelegate {
     // UI-facing stats (main thread, throttled to ~5 Hz)
     @Published var trackingText = "—"
@@ -23,20 +25,29 @@ final class PoseStreamer: NSObject, ObservableObject, ARSessionDelegate {
     @Published var rttMs: Double = .nan
     @Published var position = SIMD3<Float>(repeating: 0)
     @Published var connected = false
+    @Published var epoch = 0
+    // What the Mac says the arm is doing (from its echo; updated when it changes).
+    @Published var macState = "—"      // inactive | idle | engaged | released
+    @Published var macWhy = ""
 
     private let session = ARSession()
     private let queue = DispatchQueue(label: "pose.stream", qos: .userInteractive)
     private var connection: NWConnection?          // touched only on `queue`
 
+    // Shared between the main thread (buttons, reset) and `queue` (frames).
     private let lock = NSLock()
     private var engage = false
     private var grip = false
+    private var worldEpoch = 0
 
-    // Stats, touched only on `queue`
+    // Touched only on `queue`
     private var seq: UInt64 = 0
     private var rateCount = 0
     private var rateWindowStart = CACurrentMediaTime()
     private var rttEMA: Double = .nan
+    private var lastTrack = ""
+    private var lastMacState = ""
+    private var lastMacWhy = ""
 
     override init() {
         super.init()
@@ -53,9 +64,18 @@ final class PoseStreamer: NSObject, ObservableObject, ARSessionDelegate {
         lock.unlock()
     }
 
-    private func readButtons() -> (Bool, Bool) {
+    private func readState() -> (Bool, Bool, Int) {
         lock.lock(); defer { lock.unlock() }
-        return (engage, grip)
+        return (engage, grip, worldEpoch)
+    }
+
+    /// Poses before and after this are in different frames: the Mac releases the clutch.
+    private func bumpEpoch() {
+        lock.lock()
+        worldEpoch += 1
+        let e = worldEpoch
+        lock.unlock()
+        DispatchQueue.main.async { self.epoch = e }
     }
 
     // MARK: ARKit
@@ -69,6 +89,7 @@ final class PoseStreamer: NSObject, ObservableObject, ARSessionDelegate {
         }
         let cfg = ARWorldTrackingConfiguration()
         cfg.worldAlignment = .gravity
+        bumpEpoch()
         session.run(cfg, options: [.resetTracking, .removeExistingAnchors])
     }
 
@@ -78,17 +99,22 @@ final class PoseStreamer: NSObject, ObservableObject, ARSessionDelegate {
         pose.reserveCapacity(16)
         for r in 0..<4 { for c in 0..<4 { pose.append(m[c][r]) } }   // emit row-major
 
-        let (e, g) = readButtons()
         let track = Self.describe(frame.camera.trackingState)
+        if track == "limited:relocalizing" && lastTrack != track {
+            bumpEpoch()                              // the map may be re-anchored after this
+        }
+        lastTrack = track
+        let (e, g, epochNow) = readState()
         seq &+= 1
 
         let packet: [String: Any] = [
-            "v": 1,
+            "v": 2,
             "seq": seq,
             "t": frame.timestamp,
             "t_send": CACurrentMediaTime(),
             "pose": pose,
             "track": track,
+            "world_epoch": epochNow,
             "buttons": ["engage": e, "grip": g],
         ]
         if let conn = connection,
@@ -115,7 +141,16 @@ final class PoseStreamer: NSObject, ObservableObject, ARSessionDelegate {
     }
 
     func session(_ session: ARSession, didFailWithError error: Error) {
+        bumpEpoch()
         DispatchQueue.main.async { self.trackingText = "AR error: \(error.localizedDescription)" }
+    }
+
+    func sessionWasInterrupted(_ session: ARSession) {
+        bumpEpoch()
+    }
+
+    func sessionInterruptionEnded(_ session: ARSession) {
+        bumpEpoch()
     }
 
     static func describe(_ s: ARCamera.TrackingState) -> String {
@@ -154,15 +189,27 @@ final class PoseStreamer: NSObject, ObservableObject, ARSessionDelegate {
         }
     }
 
-    /// The receiver echoes {"seq", "t_send"} back; we measure round-trip time on the
-    /// phone's own clock, so no clock sync between phone and Mac is needed.
+    /// The Mac echoes {"seq", "t_send", "state", "why", ...} back. The round-trip time is
+    /// measured on the phone's own clock, so no clock sync is needed; `state` is what the
+    /// arm is doing for the operator.
     private func receiveEcho(on c: NWConnection) {
         c.receiveMessage { data, _, _, error in
             if let data,
-               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let ts = obj["t_send"] as? Double {
-                let rtt = (CACurrentMediaTime() - ts) * 1000
-                self.rttEMA = self.rttEMA.isNaN ? rtt : 0.9 * self.rttEMA + 0.1 * rtt
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let ts = obj["t_send"] as? Double {
+                    let rtt = (CACurrentMediaTime() - ts) * 1000
+                    self.rttEMA = self.rttEMA.isNaN ? rtt : 0.9 * self.rttEMA + 0.1 * rtt
+                }
+                let state = obj["state"] as? String ?? ""
+                let why = obj["why"] as? String ?? ""
+                if state != self.lastMacState || why != self.lastMacWhy {
+                    self.lastMacState = state
+                    self.lastMacWhy = why
+                    DispatchQueue.main.async {
+                        self.macState = state
+                        self.macWhy = why
+                    }
+                }
             }
             if error == nil, self.connection === c { self.receiveEcho(on: c) }
         }

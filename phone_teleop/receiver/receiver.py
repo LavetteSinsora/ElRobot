@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Receive PhoneTeleop pose packets over UDP (standard library only).
+"""Receive PhoneTeleop pose packets over UDP (standard library only): a link test.
+
+The arm is driven by `elrobot_deploy run` (its phone source, P11, replaces this), and the grip
+is checked with `elrobot_deploy phone-bench`. This stays as the dependency-free way to see
+whether packets arrive at all.
 
     python3 receiver.py              # listen on 0.0.0.0:5005, print live stats
     python3 receiver.py --port 6000 --no-echo
@@ -74,7 +78,9 @@ class PoseReceiver:
                 continue
             if self.echo:
                 self._sock.sendto(
-                    json.dumps({"seq": pkt.get("seq"), "t_send": pkt.get("t_send")}).encode(), addr
+                    json.dumps({"seq": pkt.get("seq"), "t_send": pkt.get("t_send"),
+                                "t_mac": now, "state": "idle",
+                                "why": "receiver.py: a link test, no arm"}).encode(), addr
                 )
             seq = pkt.get("seq")
             with self._lock:

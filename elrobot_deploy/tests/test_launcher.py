@@ -59,7 +59,7 @@ def request_when(launcher, state, request, delay=0.2):
 def test_a_session_homes_hands_over_and_exits_to_the_exit_pose(fast, tmp_path):
     p0 = Recorder(fast, log_dir=tmp_path)
     request_when(p0, schema.ACTIVE, schema.REQ_EXIT)
-    assert p0.run() == 0
+    assert p0.run() == 0, "\n".join(p0.lines)
     assert np.allclose(p0.seen["READY"], fast.poses.home, atol=math.radians(1.0))
     release, last = p0.final
     assert release, "a completed exit ramp lets the bus release torque"
@@ -93,7 +93,7 @@ def test_reset_ramps_home_and_ticks_keep_counting(fast):
         c.request = schema.REQ_EXIT
 
     threading.Thread(target=drive, daemon=True).start()
-    assert p0.run() == 0
+    assert p0.run() == 0, "\n".join(p0.lines)
     assert k_seen[1] > k_seen[0] + 30, "k_exec never rewinds"
     assert np.allclose(p0.seen["READY"], fast.poses.home, atol=math.radians(1.0))
 
