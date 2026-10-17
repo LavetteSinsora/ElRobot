@@ -296,6 +296,8 @@ def test_a_blocked_joint_and_lost_reads():
     assert f.kind == "blocked" and f.joints == [2]
     g.recovering = True
     assert Guard(GuardSettings()).check(0.0, cmd, late) is None
+    off = Guard(GuardSettings(blocked=False))             # --runaway-only
+    assert off.check(0.0, cmd, late) is None and off.check(9.9, cmd, late) is None
     g = Guard()
     faults = [g.check(0.0, cmd, None) for _ in range(GuardSettings().read_fails)]
     assert faults[-1].kind == "read" and all(f is None for f in faults[:-1])

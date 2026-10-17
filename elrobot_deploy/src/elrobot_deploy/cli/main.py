@@ -54,6 +54,11 @@ def _parser() -> argparse.ArgumentParser:
                    help="home right after the check, without waiting for Home")
     r.add_argument("--auto-start", action="store_true",
                    help="start the rollout right after homing, without waiting for Start")
+    r.add_argument("--runaway-only", action="store_true",
+                   help="of the bus guards, keep only the runaway rule (a joint far off its "
+                        "command and moving away: its torque goes off); no 'blocked' rule. Lost "
+                        "position reads still hold the arm (torque on). Same as --set "
+                        "safety.blocked=false")
     r.add_argument("--no-dashboard", action="store_true",
                    help="do not start the dashboard (Home and Start then come from Enter)")
     r.add_argument("--log-dir", default=str(REPO / "logs" / "sessions"),
@@ -83,6 +88,8 @@ def _parser() -> argparse.ArgumentParser:
 
 def _config(args):
     sets = list(args.sets) + (["bus.driver=sim"] if args.sim else [])
+    if getattr(args, "runaway_only", False):
+        sets.append("safety.blocked=false")
     return load(args.profile, sets=sets)
 
 

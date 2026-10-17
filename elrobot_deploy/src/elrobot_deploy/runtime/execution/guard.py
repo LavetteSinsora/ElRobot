@@ -40,6 +40,9 @@ class GuardSettings:
     runaway_grow_deg: float = 10.0
     runaway_window_s: float = 0.3
     gross_deg: float = 60.0
+    #: The blocked rule at all. False (`run --runaway-only`): only a runaway (and lost reads,
+    #: which hold rather than release anything) can stop a session.
+    blocked: bool = True
     lag_deg: float = 15.0
     lag_s: float = 1.5
     stuck_deg: float = 3.0
@@ -106,7 +109,7 @@ class Guard:
                          f"from it (not obeying the goal): their torque is off")
 
         # blocked: far behind for a long time
-        if not self.recovering:
+        if s.blocked and not self.recovering:
             late = (absd > s.lag_deg) & self._lag_mask & live
             self.lag_since[~late] = np.nan
             # Still moving: progress restarts the clock from here.
