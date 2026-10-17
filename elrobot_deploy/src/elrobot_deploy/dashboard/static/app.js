@@ -165,12 +165,17 @@ function fmt(x, d = 1) { return x === null || x === undefined ? '—' : x.toFixe
 
 function banner() {
   const s = state;
+  const p = s.phone;
   if (!s.live) return ['wait', 'Preview: no robot connected.',
     'Green ghost: home, orange: exit. Drag the sliders to pose the solid arm.'];
   if (s.bus === 'HOLDING') return ['bad', `Bus fault: the arm is HELD where it is.`, s.fault];
   if (s.session === 'STOPPED') return ['', 'Session ended.', s.dry_run ? 'Dry run: torque was never on.'
     : 'If the exit ramp completed, torque is off; otherwise the arm is still held (see the terminal).'];
   if (s.session === 'EXITING') return ['wait', 'Exiting: returning to the exit pose…', ''];
+  if (s.wait === 'PHONE') return ['wait', 'Waiting for the phone.',
+    p && p.samples ? (p.track !== 0 ? 'ARKit tracking is not normal: point the camera at something textured.'
+      : 'Receiving; it must stream steadily for a second.')
+      : 'Open the app, enter this Mac\'s IP and port, tap Connect.'];
   if (s.wait === 'HOME') return ['wait', 'The arm is held where it was found.',
     'The green ghost is the home pose. Check the path is clear, then press Home.'];
   if (s.session === 'HOME') return ['wait', 'Homing…', 'The arm ramps to the home pose.'];

@@ -57,8 +57,10 @@ INIT -> CHECK -(Home)-> HOME -> READY -(Start)-> ACTIVE -> EXITING -> STOPPED
   bit, and reads inside its calibrated range (8 deg of slack: the arm rests on its stops). The
   report is printed as a table and shown on the dashboard; any problem refuses the start. Then
   it turns torque on holding the measured posture (in a dry run: not) and sets its `ready`
-  latch. The phone source starts too; nothing waits for the phone (only the clutch moves the
-  arm), the dashboard shows when it streams.
+  latch. Then the phone source, and CHECK **waits for the phone** (as g1d's
+  did for the PICO): it must stream at 30 Hz or more for a second with ARKit tracking normal.
+  The terminal and the dashboard say what is missing (nothing received, a low rate, tracking).
+  `--no-phone` skips the phone entirely.
 - **Wait for Home**: the arm is held where it was found; the dashboard draws the home pose as a
   green ghost beside it. Nothing moves until **Home** (the dashboard's button, or Enter in the
   terminal; `--auto-home` skips the wait).

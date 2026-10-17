@@ -197,3 +197,77 @@ def test_a_dry_run_session_commands_but_never_moves_the_arm(fast):
     assert np.allclose(seen["q_cmd"], fast.poses.home, atol=1e-3), "the command went home"
     assert np.allclose(seen["q"], fast.poses.exit, atol=1e-3), "the arm did not"
     assert any("torque was never on" in line for line in p0.lines)
+
+
+def _stream(port, stop, track, hz=60.0):
+    """A minimal phone: still, clutch up, `track()` deciding the tracking state."""
+    import socket
+
+    from elrobot_deploy.runtime.teleop.phone import GRIP_IN_WORLD, packet
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    T = np.eye(4)
+    T[:3, :3] = GRIP_IN_WORLD
+    seq = 0
+    while not stop.is_set():
+        seq += 1
+        sock.sendto(packet(seq, time.monotonic(), T, track=track()), ("127.0.0.1", port))
+        time.sleep(1 / hz)
+    sock.close()
+
+
+def _free_port():
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+def test_check_waits_for_the_phone_to_stream_with_tracking(fast):
+    from dataclasses import replace
+    cfg = replace(fast, teleop=replace(fast.teleop, port=_free_port()))
+    p0 = Recorder(cfg, auto_home=False)
+    p0.phone = True
+    seen, stop = {}, threading.Event()
+    track = {"now": "limited:initializing"}
+
+    def operator():
+        while p0.rings is None or p0.rings["control"].wait != schema.WAIT_PHONE:
+            time.sleep(0.01)
+        time.sleep(1.0)                      # no phone: still waiting
+        seen["no phone"] = p0.rings["control"].wait
+        threading.Thread(target=_stream, args=(cfg.teleop.port, stop, lambda: track["now"]),
+                         daemon=True).start()
+        time.sleep(1.5)                      # streaming, but tracking is limited: still waiting
+        seen["limited"] = p0.rings["control"].wait
+        track["now"] = "normal"
+        while p0.rings["control"].wait != schema.WAIT_HOME:
+            time.sleep(0.01)
+        seen["passed"] = True
+        p0.rings["control"].request = schema.REQ_EXIT
+
+    threading.Thread(target=operator, daemon=True).start()
+    try:
+        assert p0.run() == 0, "\n".join(p0.lines)
+    finally:
+        stop.set()
+    assert seen["no phone"] == schema.WAIT_PHONE and seen["limited"] == schema.WAIT_PHONE
+    assert seen["passed"]
+    assert any("phone streaming" in line for line in p0.lines)
+
+
+def test_exit_while_waiting_for_the_phone(fast):
+    from dataclasses import replace
+    cfg = replace(fast, teleop=replace(fast.teleop, port=_free_port()))
+    p0 = Recorder(cfg)
+    p0.phone = True
+
+    def operator():
+        while p0.rings is None or p0.rings["control"].wait != schema.WAIT_PHONE:
+            time.sleep(0.01)
+        p0.rings["control"].request = schema.REQ_EXIT
+
+    threading.Thread(target=operator, daemon=True).start()
+    assert p0.run() == 0, "\n".join(p0.lines)
+    assert not any("HOME" == line.split()[-1] for line in p0.lines if line.startswith("[P0]"))

@@ -63,10 +63,11 @@ REQUEST_NAMES = {REQ_NONE: "NONE", REQ_START: "START", REQ_RESET: "RESET", REQ_E
 #
 # Written by P0 so a dashboard can offer the one button that moves the session on: HOME (the
 # arm is held where it was found, the home pose is previewed, nothing moves until confirmed)
-# and START (homed, waiting for the rollout to begin).
-WAIT_NONE, WAIT_HOME, WAIT_START = range(3)
+# and START (homed, waiting for the rollout to begin). PHONE: CHECK is waiting for the phone to
+# stream (no button: it ends when the phone does).
+WAIT_NONE, WAIT_HOME, WAIT_START, WAIT_PHONE = range(4)
 
-WAIT_NAMES = {WAIT_NONE: "NONE", WAIT_HOME: "HOME", WAIT_START: "START"}
+WAIT_NAMES = {WAIT_NONE: "NONE", WAIT_HOME: "HOME", WAIT_START: "START", WAIT_PHONE: "PHONE"}
 
 # --- the bus process's own word -------------------------------------------------------------
 #

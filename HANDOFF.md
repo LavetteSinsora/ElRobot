@@ -17,7 +17,7 @@ bus, Waveshare adapter at 1 Mbps, controlled from the Mac).
 | **session + dashboard** | hardware check, Home (previewed) and Start gates, a browser view of the URDF (measured / commanded / home), dry runs | **built, tested in simulation**; not yet on the Mac |
 
 The session as it runs now: `run` -> the hardware check (a table on the terminal and the
-dashboard) -> the arm held where it was found, the home pose shown as a green ghost at
+dashboard) -> waiting for the phone to stream (>= 30 Hz for 1 s, tracking normal) -> the arm held where it was found, the home pose shown as a green ghost at
 `http://127.0.0.1:8080` -> **Home** (button or Enter) -> homing -> **Start** -> hold the pad on
 the phone to drive -> Reset / Exit (button) or Ctrl-C. `--dry-run` does all of it on the real
 arm with torque OFF (only the blue ghost moves).

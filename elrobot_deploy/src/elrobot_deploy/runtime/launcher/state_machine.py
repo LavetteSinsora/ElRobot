@@ -6,8 +6,9 @@ brings it back. Once the session says ACTIVE it only waits: there is no orchestr
 rollout.
 
     INIT    the arena
-    CHECK   the bus process (it takes the serial port and holds the measured posture), then
-            the phone source; each must prove it produces before the arm moves
+    CHECK   the bus process (the hardware check, then it takes the serial port and holds the
+            measured posture), then the phone source: the phone must stream (>= 30 Hz for a
+            second, tracking normal) before the arm moves
     HOME    a ramp to `[poses] home`
     READY   wait for START (a teleop launch starts at once: only the clutch moves the arm)
     ACTIVE  P6 runs; the operator drives while holding the clutch
@@ -50,6 +51,9 @@ from elrobot_deploy.runtime.shared_memory import Arena, build, open_all, schema
 POLL_S = 0.01
 #: How long STOPPED waits for the children to close themselves before terminating them.
 SHUTDOWN_JOIN_S = 10.0
+#: CHECK's phone test: this many packets per second, sustained this long, tracking normal.
+PHONE_MIN_HZ = 30.0
+PHONE_WINDOW_S = 1.0
 #: Two Ctrl-C closer together than this are one key press (see `_install_sigint`).
 DEBOUNCE_S = 0.5
 #: How often a long wait reminds the terminal what it is waiting for.
@@ -264,22 +268,59 @@ class Launcher:
                  f"{', DRY RUN: torque off, nothing is written' if self.dry_run else ''}); "
                  f"arm at {np.round(np.degrees(q), 1).tolist()} deg")
         if self.phone:
-            # Started now, waited for never: only the clutch moves the arm, so a phone that is
-            # not streaming yet must not hold up the check or homing. The dashboard shows it,
-            # and `_note_phone` says it here once it appears.
+            # A PRODUCER, so CHECK proves it produces before anything moves, as g1d's CHECK did
+            # for the PICO: no Home until the phone has streamed steadily with good tracking.
             self.children.start("p11_phone", "elrobot_deploy.runtime.processes.p11_phone.run",
                                 (self.name, self.cfg))
-            self.log(f"[P0] phone source listening on UDP {self.cfg.teleop.port}: connect the "
-                     f"app to this Mac")
+            self._verify_phone()
+
+    def _verify_phone(self) -> None:
+        """Wait until the phone has streamed for `PHONE_WINDOW_S` at `PHONE_MIN_HZ` or more,
+        with ARKit tracking "normal". No timeout, as everywhere here: it ends when the phone
+        streams, on Ctrl-C or EXIT, or when the phone source dies. Says what is missing."""
+        from collections import deque
+        control, rows = self.rings["control"], self.rings["intervene"]
+        control.wait = schema.WAIT_PHONE
+        self.log(f"[P0] waiting for the phone: open the app, enter this Mac's IP, port "
+                 f"{self.cfg.teleop.port}, Connect (Ctrl-C to exit)")
+        history: deque = deque()
+        t_next = self.clock.now() + REMIND_S
+        try:
+            while True:
+                now = self.clock.now()
+                m = rows.meta()
+                samples = int(m["samples"])
+                history.append((now, samples))
+                while len(history) > 1 and now - history[1][0] >= PHONE_WINDOW_S:
+                    history.popleft()
+                t0, s0 = history[0]
+                span = now - t0
+                rate = (samples - s0) / span if span > 0 else 0.0
+                tracking = int(m["track"]) == 0
+                if span >= PHONE_WINDOW_S and rate >= PHONE_MIN_HZ and tracking:
+                    self.log(f"[P0] phone streaming: {rate:.0f} Hz, tracking normal")
+                    return
+                if not self.children.alive("p11_phone"):
+                    raise ConfigError("the phone source exited (its traceback is above)")
+                if self._take_request() == schema.REQ_EXIT:
+                    raise _ExitNow
+                self._check_bus()
+                if now >= t_next:
+                    if samples == 0:
+                        why = "nothing received yet (same WiFi? the IP and port in the app?)"
+                    elif rate < PHONE_MIN_HZ:
+                        why = f"only {rate:.0f} packets/s (need {PHONE_MIN_HZ:.0f}): is the app in front?"
+                    else:
+                        why = "ARKit tracking is not normal: point the camera at something textured"
+                    self.log(f"[P0] still waiting for the phone: {why}")
+                    t_next = now + REMIND_S
+                self.clock.sleep_until(now + POLL_S)
+        finally:
+            control.wait = schema.WAIT_NONE
 
     def _note_phone(self) -> None:
-        """Say once when the phone's first packet arrives (and if the phone source died)."""
-        if not self.phone or getattr(self, "_phone_seen", False):
-            return
-        if int(self.rings["intervene"].meta()["samples"]) > 0:
-            self._phone_seen = True
-            self.log("[P0] phone streaming")
-        elif not self.children.alive("p11_phone"):
+        """The phone source must stay alive for the whole session."""
+        if self.phone and not self.children.alive("p11_phone"):
             raise ConfigError("the phone source exited (its traceback is above)")
 
     def _log_report(self) -> None:
