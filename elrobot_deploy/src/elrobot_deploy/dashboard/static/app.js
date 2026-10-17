@@ -326,6 +326,9 @@ function updateScene() {
   }
   applyLayers();
   if (!s.live) layers.command.visible = false;
+  // No toggles for the poses: home always shows, exit only in the no-robot preview.
+  layers.home.visible = true;
+  layers.exit.visible = !s.live;
   redraw();
 }
 
@@ -368,7 +371,6 @@ for (const b of document.querySelectorAll('#preview button[data-pose]')) {
 for (const b of document.querySelectorAll('#buttons button')) {
   b.addEventListener('click', async () => {
     const req = b.dataset.request;
-    if (req === 'EXIT' && !confirm('End the session? The arm ramps to the exit pose.')) return;
     if (req === 'HOME' && !confirm('Move the arm to the home pose (the green ghost)?')) return;
     b.disabled = true;
     await fetch('/api/request', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -392,7 +394,6 @@ async function poll() {
       $('preview').hidden = false;
       $('legend').querySelector('[data-layer="command"]').parentElement.hidden = true;
       $('legend').querySelector('[data-layer="target"]').parentElement.hidden = true;
-      $('legend').querySelector('[data-layer="exit"]').checked = true;
       buildSliders();
     }
     if (changed) {
