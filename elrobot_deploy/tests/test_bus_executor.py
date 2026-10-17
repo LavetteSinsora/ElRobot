@@ -275,10 +275,13 @@ def test_st3215_driver_converts_and_enables_like_move(fake_bus_mod):
     sim = fake_bus_mod.SimClock()
     for s in servos:
         s.set(R.P_COEF, 32)
-    drv = St3215Driver(bus=bus, cals=cals, clock=sim.now, sleep=sim.sleep, p_coef={6: 48})
+    drv = St3215Driver(bus=bus, cals=cals, clock=sim.now, sleep=sim.sleep, p_coef={6: 48},
+                       goal_speed={6: 120})
     q0 = drv.connect()
     assert np.allclose(q0, 0.0)                            # every joint at its zero reading
     assert [s.get(R.P_COEF) for s in servos] == [32] * 5 + [48] + [32] * 2
+    speeds = [s.get(R.GOAL_SPEED) for s in servos]
+    assert speeds[5] == 120 and all(v > 1000 for i, v in enumerate(speeds) if i != 5)
     assert all(s.get(R.TORQUE_ENABLE) == 1 and s.get(R.ACCELERATION) == 0 for s in servos)
     assert all(s.get(R.GOAL_SPEED) > 0 for s in servos)   # 0 would mean "full speed"
     q = np.radians([10, -10, 20, 5, 0, 0, 0, 30])

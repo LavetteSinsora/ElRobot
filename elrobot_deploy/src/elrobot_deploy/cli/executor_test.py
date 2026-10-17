@@ -186,6 +186,23 @@ def _sine_fit(t, y, freq):
     return math.hypot(s, c), -math.atan2(c, s) / w
 
 
+def _smoothness(log, sel, j, plan) -> tuple[float, float]:
+    """(rms deg/s of the speed register around its 5-sample (100 ms) moving average, longest
+    run in ms with no encoder change while the command moves at over half its peak speed)."""
+    slow = sel & (log["slow"] == 1)
+    sp = np.degrees(log["speed"][slow, j])
+    ripple = (float(np.std((sp - np.convolve(sp, np.ones(5) / 5, mode="same"))[3:-3]))
+              if sp.size > 10 else float("nan"))
+    t, cmd, meas = log["t"][sel], log["cmd"][sel, j], log["meas"][sel, j]
+    fast = np.abs(np.gradient(cmd, t)) > 0.5 * plan.amp * 2 * math.pi * plan.freq
+    longest = run = 0
+    for moved, f in zip(np.diff(meas) != 0, fast[1:]):
+        run = 0 if (moved or not f) else run + 1
+        longest = max(longest, run)
+    period_ms = float(np.median(np.diff(t))) * 1e3 if t.size > 1 else 4.0
+    return ripple, (longest + 1) * period_ms
+
+
 def _reversal_dead_zone(cmd, meas, amp) -> float:
     """Median, over the sine's turns, of how far (deg) the command travels back before the
     joint has moved one encoder step the new way."""
@@ -245,6 +262,10 @@ def analyze(log: np.ndarray, targets: np.ndarray, plan: Plan, t_start: float, *,
         out.append(f"  {j + 1:<4} {a_meas / a_cmd:>10.3f} {1e3 * (d_meas - d_cmd):>13.0f} ms "
                    f"{dz:>15.2f} deg {herr:>+7.2f} deg {np.sqrt(np.mean(err ** 2)):>10.2f} / "
                    f"{np.max(np.abs(err)):<5.2f} deg {step:>8.3f} deg")
+        ripple, stall = _smoothness(log, sel, j, plan)
+        out.append(f"       smoothness: speed swing {ripple:.1f} deg/s rms around its 100 ms "
+                   f"average (peak speed {math.degrees(plan.amp * 2 * math.pi * plan.freq):.1f}); "
+                   f"longest stall while it should move fast {stall:.0f} ms")
     out.append("")
     out.append("delay: the servo's phase lag on the sine, as time. reversal dead zone: how far "
                "the command comes back after a turn before the joint follows by one encoder step "
@@ -283,6 +304,10 @@ def main(argv=None) -> int:
     ap.add_argument("--p-coef", type=int, default=None,
                     help="P gain for the TESTED joints only, this run only (RAM, restored at the "
                          "end; the servos' own is 32)")
+    ap.add_argument("--goal-speed", type=int, default=None,
+                    help="GOAL_SPEED cap (steps/s, 1 step = 0.088 deg) for the TESTED joints, "
+                         "instead of the high ceiling: near the commanded speed, the servo ramps "
+                         "between whole-step goals itself. The sine and ramps must stay under 90 %%")
     ap.add_argument("--sim", action="store_true", help="simulated servos, no hardware")
     ap.add_argument("--port")
     ap.add_argument("--far", action="store_true",
@@ -311,6 +336,11 @@ def main(argv=None) -> int:
                 print("refusing: --p-coef is 1..128 (the servos ship with 32)")
                 return 1
             driver_kw["p_coef"] = {j + 1: args.p_coef for j in args.joints}
+        if args.goal_speed is not None:
+            if not 1 <= args.goal_speed <= 3400:
+                print("refusing: --goal-speed is 1..3400 steps/s")
+                return 1
+            driver_kw["goal_speed"] = {j + 1: args.goal_speed for j in args.joints}
 
     # The current posture, read once before anything is powered (hardware), for the plan.
     if args.sim:
@@ -333,6 +363,18 @@ def main(argv=None) -> int:
     except ValueError as exc:
         print(f"refusing: {exc}")
         return 1
+    if args.goal_speed is not None:
+        # The cap must not be what limits the motion, or the joint falls behind its command.
+        cap = args.goal_speed * ENCODER_STEP
+        for j in plan.joints:
+            need = max(plan.amp * 2 * math.pi * plan.freq,
+                       0.5 * math.pi * abs(plan.centre[j] - plan.q0[j]) / plan.t_ramp1,
+                       0.5 * math.pi * abs(plan.end[j] - plan.centre[j]) / plan.t_ramp2)
+            if need > 0.9 * cap:
+                print(f"refusing: joint {j + 1} needs up to {math.degrees(need):.1f} deg/s "
+                      f"({need / ENCODER_STEP:.0f} steps/s), over 90 % of --goal-speed "
+                      f"{args.goal_speed}. Raise it, or lower --ramp-speed / start nearer rest.")
+                return 1
 
     deg = np.degrees
     print(f"{'joint':<7}{'now':>8}{'centre':>8}{'sine':>16}{'end':>8}   limits")
@@ -364,6 +406,8 @@ def main(argv=None) -> int:
     tag = ("sim_" if args.sim else "") + "j" + "".join(str(j + 1) for j in plan.joints)
     if args.p_coef is not None:
         tag += f"_p{args.p_coef}"
+    if args.goal_speed is not None:
+        tag += f"_gs{args.goal_speed}"
     log_dir = REPO / "logs" / "executor"
     exec_path = log_dir / f"{stamp}_{tag}_exec.csv"
     target_path = log_dir / f"{stamp}_{tag}_targets.csv"

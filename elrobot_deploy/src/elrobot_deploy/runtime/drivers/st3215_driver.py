@@ -71,7 +71,8 @@ class St3215Driver:
     def __init__(self, *, port: str | None = None, bus=None, cals=None, qdot_max=None,
                  goal_speed_factor: float = 1.5, acceleration: int = 0,
                  torque_limit: dict[int, int] | None = None, p_coef: dict[int, int] | None = None,
-                 clock=time.monotonic, sleep=time.sleep):
+                 goal_speed: dict[int, int] | None = None, clock=time.monotonic,
+                 sleep=time.sleep):
         from elrobot.calibration import RAD_PER_STEP, load
         from elrobot.st3215 import registers as R
         from elrobot.st3215.bus import Bus
@@ -91,6 +92,13 @@ class St3215Driver:
         qdot = np.full(N_JOINTS, 2.4) if qdot_max is None else np.asarray(qdot_max)
         self.goal_speed = {j: max(1, round(goal_speed_factor * v / RAD_PER_STEP))
                            for j, v in zip(self.ids, qdot)}
+        # Explicit caps (steps/s) per servo ID, replacing the ceiling: the servo moves its own
+        # setpoint toward each goal at most this fast, so a cap near the commanded speed turns
+        # the goal's whole-step staircase into a ramp (executor_test --goal-speed).
+        for j, v in (goal_speed or {}).items():
+            if not 1 <= int(v) <= 3400:
+                raise DriverError(f"goal speed for servo {j}: {v} is not 1..3400 steps/s")
+            self.goal_speed[int(j)] = int(v)
         self.acceleration = int(acceleration)
         self.torque_limit = dict(TORQUE_LIMIT if torque_limit is None else torque_limit)
         # Per servo ID, for this session only: written with the EEPROM locked, so it lives in
