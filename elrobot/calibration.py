@@ -10,7 +10,8 @@ Per joint, calibration/calibration.json stores:
 
 How the zero readings were found (2026-10-11):
   joints 1-4, 6  measured range width matched the URDF, so the middle of the range is the middle
-                 of the URDF limits (0 deg for 1-4, +11.1 deg for 6)
+                 of the URDF limits (0 deg for 1-4, +11.1 deg for 6). Joint 4 re-swept 2026-10-13
+                 after a loose screw was tightened: middle moved 37 steps (3.3 deg).
   joint 8        fully open stop = URDF 0 (the URDF's jaw geometry is open at 0)
   joints 5, 7    set by eye to the URDF zero pose (cable limits their range); a few degrees rough
 
@@ -72,6 +73,9 @@ def build(hand_ranges: dict, robot: Robot) -> dict[int, JointCal]:
         h = hand_ranges[str(j)]
         span = h["span_steps"]
         lo, hi = 2048 - span // 2, 2048 - span // 2 + span   # measured ends after centring
+        if "resweep" in h:  # re-measured later with the offset already in place
+            lo, hi = h["resweep"]["ends_with_current_offset"]
+            span = hi - lo
         margin = round(math.radians(MARGIN_DEG[j]) / RAD_PER_STEP)
         jt = robot.joints[f"rev_motor_0{j}"]
         if j in MEASURED_ZERO:
@@ -83,8 +87,11 @@ def build(hand_ranges: dict, robot: Robot) -> dict[int, JointCal]:
             lo = max(lo, closed)
         else:
             mid = (jt.upper + jt.lower) / 2
-            zero = round(2048 - SIGNS[j] * mid / RAD_PER_STEP)
+            middle = (lo + hi) / 2
+            zero = round(middle - SIGNS[j] * mid / RAD_PER_STEP)
             source = f"range matches URDF; middle of range = URDF {math.degrees(mid):+.1f} deg"
+            if "resweep" in h:
+                source += f" (re-swept {h['resweep']['date']}: {h['resweep']['why']})"
         cals[j] = JointCal(j, JOINTS[j], SIGNS[j], zero, h["centring_offset"],
                            lo + margin, hi - margin, source)
     return cals

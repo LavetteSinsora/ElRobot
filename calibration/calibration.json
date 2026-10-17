@@ -36,11 +36,11 @@
       "joint": 4,
       "name": "wrist pitch",
       "sign": 1,
-      "zero_reading": 2048,
+      "zero_reading": 2012,
       "offset": 1109,
-      "min_reading": 932,
-      "max_reading": 3164,
-      "zero_source": "range matches URDF; middle of range = URDF +0.0 deg"
+      "min_reading": 894,
+      "max_reading": 3129,
+      "zero_source": "range matches URDF; middle of range = URDF +0.0 deg (re-swept 2026-10-13: link re-seated when a loose screw was tightened)"
     },
     "5": {
       "joint": 5,

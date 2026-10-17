@@ -1,0 +1,86 @@
+{
+  "formula": "angle_rad = sign * (reading - zero_reading) * 2*pi/4096",
+  "built": "2026-10-11 from hand_ranges.json, sign test, roll zeros by eye",
+  "joints": {
+    "1": {
+      "joint": 1,
+      "name": "base yaw",
+      "sign": 1,
+      "zero_reading": 2048,
+      "offset": 91,
+      "min_reading": 1079,
+      "max_reading": 3017,
+      "zero_source": "range matches URDF; middle of range = URDF +0.0 deg"
+    },
+    "2": {
+      "joint": 2,
+      "name": "shoulder",
+      "sign": 1,
+      "zero_reading": 2048,
+      "offset": 1289,
+      "min_reading": 1021,
+      "max_reading": 3075,
+      "zero_source": "range matches URDF; middle of range = URDF +0.0 deg"
+    },
+    "3": {
+      "joint": 3,
+      "name": "elbow",
+      "sign": 1,
+      "zero_reading": 2048,
+      "offset": -1443,
+      "min_reading": 928,
+      "max_reading": 3168,
+      "zero_source": "range matches URDF; middle of range = URDF +0.0 deg"
+    },
+    "4": {
+      "joint": 4,
+      "name": "wrist pitch",
+      "sign": 1,
+      "zero_reading": 2048,
+      "offset": 1109,
+      "min_reading": 932,
+      "max_reading": 3164,
+      "zero_source": "range matches URDF; middle of range = URDF +0.0 deg"
+    },
+    "5": {
+      "joint": 5,
+      "name": "forearm roll",
+      "sign": 1,
+      "zero_reading": 1966,
+      "offset": -380,
+      "min_reading": 239,
+      "max_reading": 3857,
+      "zero_source": "set by eye to the URDF zero pose"
+    },
+    "6": {
+      "joint": 6,
+      "name": "wrist bend",
+      "sign": 1,
+      "zero_reading": 1922,
+      "offset": 375,
+      "min_reading": 1062,
+      "max_reading": 3035,
+      "zero_source": "range matches URDF; middle of range = URDF +11.1 deg"
+    },
+    "7": {
+      "joint": 7,
+      "name": "wrist roll",
+      "sign": 1,
+      "zero_reading": 2134,
+      "offset": -1708,
+      "min_reading": 246,
+      "max_reading": 3850,
+      "zero_source": "set by eye to the URDF zero pose"
+    },
+    "8": {
+      "joint": 8,
+      "name": "gripper",
+      "sign": -1,
+      "zero_reading": 2861,
+      "offset": 484,
+      "min_reading": 1459,
+      "max_reading": 2827,
+      "zero_source": "fully open stop = URDF 0"
+    }
+  }
+}
