@@ -273,9 +273,12 @@ def test_st3215_driver_converts_and_enables_like_move(fake_bus_mod):
     readings = [cals[j].zero_reading for j in range(1, 9)]
     bus, servos = _fake_arm(fake_bus_mod, cals, readings)
     sim = fake_bus_mod.SimClock()
-    drv = St3215Driver(bus=bus, cals=cals, clock=sim.now, sleep=sim.sleep)
+    for s in servos:
+        s.set(R.P_COEF, 32)
+    drv = St3215Driver(bus=bus, cals=cals, clock=sim.now, sleep=sim.sleep, p_coef={6: 48})
     q0 = drv.connect()
     assert np.allclose(q0, 0.0)                            # every joint at its zero reading
+    assert [s.get(R.P_COEF) for s in servos] == [32] * 5 + [48] + [32] * 2
     assert all(s.get(R.TORQUE_ENABLE) == 1 and s.get(R.ACCELERATION) == 0 for s in servos)
     assert all(s.get(R.GOAL_SPEED) > 0 for s in servos)   # 0 would mean "full speed"
     q = np.radians([10, -10, 20, 5, 0, 0, 0, 30])
@@ -290,6 +293,7 @@ def test_st3215_driver_converts_and_enables_like_move(fake_bus_mod):
     assert np.allclose(pos, 0.0) and temp.shape == (8,)
     drv.release()
     assert all(s.get(R.TORQUE_ENABLE) == 0 for s in servos)
+    assert all(s.get(R.P_COEF) == 32 for s in servos)      # the session's P is undone
 
 
 def test_st3215_driver_refuses_a_held_arm_and_aborts_a_runaway(fake_bus_mod):

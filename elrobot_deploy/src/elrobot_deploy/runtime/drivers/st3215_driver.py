@@ -70,8 +70,8 @@ class St3215Driver:
 
     def __init__(self, *, port: str | None = None, bus=None, cals=None, qdot_max=None,
                  goal_speed_factor: float = 1.5, acceleration: int = 0,
-                 torque_limit: dict[int, int] | None = None, clock=time.monotonic,
-                 sleep=time.sleep):
+                 torque_limit: dict[int, int] | None = None, p_coef: dict[int, int] | None = None,
+                 clock=time.monotonic, sleep=time.sleep):
         from elrobot.calibration import RAD_PER_STEP, load
         from elrobot.st3215 import registers as R
         from elrobot.st3215.bus import Bus
@@ -93,6 +93,10 @@ class St3215Driver:
                            for j, v in zip(self.ids, qdot)}
         self.acceleration = int(acceleration)
         self.torque_limit = dict(TORQUE_LIMIT if torque_limit is None else torque_limit)
+        # Per servo ID, for this session only: written with the EEPROM locked, so it lives in
+        # RAM until power-off, and `release()` puts the original back (as `elrobot.hold_test`).
+        self.p_coef = {int(k): int(v) for k, v in (p_coef or {}).items()}
+        self._p_original: dict[int, int] = {}
         self.clock, self.sleep = clock, sleep
         self.torque_on = False
         self._goal_encode = R.GOAL_POSITION.encode
@@ -158,6 +162,9 @@ class St3215Driver:
         bus.sync_write_reg(R.GOAL_SPEED, self.goal_speed)
         bus.sync_write_reg(R.ACCELERATION, {j: self.acceleration for j in self.ids})
         bus.sync_write_reg(R.TORQUE_LIMIT, {j: self.torque_limit[j] for j in self.ids})
+        for j, p in self.p_coef.items():
+            self._p_original.setdefault(j, bus.read_reg(j, R.P_COEF))
+            bus.write_reg(j, R.P_COEF, p)
         bus.sync_write_reg(R.TORQUE_ENABLE, {j: 1 for j in self.ids})
         self.torque_on = True
         q0 = self.to_rad(start)
@@ -178,6 +185,9 @@ class St3215Driver:
         self.bus.sync_write_reg(self.R.TORQUE_ENABLE, {self.ids[i]: 0 for i in idx})
         if joints is None:
             self.torque_on = False
+            for j, p in self._p_original.items():
+                self.bus.write_reg(j, self.R.P_COEF, p)
+            self._p_original.clear()
 
     def close(self) -> None:
         self.bus.close()

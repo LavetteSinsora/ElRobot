@@ -175,15 +175,31 @@ def save_targets(rows: np.ndarray, path: Path) -> None:
 # --- the analysis -------------------------------------------------------------------------
 
 
-def _best_lag(t, y, t_ref, y_ref, max_s=0.25, step_s=0.001):
-    """The delay s minimising RMS(y(t) - y_ref(t - s)), and that RMS."""
-    best = (0.0, np.inf)
-    for s in np.arange(0.0, max_s, step_s):
-        e = y - np.interp(t - s, t_ref, y_ref)
-        rms = float(np.sqrt(np.mean(e * e)))
-        if rms < best[1]:
-            best = (float(s), rms)
-    return best
+ENCODER_STEP = 2 * math.pi / 4096
+
+
+def _sine_fit(t, y, freq):
+    """Least-squares `A sin(w (t - delay)) + c`: returns (A, delay s)."""
+    w = 2 * math.pi * freq
+    X = np.c_[np.sin(w * t), np.cos(w * t), np.ones_like(t)]
+    (s, c, _), *_ = np.linalg.lstsq(X, y, rcond=None)
+    return math.hypot(s, c), -math.atan2(c, s) / w
+
+
+def _reversal_dead_zone(cmd, meas, amp) -> float:
+    """Median, over the sine's turns, of how far (deg) the command travels back before the
+    joint has moved one encoder step the new way."""
+    s = np.sign(np.diff(cmd))
+    turns = np.flatnonzero(s[1:] * s[:-1] < 0) + 1
+    centre = 0.5 * (cmd.max() + cmd.min())
+    out = []
+    for r in turns:
+        if abs(cmd[r] - centre) < 0.5 * amp:          # only the sine's own peaks
+            continue
+        k = np.flatnonzero(s[r] * (meas[r:] - meas[r]) >= 0.99 * ENCODER_STEP)
+        if k.size:
+            out.append(abs(cmd[r + k[0]] - cmd[r]))
+    return math.degrees(float(np.median(out))) if out else float("nan")
 
 
 def analyze(log: np.ndarray, targets: np.ndarray, plan: Plan, t_start: float, *, hz: float,
@@ -211,28 +227,30 @@ def analyze(log: np.ndarray, targets: np.ndarray, plan: Plan, t_start: float, *,
         out.append("no sine section in the log (stopped early?)")
         return "\n".join(out)
     t = log["t"][sel]
+    h0, h1 = t_start + plan.edges[1] + lead_s + 0.2, t_start + plan.edges[2] + lead_s
+    hold = (log["t"] >= h0) & (log["t"] <= h1)       # the centre hold just before the sine
+    deg = np.degrees
     out.append("")
-    out.append("joint  target->meas lag  cmd->meas lag  err rms/max (deg)  cmd step max (deg)  "
-               "speed reversals")
+    out.append("joint  amp meas/cmd  delay cmd->meas  reversal dead zone  hold err  "
+               "err vs line rms/max  cmd step max")
     for j in plan.joints:
         y_line = np.interp(t, targets[:, 1], targets[:, 3 + j])     # the line, at its deadlines
         cmd, meas = log["cmd"][sel, j], log["meas"][sel, j]
-        lag_total, _ = _best_lag(t, meas, targets[:, 1], targets[:, 3 + j])
-        lag_servo, _ = _best_lag(t, meas, t, cmd)
-        err = np.degrees(meas - y_line)
-        step = np.degrees(np.max(np.abs(np.diff(cmd)))) if cmd.size > 1 else 0.0
-        sp = log["speed"][sel & (log["slow"] == 1), j]
-        sp = sp[np.abs(sp) > math.radians(2.0)]
-        flips = int(np.sum(np.diff(np.sign(sp)) != 0)) if sp.size > 1 else 0
-        expect = round(2 * plan.cycles)
-        out.append(f"  {j + 1:<4} {1e3 * (lag_total + 0):>9.0f} ms {1e3 * lag_servo:>11.0f} ms "
-                   f"{np.sqrt(np.mean(err ** 2)):>10.2f} / {np.max(np.abs(err)):<6.2f} "
-                   f"{step:>12.3f} {flips:>14} (sine has ~{expect})")
+        a_cmd, d_cmd = _sine_fit(t, cmd, plan.freq)
+        a_meas, d_meas = _sine_fit(t, meas, plan.freq)
+        dz = _reversal_dead_zone(cmd, meas, plan.amp)
+        herr = deg(np.mean(log["meas"][hold, j] - log["cmd"][hold, j])) if hold.any() else np.nan
+        err = deg(meas - y_line)
+        step = deg(np.max(np.abs(np.diff(cmd)))) if cmd.size > 1 else 0.0
+        out.append(f"  {j + 1:<4} {a_meas / a_cmd:>10.3f} {1e3 * (d_meas - d_cmd):>13.0f} ms "
+                   f"{dz:>15.2f} deg {herr:>+7.2f} deg {np.sqrt(np.mean(err ** 2)):>10.2f} / "
+                   f"{np.max(np.abs(err)):<5.2f} deg {step:>8.3f} deg")
     out.append("")
-    out.append("target->meas lag: how far the arm trails the target line's deadlines (the lead "
-               "is on top: capture->arm = lead + this).")
-    out.append("cmd->meas lag: how far each servo trails the goals it was sent. err: measured "
-               "minus the target line, after removing nothing.")
+    out.append("delay: the servo's phase lag on the sine, as time. reversal dead zone: how far "
+               "the command comes back after a turn before the joint follows by one encoder step "
+               "(friction against a P-only servo shows here, and inflates the delay). hold err: "
+               "measured minus commanded while holding still. err vs line: measured minus the "
+               "target line at its deadlines (capture -> arm = lead + delay).")
     return "\n".join(out)
 
 
@@ -262,6 +280,9 @@ def main(argv=None) -> int:
     ap.add_argument("--ramp-speed", type=float, default=15.0, help="deg/s, peak of the ramps")
     ap.add_argument("--acceleration", type=int, default=0,
                     help="servo ACCELERATION register while streaming (0 = no servo ramp)")
+    ap.add_argument("--p-coef", type=int, default=None,
+                    help="P gain for the TESTED joints only, this run only (RAM, restored at the "
+                         "end; the servos' own is 32)")
     ap.add_argument("--sim", action="store_true", help="simulated servos, no hardware")
     ap.add_argument("--port")
     ap.add_argument("--far", action="store_true",
@@ -285,6 +306,11 @@ def main(argv=None) -> int:
     else:
         driver, driver_kw = "st3215", {"port": args.port, "qdot_max": qdot_max.tolist(),
                                        "acceleration": args.acceleration}
+        if args.p_coef is not None:
+            if not 1 <= args.p_coef <= 128:
+                print("refusing: --p-coef is 1..128 (the servos ship with 32)")
+                return 1
+            driver_kw["p_coef"] = {j + 1: args.p_coef for j in args.joints}
 
     # The current posture, read once before anything is powered (hardware), for the plan.
     if args.sim:
@@ -336,6 +362,8 @@ def main(argv=None) -> int:
 
     stamp = time.strftime("%Y%m%d_%H%M%S")
     tag = ("sim_" if args.sim else "") + "j" + "".join(str(j + 1) for j in plan.joints)
+    if args.p_coef is not None:
+        tag += f"_p{args.p_coef}"
     log_dir = REPO / "logs" / "executor"
     exec_path = log_dir / f"{stamp}_{tag}_exec.csv"
     target_path = log_dir / f"{stamp}_{tag}_targets.csv"
