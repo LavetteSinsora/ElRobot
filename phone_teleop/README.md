@@ -74,6 +74,9 @@ uv run elrobot_deploy run --sim          # 2. the whole chain on simulated servo
 uv run elrobot_deploy run                # 3. the real arm
 ```
 
+`run` checks the hardware, then waits: open the dashboard (http://127.0.0.1:8080), press
+**Home** (the arm moves to the green ghost), then **Start**; then hold the pad on the phone.
+
 Enter the Mac's IP in the app and tap Connect. If macOS asks whether Python may accept incoming
 connections, allow it. The phone and the Mac must be on the same Wi-Fi network; a guest network
 with client isolation blocks the traffic.

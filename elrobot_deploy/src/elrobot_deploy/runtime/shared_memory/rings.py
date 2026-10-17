@@ -86,6 +86,15 @@ class Control:
         self._c[0]["bus"] = value
 
     @property
+    def wait(self) -> int:
+        """`schema.WAIT_*`: what P0 is waiting for. P0 only."""
+        return int(self._c[0]["wait"])
+
+    @wait.setter
+    def wait(self, value: int) -> None:
+        self._c[0]["wait"] = value
+
+    @property
     def release_torque(self) -> bool:
         """May the bus process release torque at STOPPED? P0 only."""
         return bool(self._c[0]["release_torque"])
@@ -144,6 +153,19 @@ class Control:
     def set_fault(self, reason: str) -> int:                  # the bus process only
         buf, n = self._reason(reason)
         return self._write_block("fault_seq", fault_len=n, fault=buf)
+
+    def report(self) -> tuple[int, str]:
+        """`(report_seq, json)`: the bus process's hardware check; seq 0 = none yet."""
+        seq, (n, buf) = self._read_block("report_seq", "report_len", "report")
+        return seq, self._text(buf, n)
+
+    def set_report(self, text: str) -> int:                   # the bus process only
+        raw = str(text).encode("utf-8")
+        if len(raw) > schema.REPORT_BYTES:
+            raise ValueError(f"report is {len(raw)} bytes, the arena holds {schema.REPORT_BYTES}")
+        buf = np.zeros(schema.REPORT_BYTES, dtype=np.uint8)
+        buf[:len(raw)] = np.frombuffer(raw, dtype=np.uint8)
+        return self._write_block("report_seq", report_len=len(raw), report=buf)
 
     def refusal(self) -> tuple[int, str]:
         """`(refusal_seq, reason)`; seq 0 = nothing was ever refused."""

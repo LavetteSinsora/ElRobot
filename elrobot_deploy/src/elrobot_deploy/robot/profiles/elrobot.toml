@@ -74,3 +74,8 @@ base_up = [0.0, 0.0, 1.0]
 # table (z = 0).
 workspace_min = [-0.30, 0.08, 0.02]
 workspace_max = [0.30, 0.40, 0.35]
+
+[dashboard]
+# The live dashboard (`elrobot_deploy run` starts it; `elrobot_deploy view` without the robot).
+host = "127.0.0.1"      # "0.0.0.0" to open it from another device on the LAN (no password!)
+port = 8080

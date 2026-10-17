@@ -89,6 +89,12 @@ class TeleopConfig:
 
 
 @dataclass(frozen=True)
+class DashboardConfig:
+    host: str = "127.0.0.1"           # 0.0.0.0 to open it from another device on the LAN
+    port: int = 8080
+
+
+@dataclass(frozen=True)
 class Config:
     profile: str                      # the file it came from
     urdf: Path
@@ -101,6 +107,7 @@ class Config:
     poses: Poses
     ik: IKConfig
     teleop: TeleopConfig
+    dashboard: DashboardConfig = field(default_factory=DashboardConfig)
     #: Every key that a `--set` changed, -> its value as given. For the run's printout.
     overrides: dict = field(default_factory=dict)
 
@@ -317,15 +324,20 @@ def load(profile: str | Path | None = None, *, sets=()) -> Config:
     if not 0 < teleop.lead_s < 0.5:
         raise ConfigError(f"[teleop] lead_s {teleop.lead_s}: must be in (0, 0.5) s")
 
+    db = sec("dashboard")
+    dashboard = DashboardConfig(host=str(db.get("host", "127.0.0.1")),
+                                port=int(db.get("port", 8080)))
+
     return Config(profile=str(path), urdf=urdf, calibration=calibration, limits=limits,
                   velocity_scale=velocity_scale, bus=bus, executor=executor, gains=gains,
-                  poses=poses, ik=ik, teleop=teleop, overrides=overrides)
+                  poses=poses, ik=ik, teleop=teleop, dashboard=dashboard, overrides=overrides)
 
 
 __all__ = [
     "REPO",
     "BusConfig",
     "Config",
+    "DashboardConfig",
     "DriverGains",
     "IKConfig",
     "Poses",

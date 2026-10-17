@@ -36,6 +36,7 @@ on a fault, which would drop the arm.
 from __future__ import annotations
 
 import csv
+import json
 import signal
 from pathlib import Path
 
@@ -43,7 +44,7 @@ import numpy as np
 
 from elrobot_deploy.robot.elrobot_joints import N_JOINTS, JointLimits
 from elrobot_deploy.runtime import timing as clock
-from elrobot_deploy.runtime.drivers.st3215_driver import BUS_ERRORS, make_driver
+from elrobot_deploy.runtime.drivers.st3215_driver import BUS_ERRORS, DriverError, make_driver
 from elrobot_deploy.runtime.execution.bus_servo import BusServo, ExecutorSettings
 from elrobot_deploy.runtime.shared_memory import Arena, build, open_all, schema
 
@@ -155,17 +156,26 @@ class Guard:
         return None
 
 
-def run_config(shm_name: str, cfg, *, ready=None, log_path: str | None = None) -> None:
+def run_config(shm_name: str, cfg, *, ready=None, log_path: str | None = None,
+               dry_run: bool = False) -> None:
     """The process as P0 starts it: everything from the run's `Config`. The tick log keeps the
     session's last ten minutes."""
     run(shm_name, driver=cfg.bus.driver, driver_kw=cfg.driver_kw(), settings=cfg.executor,
-        limits=cfg.limits, ready=ready, log_path=log_path, release=None, log_max_s=600.0)
+        limits=cfg.limits, ready=ready, log_path=log_path, release=None, log_max_s=600.0,
+        dry_run=dry_run, check=True)
 
 
 def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettings,
         limits: JointLimits, status=None, ready=None, log_path: str | None = None,
-        release: bool | None = True, log_max_s: float | None = None) -> None:
+        release: bool | None = True, log_max_s: float | None = None, dry_run: bool = False,
+        check: bool = False) -> None:
     """The process. Runs until `control.session` reaches STOPPED.
+
+    `check`: run the driver's hardware check first, publish it (`control.report`) and refuse
+    to start on any problem. `dry_run`: torque stays OFF and no goal is ever written; the loop
+    still walks the ring, shapes and clamps every command and publishes it as `q_cmd` beside the
+    measurement, so everything upstream runs for real while the arm stays limp. The lag and
+    runaway guards are off (the arm is not meant to follow).
 
     `ready` (P0's latch) is set once the first goal is on the wire. `release`: turn torque off
     at STOPPED (False: the servos keep holding the last goal after the process ends; None: ask
@@ -180,7 +190,7 @@ def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettin
     def say(kind, *m):
         if kind == "fault" and m:
             control.set_fault(str(m[0]))
-            if control.bus == schema.BUS_RUNNING:
+            if control.bus in (schema.BUS_RUNNING, schema.BUS_DRY):
                 control.bus = schema.BUS_HOLDING
         if status is not None:
             status.put((kind, *m))
@@ -190,8 +200,15 @@ def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettin
     try:
         try:
             drv = make_driver(driver, **driver_kw)
-            q0 = drv.connect()
-            connected = True
+            if check:
+                report = drv.check()
+                report["dry_run"] = bool(dry_run)
+                control.set_report(json.dumps(report))
+                if report["problems"]:
+                    raise DriverError("the hardware check failed: "
+                                      + "; ".join(report["problems"]))
+            q0 = drv.connect(passive=dry_run)
+            connected = not dry_run
         except Exception as exc:  # noqa: BLE001 - any startup failure is reported, not raised
             # Not ours to release: a refused connect may mean ANOTHER program holds the arm, and
             # turning its torque off would drop it. (A runaway at enable released inside connect.)
@@ -206,7 +223,7 @@ def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettin
                          q0=q0, t0=t)
         q_meas, q_prev = q0, q0.copy()
         guard, fault, hold = Guard(), None, None
-        control.bus = schema.BUS_RUNNING
+        control.bus = schema.BUS_DRY if dry_run else schema.BUS_RUNNING
         say("ready", q0.tolist())
 
         pacer = clock.Pacer(settings.hz)
@@ -221,7 +238,8 @@ def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettin
                 q = hold
             t_w = clock.now()
             try:
-                drv.write(q)
+                if not dry_run:
+                    drv.write(q)
             except BUS_ERRORS as exc:
                 if fault is None:
                     fault, hold = f"bus write failed: {exc}", q_prev
@@ -243,7 +261,7 @@ def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettin
                 state.write(t=0.5 * (t_r + t_end), q=meas, q_cmd=q, t_slow=t_end if slow else
                             np.nan, speed=speed, load=load, temp=temp, alarm=drv.alarms())
 
-            if fault is None:
+            if fault is None and (not dry_run or meas is None):     # dry: only lost reads
                 msg = guard.check(t, q_prev, meas)
                 if msg is not None:
                     fault = msg

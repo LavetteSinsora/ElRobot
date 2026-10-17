@@ -32,6 +32,14 @@ TORQUE_LIMIT = {1: 500, 2: 500, 3: 500, 4: 500, 5: 400, 6: 400, 7: 400, 8: 300}
 ENABLE_WATCH_S = 0.3        # after torque on, how long every joint is watched for a runaway
 RUNAWAY_RAD = np.radians(1.5)
 
+# The hardware check (`St3215Driver.check`), before anything is written.
+VOLTAGE_RANGE = (10.5, 13.2)    # V: a 12 V supply, unloaded
+TEMP_WARN_C, TEMP_MAX_C = 50.0, 65.0
+# How far outside its calibrated range a joint may read and still be accepted: the ranges are
+# the measured stops pulled in by 3-5 deg (`elrobot/calibration.py`), and the arm at rest lies
+# ON its stops (the shoulder; the gripper fully open). The multi-turn trap is off by far more.
+RANGE_MARGIN_STEPS = 91         # 8 deg
+
 
 class DriverError(RuntimeError):
     pass
@@ -43,8 +51,13 @@ BUS_ERRORS = (BusError, OSError, DriverError)
 
 
 class ServoDriver(Protocol):
-    def connect(self) -> np.ndarray:
-        """Torque on, holding the present posture. Returns it, (8,) rad."""
+    def check(self) -> dict:
+        """Read every servo before anything is written: `{"servos": [one dict per servo],
+        "problems": [...], "warnings": [...]}`. Any problem refuses the start."""
+
+    def connect(self, passive: bool = False) -> np.ndarray:
+        """Torque on, holding the present posture. Returns it, (8,) rad. `passive`: the same
+        checks, but torque stays OFF and nothing is written (a dry run)."""
 
     def write(self, q: np.ndarray) -> None:
         """Goal positions, (8,) rad. No reply is awaited."""
@@ -174,8 +187,63 @@ class St3215Driver:
 
     # --- torque --------------------------------------------------------------------------
 
-    def connect(self) -> np.ndarray:
-        """`elrobot.move`'s enable sequence: check, hold the present posture, watch, return it."""
+    def check(self) -> dict:
+        """Every servo's whole register table, read once with torque off, checked: it answers,
+        it is an STS3215 in position mode, its offset is the calibrated one, torque is off, the
+        supply voltage and temperature are sane, no alarm bit is set, and it reads inside its
+        calibrated range (outside it means a wrong offset or the multi-turn trap)."""
+        R = self.R
+        from elrobot.st3215.registers import STS3215_MODEL, TABLE_END, status_flags
+        servos, problems, warnings = [], [], []
+        for i, j in enumerate(self.ids):
+            try:
+                reg = R.decode_block(0, self.bus.read(j, 0, TABLE_END))
+            except BUS_ERRORS as exc:
+                problems.append(f"servo {j} does not answer ({exc}): is the 12 V supply on, "
+                                f"the cable seated?")
+                servos.append({"id": j, "ok": False})
+                continue
+            raw = int(reg["present_position"])
+            volts = reg["present_voltage"] / 10.0
+            temp = float(reg["present_temperature"])
+            flags = status_flags(int(reg["status"]))
+            deg = np.degrees(self.sign[i] * (raw - self.zero[i]) * self.rad_per_step)
+            row = {"id": j, "ok": True, "deg": round(float(deg), 1),
+                   "volts": volts, "temp": temp, "status": flags,
+                   "torque": int(reg["torque_enable"]), "mode": int(reg["mode"]),
+                   "p": int(reg["p_coef"]), "d": int(reg["d_coef"]),
+                   "torque_limit": int(reg["torque_limit"]),
+                   "firmware": f"{reg['firmware_major']}.{reg['firmware_minor']}"}
+            servos.append(row)
+            bad = []
+            if int(reg["model"]) != STS3215_MODEL:
+                bad.append(f"model {reg['model']}, not an STS3215 ({STS3215_MODEL})")
+            if int(reg["mode"]) != 0:
+                bad.append(f"mode {reg['mode']}, not position mode (0)")
+            if int(reg["offset"]) != self.cals[j].offset:
+                bad.append(f"offset {reg['offset']}, calibration.json says "
+                           f"{self.cals[j].offset}: recalibrate")
+            if int(reg["torque_enable"]):
+                bad.append("torque is already on: another program holds the arm "
+                           "(stop it, or `uv run python -m elrobot.relax`)")
+            if not VOLTAGE_RANGE[0] <= volts <= VOLTAGE_RANGE[1]:
+                bad.append(f"supply {volts:.1f} V, outside {VOLTAGE_RANGE[0]}..{VOLTAGE_RANGE[1]} V")
+            if temp >= TEMP_MAX_C:
+                bad.append(f"{temp:.0f} C: too hot (let it cool)")
+            elif temp >= TEMP_WARN_C:
+                warnings.append(f"servo {j}: {temp:.0f} C")
+            if flags:
+                bad.append(f"alarm: {', '.join(flags)}")
+            if not (self.lo[i] - RANGE_MARGIN_STEPS <= raw <= self.hi[i] + RANGE_MARGIN_STEPS):
+                bad.append(f"reads {raw}, outside its calibrated range {int(self.lo[i])}.."
+                           f"{int(self.hi[i])} (a wrong offset, or the multi-turn trap: "
+                           f"power-cycle and check before anything moves)")
+            problems += [f"servo {j}: {b}" for b in bad]
+        return {"servos": servos, "problems": problems, "warnings": warnings}
+
+    def connect(self, passive: bool = False) -> np.ndarray:
+        """`elrobot.move`'s enable sequence: check, hold the present posture, watch, return it.
+        `passive`: the checks only; torque stays off and nothing is written (a dry run)."""
         R, bus = self.R, self.bus
         on = [j for j, t in bus.sync_read_reg(self.ids, R.TORQUE_ENABLE).items() if t]
         if on:
@@ -187,6 +255,8 @@ class St3215Driver:
             raise DriverError(f"offsets of {wrong} differ from calibration.json; recalibrate first")
 
         start = self._read_raw()
+        if passive:
+            return self.to_rad(start)
         bus.sync_write_reg(R.GOAL_POSITION, {j: int(v) for j, v in zip(self.ids, start)})
         bus.sync_write_reg(R.GOAL_SPEED, self.goal_speed)
         bus.sync_write_reg(R.ACCELERATION, {j: self.acceleration for j in self.ids})
@@ -279,10 +349,17 @@ class SimDriver:
             while time.monotonic() < t_end:
                 pass
 
-    def connect(self):
+    def check(self):
+        q = self._position()
+        return {"servos": [{"id": i + 1, "ok": True, "deg": round(float(np.degrees(v)), 1),
+                            "volts": 12.0, "temp": 30.0, "status": [], "torque": 0, "mode": 0,
+                            "p": 32, "d": 32, "torque_limit": 1000, "firmware": "sim"}
+                           for i, v in enumerate(q)], "problems": [], "warnings": []}
+
+    def connect(self, passive=False):
         self._advance()
         self.goal = self.q.copy()
-        self.torque_on = True
+        self.torque_on = not passive
         return self.read()
 
     def write(self, q):

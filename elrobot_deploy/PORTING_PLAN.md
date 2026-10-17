@@ -23,6 +23,12 @@ map of what exists now is `docs/architecture.md`.
 - **Done: C1 (app v2), C2 (phone source P11), C3 (P6), C4 (the launcher's teleop mode), C5
   (tests, including the whole chain end to end over UDP on simulated servos)**, with the changes
   listed below. Not yet run with the real phone or on the real arm (M2/M3).
+- **Done (same day, second round): the session the operator sees.** CHECK runs a hardware check
+  (every servo, before anything is written); the arm is held until **Home** (the dashboard
+  previews the home pose) and at home until **Start**; P10 is back as a new dashboard drawing
+  our URDF (measured / commanded / home ghosts) with the session buttons; `run --dry-run`
+  drives everything with torque off; `view` shows the URDF with no session. Recording (P9) is
+  still not ported: only the bus process's tick log exists.
 - **Next:** build the app; `phone-bench` with the real phone; `run --sim` driven by the real
   phone (M2); then the real arm (M3). HANDOFF.md section 6 is the checklist.
 

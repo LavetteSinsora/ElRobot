@@ -54,19 +54,31 @@ SESSION_NAMES = {
 # two-writer word: a lost request is a button that did nothing, never a state walked
 # backwards). START begins a rollout from READY, RESET ends it and returns to READY, EXIT is
 # the exit sequence, the same as the first Ctrl-C.
-REQ_NONE, REQ_START, REQ_RESET, REQ_EXIT = range(4)
+REQ_NONE, REQ_START, REQ_RESET, REQ_EXIT, REQ_HOME = range(5)
 
-REQUEST_NAMES = {REQ_NONE: "NONE", REQ_START: "START", REQ_RESET: "RESET", REQ_EXIT: "EXIT"}
+REQUEST_NAMES = {REQ_NONE: "NONE", REQ_START: "START", REQ_RESET: "RESET", REQ_EXIT: "EXIT",
+                 REQ_HOME: "HOME"}
+
+# --- what P0 is waiting for (`control.wait`) --------------------------------------------------
+#
+# Written by P0 so a dashboard can offer the one button that moves the session on: HOME (the
+# arm is held where it was found, the home pose is previewed, nothing moves until confirmed)
+# and START (homed, waiting for the rollout to begin).
+WAIT_NONE, WAIT_HOME, WAIT_START = range(3)
+
+WAIT_NAMES = {WAIT_NONE: "NONE", WAIT_HOME: "HOME", WAIT_START: "START"}
 
 # --- the bus process's own word -------------------------------------------------------------
 #
 # Written by the bus process only. P0 reads it: a HOLDING bus has stopped following the
 # target ring (a guard fired; `fault` says which) and holds its last command, so the run must
 # end. DONE is written in the bus process's `finally`, after torque went off (or failed to).
-BUS_STARTING, BUS_RUNNING, BUS_HOLDING, BUS_DONE = range(4)
+# DRY is RUNNING with torque off: the bus process reads the arm and computes every command, but
+# writes none (`--dry-run`).
+BUS_STARTING, BUS_RUNNING, BUS_HOLDING, BUS_DONE, BUS_DRY = range(5)
 
 BUS_NAMES = {BUS_STARTING: "STARTING", BUS_RUNNING: "RUNNING", BUS_HOLDING: "HOLDING",
-             BUS_DONE: "DONE"}
+             BUS_DONE: "DONE", BUS_DRY: "DRY"}
 
 # --- records --------------------------------------------------------------------------------
 
@@ -79,15 +91,18 @@ HEADER = np.dtype([
 MAGIC = 0x454C52000001  # "ELR" + 1
 
 #: 1: the single-arm arena (one 8-joint row; bus state; the phone's relative motion).
+#: 2: `CONTROL.wait` (what P0 waits for), the bus process's hardware report, REQ_HOME, BUS_DRY.
 #:
 #: THE RULE: bump this whenever a record's fields, a region's name or a ring's read protocol
 #: changes, anything a reader written against the old layout would misread rather than fail
 #: on. The layout hash already refuses an attach across different SIZES; this refuses one
 #: across different MEANINGS.
-VERSION = 1
+VERSION = 2
 
 #: Bytes of UTF-8 one line of "why" may take (a bus fault, a refused START).
 REASON_BYTES = 256
+#: Bytes of the bus process's hardware report (JSON, `drivers.st3215_driver.check`).
+REPORT_BYTES = 4096
 
 # One record. The single words are independently atomic aligned 8-byte stores with no seqlock,
 # because no reader needs two of them to agree; the fault text is multi-word and carries its
@@ -113,6 +128,11 @@ CONTROL = np.dtype([
     ("refusal_seq", "<u8"),      # P0: why the last START was refused
     ("refusal_len", "<u8"),
     ("refusal", "u1", (REASON_BYTES,)),
+    ("wait", "<u8"),             # P0: WAIT_*
+    # The bus process: what the hardware check found, JSON, written once before torque on.
+    ("report_seq", "<u8"),
+    ("report_len", "<u8"),
+    ("report", "u1", (REPORT_BYTES,)),
 ])
 
 #: What the bus process measured, one row per position read (every tick, 250 Hz). The slow

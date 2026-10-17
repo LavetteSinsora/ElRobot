@@ -71,15 +71,24 @@ class BusFault(RuntimeError):
 class Launcher:
     """The session sequence. `spawn`, `event` and `clock` are injectable for tests."""
 
-    def __init__(self, cfg, *, phone: bool = True, auto_start: bool = True,
-                 arena_name: str | None = None, clock=_clock, spawn=None, event=None,
-                 log=print, log_dir: str | Path | None = None):
+    def __init__(self, cfg, *, phone: bool = True, auto_home: bool = False,
+                 auto_start: bool = False, dry_run: bool = False, dashboard: bool = False,
+                 terminal: bool = False, arena_name: str | None = None, clock=_clock,
+                 spawn=None, event=None, log=print, log_dir: str | Path | None = None):
         self.cfg = cfg
         #: Start the phone source (P11). Without it nothing ever drives the arm: a launch that
         #: only homes and exits (a bring-up check).
         self.phone = phone
+        #: Ramp home without waiting for a HOME request (the arm moves right after CHECK).
+        self.auto_home = auto_home
         #: READY -> ACTIVE without waiting for a START request.
         self.auto_start = auto_start
+        #: Torque stays off; every command is computed and published but never written.
+        self.dry_run = dry_run
+        #: Start the dashboard (P10).
+        self.dashboard = dashboard
+        #: Also take HOME / START from the terminal (Enter), beside the dashboard's buttons.
+        self.terminal = terminal
         self.name = arena_name or f"elr{os.getpid()}"
         self.clock = clock
         self.log = log
@@ -110,18 +119,69 @@ class Launcher:
             self.clock.sleep_until(now + POLL_S)
 
     def _take_request(self) -> int:
-        """The pending request, consumed (read and cleared in one step)."""
+        """The pending request, consumed (read and cleared in one step). Enter on the terminal
+        (`terminal`) is the request P0 is waiting for (`control.wait`): HOME, then START."""
         control = self.rings["control"]
         request = control.request
+        if request == schema.REQ_NONE and self._enter_pressed():
+            request = {schema.WAIT_HOME: schema.REQ_HOME,
+                       schema.WAIT_START: schema.REQ_START}.get(control.wait, schema.REQ_NONE)
         if request != schema.REQ_NONE:
             control.request = schema.REQ_NONE
             self.log(f"[P0] request {schema.REQUEST_NAMES.get(request, request)}")
         return request
 
+    def _enter_pressed(self) -> bool:
+        """A line typed on the terminal, without blocking (never in tests)."""
+        if not self.terminal:
+            return False
+        import select
+        import sys
+        try:
+            if not sys.stdin.isatty():
+                # Only a person at a terminal presses Enter. A pipe or /dev/null is readable
+                # at once (end of file), which must never read as "go".
+                self.terminal = False
+                return False
+            if select.select([sys.stdin], [], [], 0)[0]:
+                return sys.stdin.readline() != ""          # "" = end of file, not a line
+        except (OSError, ValueError):
+            self.terminal = False
+        return False
+
+    def _await_request(self, wait: int, wanted: int, prompt: str) -> None:
+        """Hold until `wanted` is requested (dashboard button, or Enter). EXIT leaves."""
+        control = self.rings["control"]
+        control.wait = wait
+        self.log(f"[P0] {prompt}")
+        t_next = self.clock.now() + 30.0
+        try:
+            while True:
+                request = self._take_request()
+                if request == wanted:
+                    return
+                if request == schema.REQ_EXIT:
+                    raise _ExitNow
+                self._check_bus()
+                self._note_phone()
+                now = self.clock.now()
+                if now >= t_next:
+                    self.log(f"[P0] still waiting: {prompt}")
+                    t_next = now + 30.0
+                self.clock.sleep_until(now + POLL_S)
+        finally:
+            control.wait = schema.WAIT_NONE
+
+    def _how(self) -> str:
+        dash = self.dashboard and self.children.alive("p10_dashboard")
+        ways = (["the dashboard's button"] if dash else []) + \
+               (["Enter here"] if self.terminal else [])
+        return " or ".join(ways) or "a request"
+
     def _check_bus(self) -> None:
         """Raise if the bus process has stopped following the ring."""
         control = self.rings["control"]
-        if control.bus in (schema.BUS_HOLDING, schema.BUS_DONE) or \
+        if control.bus in (schema.BUS_HOLDING, schema.BUS_DONE, schema.BUS_STARTING) or \
                 not self.children.alive("p7_bus"):
             raise BusFault(f"the bus process is {schema.BUS_NAMES.get(control.bus, '?')}: "
                            f"{control.fault()[1] or 'it exited'}")
@@ -173,7 +233,15 @@ class Launcher:
         self.arena = Arena.create(self.name, layout)
         self.rings = open_all(self.arena)
         self._set(schema.INIT)
-        self.log(layout.describe())
+        self.log(f"[P0] arena {layout.size / 1e6:.2f} MB")
+        if self.dashboard:
+            # First, so the operator can watch CHECK. It only reads the arena and stores
+            # requests; it never decides anything.
+            self.children.start("p10_dashboard",
+                                "elrobot_deploy.dashboard.server.run_session",
+                                (self.name, self.cfg), dry_run=self.dry_run)
+            self.log(f"[P0] dashboard: http://{self.cfg.dashboard.host}:"
+                     f"{self.cfg.dashboard.port}")
 
     def check(self) -> None:
         """Start the producers and confirm they produce, before anything moves."""
@@ -182,34 +250,75 @@ class Launcher:
         if self.log_dir is not None:
             log_path = str(self.log_dir / f"{self.stamp}_bus.csv")
         self.children.start("p7_bus", "elrobot_deploy.runtime.processes.p7_bus.run_config",
-                            (self.name, self.cfg), gated=True, log_path=log_path)
+                            (self.name, self.cfg), gated=True, log_path=log_path,
+                            dry_run=self.dry_run)
         ready = self.children.ready["p7_bus"]
         control = self.rings["control"]
         self._wait(lambda: ready.is_set() or control.bus == schema.BUS_DONE
                    or not self.children.alive("p7_bus"), "the bus process to connect")
+        self._log_report()
         if not ready.is_set():
             raise ConfigError(f"the bus process did not start: {control.fault()[1] or 'it exited'}")
         q = self._measured()
-        self.log(f"[P0] bus running ({self.cfg.bus.driver}); arm at "
-                 f"{np.round(np.degrees(q), 1).tolist()} deg")
+        self.log(f"[P0] bus running ({self.cfg.bus.driver}"
+                 f"{', DRY RUN: torque off, nothing is written' if self.dry_run else ''}); "
+                 f"arm at {np.round(np.degrees(q), 1).tolist()} deg")
         if self.phone:
+            # Started now, waited for never: only the clutch moves the arm, so a phone that is
+            # not streaming yet must not hold up the check or homing. The dashboard shows it,
+            # and `_note_phone` says it here once it appears.
             self.children.start("p11_phone", "elrobot_deploy.runtime.processes.p11_phone.run",
                                 (self.name, self.cfg))
-            rows = self.rings["intervene"]
-            self.log(f"[P0] waiting for the phone (UDP port {self.cfg.teleop.port}) ...")
-            self._wait(lambda: int(rows.meta()["samples"]) > 0
-                       or not self.children.alive("p11_phone"),
-                       "the phone's first packet",
-                       remind=lambda: f"start streaming in the app to this Mac, port "
-                                      f"{self.cfg.teleop.port}; Ctrl-C to exit")
-            if not self.children.alive("p11_phone"):
-                raise ConfigError("the phone source exited (its traceback is above)")
+            self.log(f"[P0] phone source listening on UDP {self.cfg.teleop.port}: connect the "
+                     f"app to this Mac")
+
+    def _note_phone(self) -> None:
+        """Say once when the phone's first packet arrives (and if the phone source died)."""
+        if not self.phone or getattr(self, "_phone_seen", False):
+            return
+        if int(self.rings["intervene"].meta()["samples"]) > 0:
+            self._phone_seen = True
             self.log("[P0] phone streaming")
+        elif not self.children.alive("p11_phone"):
+            raise ConfigError("the phone source exited (its traceback is above)")
+
+    def _log_report(self) -> None:
+        """The bus process's hardware check, as a table on the terminal."""
+        import json
+        seq, text = self.rings["control"].report()
+        if not seq:
+            return
+        rep = json.loads(text)
+        self.log("[P0] hardware check:  servo   angle    supply   temp   P  D  torque-limit")
+        for r in rep["servos"]:
+            if not r.get("ok"):
+                self.log(f"[P0]                   {r['id']}   no reply")
+                continue
+            flags = f"  {', '.join(r['status'])}" if r["status"] else ""
+            self.log(f"[P0]                   {r['id']}  {r['deg']:+7.1f}   {r['volts']:5.1f} V"
+                     f"  {r['temp']:4.0f} C  {r['p']:2d} {r['d']:2d}  {r['torque_limit']:5d}"
+                     f"{flags}")
+        for w in rep["warnings"]:
+            self.log(f"[P0] warning: {w}")
+        for p in rep["problems"]:
+            self.log(f"[P0] PROBLEM: {p}")
+
+    def confirm_home(self) -> None:
+        """Hold the arm where it was found until the operator has seen where home is."""
+        if self.auto_home:
+            return
+        self._await_request(schema.WAIT_HOME, schema.REQ_HOME,
+                            f"the arm is held where it is. Home pose: "
+                            f"{np.round(np.degrees(self.cfg.poses.home), 1).tolist()} deg "
+                            f"(the dashboard shows it). Press {self._how()} to move there; "
+                            f"Ctrl-C to exit.")
 
     def home(self) -> None:
         self._set(schema.HOME)
         self._await_even()
         self._ramp_to(self.cfg.poses.home, "homing")
+        if self.dry_run:
+            return                       # the arm was never driven: nothing to check
         q = self._measured()
         off = np.abs(q - self.cfg.poses.home)[:schema.ARM_DOF]
         if np.any(off > self.cfg.poses.home_tol):
@@ -223,15 +332,9 @@ class Launcher:
         self._set(schema.READY)
         if self.auto_start:
             return
-        self.log("[P0] READY: waiting for START; Ctrl-C to exit")
-        while True:
-            request = self._take_request()
-            if request == schema.REQ_START:
-                return
-            if request == schema.REQ_EXIT:
-                raise _ExitNow
-            self._check_bus()
-            self.clock.sleep_until(self.clock.now() + POLL_S)
+        self._await_request(schema.WAIT_START, schema.REQ_START,
+                            f"READY: the arm holds at home. Press {self._how()} to START "
+                            f"(then hold the clutch on the phone to drive); Ctrl-C to exit.")
 
     def active(self) -> None:
         """Spawn P6 and hand the arm over. Returns on RESET; EXIT leaves by raising."""
@@ -247,6 +350,7 @@ class Launcher:
             if request == schema.REQ_EXIT:
                 raise _ExitNow
             self._check_bus()
+            self._note_phone()
             if not self.children.alive("p6_target"):
                 raise ConfigError("P6 exited (its traceback is above)")
             if self.phone and not self.children.alive("p11_phone"):
@@ -297,7 +401,9 @@ class Launcher:
             self.log(f"[P0] {', '.join(sorted(late))} did not exit within "
                      f"{SHUTDOWN_JOIN_S:.0f} s of STOPPED: terminating")
         self.children.stop_all()
-        if self.cfg.bus.driver != "sim":
+        if self.dry_run:
+            self.log("[P0] dry run: torque was never on")
+        elif self.cfg.bus.driver != "sim":
             if release and control.bus == schema.BUS_DONE and not control.fault()[1].startswith(
                     "turning torque off failed"):
                 self.log("[P0] torque off (confirmed by the bus process)")
@@ -338,6 +444,7 @@ class Launcher:
         self._install_sigint()
         try:
             self.check()
+            self.confirm_home()
             self.home()
             while True:
                 self.ready()

@@ -380,7 +380,7 @@ def test_bus_process_never_releases_an_arm_it_did_not_enable(rings, monkeypatch)
     calls = []
 
     class Refuses:
-        def connect(self):
+        def connect(self, passive=False):
             raise DriverError("torque is already on for [1, 2]")
 
         def release(self, joints=None):
@@ -466,3 +466,86 @@ def test_bus_process_follows_the_ring_and_logs(tmp_path):
         arena.unlink()
     a = p7_bus.load_log(Path(done))
     assert len(a) > 100 and np.median(a["dt_ms"][5:]) == pytest.approx(4.0, abs=0.2)
+
+
+# --- the hardware check and the dry run -------------------------------------------------------
+
+
+def _checked(fake_bus_mod, mutate=None):
+    from elrobot.calibration import load
+    cals = load()
+    readings = [cals[j].zero_reading for j in range(1, 9)]
+    bus, servos = _fake_arm(fake_bus_mod, cals, readings)
+    if mutate:
+        mutate(servos)
+    sim = fake_bus_mod.SimClock()
+    return St3215Driver(bus=bus, cals=cals, clock=sim.now, sleep=sim.sleep), servos
+
+
+def test_the_hardware_check_passes_a_healthy_arm(fake_bus_mod):
+    drv, _ = _checked(fake_bus_mod)
+    report = drv.check()
+    assert report["problems"] == [] and len(report["servos"]) == 8
+    assert all(r["ok"] and r["volts"] == pytest.approx(12.1) for r in report["servos"])
+    assert all(r["deg"] == pytest.approx(0.0) for r in report["servos"])
+
+
+@pytest.mark.parametrize("what, mutate", [
+    ("supply", lambda s: s[2].set(__import__("elrobot.st3215.registers").st3215.registers
+                                  .PRESENT_VOLTAGE, 74)),
+    ("too hot", lambda s: s[4].set(__import__("elrobot.st3215.registers").st3215.registers
+                                   .PRESENT_TEMPERATURE, 70)),
+    ("already on", lambda s: s[0].set(__import__("elrobot.st3215.registers").st3215.registers
+                                      .TORQUE_ENABLE, 1)),
+    ("alarm: overheat", lambda s: s[1].set(__import__("elrobot.st3215.registers").st3215
+                                           .registers.STATUS, 1 << 2)),
+    ("calibrated range", lambda s: s[3].set(__import__("elrobot.st3215.registers").st3215
+                                            .registers.PRESENT_POSITION, 100)),
+    ("position mode", lambda s: s[6].set(__import__("elrobot.st3215.registers").st3215
+                                         .registers.MODE, 3)),
+])
+def test_the_hardware_check_refuses(fake_bus_mod, what, mutate):
+    drv, _ = _checked(fake_bus_mod, mutate)
+    problems = drv.check()["problems"]
+    assert len(problems) == 1 and what in problems[0], problems
+
+
+def test_a_passive_connect_writes_nothing(fake_bus_mod):
+    from elrobot.st3215 import registers as R
+    drv, servos = _checked(fake_bus_mod)
+    before = [bytes(s.mem) for s in servos]
+    q0 = drv.connect(passive=True)
+    assert np.allclose(q0, 0.0)
+    assert [bytes(s.mem) for s in servos] == before
+    assert all(s.get(R.TORQUE_ENABLE) == 0 for s in servos)
+
+
+def test_a_dry_run_bus_process_computes_commands_but_writes_none(rings):
+    """The sim driver records nothing on the wire if `write` is never called: its goal stays
+    at the connect posture while `q_cmd` follows the ring."""
+    name, arena, r = rings
+    r["control"].session = schema.ACTIVE
+    ctx = mp.get_context("spawn")
+    status = ctx.Queue()
+    q_rest = np.zeros(N_JOINTS)
+    proc = ctx.Process(target=p7_bus.run, args=(name,), kwargs={
+        "driver": "sim", "driver_kw": {"q0": q_rest.tolist()}, "settings": LINEAR,
+        "limits": WIDE, "status": status, "dry_run": True, "check": True})
+    proc.start()
+    try:
+        assert status.get(timeout=20)[0] == "ready"
+        assert r["control"].bus == schema.BUS_DRY
+        import json
+        assert json.loads(r["control"].report()[1])["dry_run"] is True
+        target = q_rest.copy()
+        target[2] = 0.3
+        now = clock.now()
+        for k in range(20):
+            r["targets"].write(k, now + 0.05 + k / 60, target, intervene=0)
+        clock.sleep_until(now + 0.05 + 20 / 60 + 0.2)
+        row = r["state"].latest()
+        assert row["q_cmd"][2] == pytest.approx(0.3, abs=1e-3), "the command was computed"
+        assert row["q"][2] == pytest.approx(0.0, abs=1e-3), "and never written"
+    finally:
+        r["control"].session = schema.STOPPED
+        proc.join(timeout=10)

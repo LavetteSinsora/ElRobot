@@ -146,7 +146,7 @@ class PhoneLoop:
                        track=pkt.track, world_epoch=pkt.world_epoch)
 
         active = self.control.session == schema.ACTIVE
-        if self.engaged:
+        if self.engaged and pkt.engage:       # a packet with the clutch up is a plain release
             why = None
             if not active:
                 why = "the rollout ended"

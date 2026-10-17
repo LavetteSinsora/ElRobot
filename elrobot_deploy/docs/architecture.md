@@ -35,6 +35,7 @@ exactly one writing process. Nothing calls anything else.
 | P0 | launcher | | `session`, ramps into the target ring, `release_torque` | `runtime/launcher/` |
 | P6 | target | per phone frame (60 Hz) | the target ring | `runtime/processes/p6_target.py` |
 | P7 | bus process | 250 Hz | `k_exec`, the state ring, `bus`, `fault` | `runtime/processes/p7_bus.py` |
+| P10 | dashboard | the page polls at 20 Hz | `request` (its buttons) | `dashboard/` |
 | P11 | phone source | per packet (60 Hz) | `intervene`, the intervention ring | `runtime/processes/p11_phone.py` |
 
 P7 replaces g1d's P1 (state), P7 (body) and P8 (hand): the bus is half-duplex, so one process
@@ -44,19 +45,26 @@ one (that would release torque), so ticks (`k`) count up across rollouts and nev
 ## A session
 
 ```
-INIT  -> CHECK -> HOME -> READY <-> ACTIVE -> EXITING -> STOPPED
-                            ^          |
-                            └─ HOME ◀──┘ (RESET)
+INIT -> CHECK -(Home)-> HOME -> READY -(Start)-> ACTIVE -> EXITING -> STOPPED
+                                  ^                |
+                                  └──── HOME ◀─────┘ (Reset)
 ```
 
-- **INIT**: create the arena.
-- **CHECK**: start the bus process; it connects, turns torque on holding the measured posture
-  and sets its `ready` latch once the first goal is on the wire. Then the phone source; P0
-  waits for the phone's first packet.
+- **INIT**: create the arena; start the dashboard (P10).
+- **CHECK**: start the bus process. Before it writes anything it runs the **hardware check**
+  (`St3215Driver.check`): every servo answers, is an STS3215 in position mode, has its
+  calibrated offset, has torque off, reads a sane supply voltage and temperature, has no alarm
+  bit, and reads inside its calibrated range (8 deg of slack: the arm rests on its stops). The
+  report is printed as a table and shown on the dashboard; any problem refuses the start. Then
+  it turns torque on holding the measured posture (in a dry run: not) and sets its `ready`
+  latch. The phone source starts too; nothing waits for the phone (only the clutch moves the
+  arm), the dashboard shows when it streams.
+- **Wait for Home**: the arm is held where it was found; the dashboard draws the home pose as a
+  green ghost beside it. Nothing moves until **Home** (the dashboard's button, or Enter in the
+  terminal; `--auto-home` skips the wait).
 - **HOME**: a cosine ramp from the held command to `[poses] home`, written into the target
   ring and executed like any other ticks; then the measured posture is checked against home.
-- **READY**: a teleop launch goes straight on (only the clutch moves the arm); `--wait-start`
-  waits for a START request.
+- **READY**: the arm holds at home until **Start** (button or Enter; `--auto-start` skips).
 - **ACTIVE**: P6 runs. The arm moves only while the operator holds the clutch.
 - **RESET** (a request): P6 stops, the arm ramps home, READY again.
 - **EXITING** (Ctrl-C or an EXIT request): P6 stops, the phone source hands back, the arm
@@ -64,10 +72,38 @@ INIT  -> CHECK -> HOME -> READY <-> ACTIVE -> EXITING -> STOPPED
   itself; the bus process turns torque off **only if** the exit ramp completed (and
   `release_at_exit`).
 
+**The dashboard and Enter only REQUEST** (`control.request`): HOME, START, RESET, EXIT. P0 takes
+a request only when it is the one it waits for (`control.wait`), so a stray click does nothing.
+
 **The arm is never dropped by software.** A failure, a bus fault or a second Ctrl-C (which skips
 the exit ramp) all end the session with torque left ON: the servos hold the last goal, P0
 says so, and the operator supports the arm and runs `uv run python -m elrobot.relax`.
 (One Ctrl-C under `uv run` reaches the process twice; two within 0.5 s count as one.)
+
+## Dry runs
+
+- `run --sim`: no hardware. `SimDriver` stands in for the bus (first-order lags at the real
+  bus's timing), everything else is the real code; with `fake-phone` there is no phone either.
+- `run --dry-run`: **the real arm, torque OFF**. The bus process connects passively (the
+  hardware check runs, torque is never enabled, no goal is ever written), reads the arm every
+  tick, and still walks the ring, filters and clamps every command and publishes it as `q_cmd`.
+  So homing, Start, the phone, P6 and the IK all run for real, and the dashboard shows the
+  commanded arm as the blue ghost moving while the measured arm lies still. The lag and
+  runaway guards are off (the arm is not meant to follow), the homing check is skipped.
+- `view`: no session at all. The dashboard's 3D view of the URDF with the profile's home and
+  exit poses as ghosts and a slider per joint, to look at a pose before using it.
+
+## The dashboard (`dashboard/`)
+
+`http://127.0.0.1:8080` (`[dashboard] host / port`; `0.0.0.0` to open it from another device,
+without a password). A stdlib HTTP server (P10) and one page; three.js is vendored, so it works
+offline. The page draws our URDF (`/api/robot`, the meshes from `description/`) up to four
+times: the arm as **measured** (solid), as **commanded** by the bus process (blue ghost), the
+**home** pose (green ghost) and the exit pose (orange), plus the IK's target point. Beside it:
+the session and what P0 waits for, the Home / Start / Reset / Exit buttons (enabled only when
+P0 would take them), the phone (streaming, clutch, tracking, latency, forced releases), every
+joint (measured, commanded, error, temperature, load) and the hardware check. It polls
+`/api/state` 20 times a second and redraws only when something changed.
 
 ## Teleoperation
 
@@ -172,11 +208,14 @@ uv run elrobot_deploy config --set ...        # print what a run would use
 ```bash
 uv sync --extra runtime                          # once
 uv run pytest -q                                 # the tests (no hardware)
+uv run elrobot_deploy view                       # the URDF and the poses in the browser, no robot
 uv run elrobot_deploy phone-bench                # the grip, with the phone and no robot
 uv run elrobot_deploy run --sim                  # the whole chain on simulated servos
 uv run elrobot_deploy fake-phone                 # ... driven by a synthetic phone instead
-uv run elrobot_deploy run --no-phone             # the real arm: home, hold, exit (bring-up)
+uv run elrobot_deploy run --dry-run              # the real arm read, torque OFF: ghost only
+uv run elrobot_deploy run --no-phone             # the real arm: check, home, hold, exit
 uv run elrobot_deploy run                        # the real arm, driven by the phone
+#   run flags: --auto-home, --auto-start (skip the waits), --no-dashboard (Enter only)
 uv run elrobot_deploy executor-test --joints 6   # the executor's sine test
 ```
 
@@ -186,6 +225,6 @@ last ten minutes of a session) is written to `ElRobot/logs/sessions/<stamp>_bus.
 
 ## Not here yet
 
-Policies (P5, the policy contract, chunk blending), recording (P9), the dashboards (P10,
-inspection), cameras (P2) and the CHECK verifiers are g1d's, in `../legacy_g1d/`, to be ported
-when their milestone comes (`../PORTING_PLAN.md` section 4).
+Policies (P5, the policy contract, chunk blending), recording (P9; today only the bus
+process's tick log), rollout inspection and cameras (P2) are g1d's, in `../legacy_g1d/`, to be
+ported when their milestone comes (`../PORTING_PLAN.md` section 4).

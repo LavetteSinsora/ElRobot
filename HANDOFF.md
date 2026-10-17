@@ -1,4 +1,4 @@
-# ElRobot phone teleop: handoff (2026-10-17, end of the second session)
+# ElRobot phone teleop: handoff (2026-10-17, end of the second session, + dashboard)
 
 Read this first in a new session. It says where the project stands, what was decided and
 measured, and what is left before the arm is teleoperated with the iPhone. The system as it is
@@ -14,11 +14,20 @@ bus, Waveshare adapter at 1 Mbps, controlled from the Mac).
 | **phone -> target** | iPhone ARKit pose + buttons over UDP (packet v2); P11 turns it into TCP motion with deadlines (clutch, room-frame mapping, gripper, guards) | **built, tested in simulation end to end**; app v2 written but **not yet compiled** (no Xcode in the cloud session) |
 | **IK** | TCP pose -> 7 joints per tick (P6), behind one interface | **built and wired** (`tcp_qp`) |
 | **executor** | target ring -> 250 Hz goals on the bus (P7) | **built, run on the real arm** (session 1); now the launcher's bus process; per-joint tuning is profile config, values not chosen yet |
+| **session + dashboard** | hardware check, Home (previewed) and Start gates, a browser view of the URDF (measured / commanded / home), dry runs | **built, tested in simulation**; not yet on the Mac |
+
+The session as it runs now: `run` -> the hardware check (a table on the terminal and the
+dashboard) -> the arm held where it was found, the home pose shown as a green ghost at
+`http://127.0.0.1:8080` -> **Home** (button or Enter) -> homing -> **Start** -> hold the pad on
+the phone to drive -> Reset / Exit (button) or Ctrl-C. `--dry-run` does all of it on the real
+arm with torque OFF (only the blue ghost moves).
 
 ## 2. Where things are
 
-- Repo: GitHub `LavetteSinsora/ElRobot`, branch `claude/charming-curie-4748g7` (three commits on
-  `fc9c2cc`: the single-arm runtime, the phone side, docs). Not merged.
+- Repo: GitHub `LavetteSinsora/ElRobot`, branch `claude/charming-curie-4748g7` (commits on
+  `fc9c2cc`: the single-arm runtime, the phone side, docs, the dashboard round). Not merged.
+  To get it on the Mac: `git fetch origin claude/charming-curie-4748g7` then check it out (add
+  the remote first if the local repo has none).
 - `elrobot/`: bring-up tools (bus, calibration, `relax`, `move`, ...). Unchanged.
 - `description/elrobot_ours/`: our URDF (calibrated limits, `tcp`). Unchanged.
 - `elrobot_deploy/`: the deploy runtime, rebuilt for one arm this session.
@@ -28,7 +37,8 @@ bus, Waveshare adapter at 1 Mbps, controlled from the Mac).
     (bus, executor tuning, home/exit poses, IK, teleop). `--set section.key=value` per run.
   - `runtime/`: `launcher/` (P0), `processes/` (P6 `p6_target.py`, P7 `p7_bus.py`, P11
     `p11_phone.py`), `shared_memory/`, `ik/`, `execution/`, `drivers/`, `teleop/`.
-  - `legacy_g1d/`: g1d's code not ported (policies, recording, dashboards, cameras, CHECK),
+  - `dashboard/`: P10, the browser view (stdlib server + a three.js page, vendored).
+  - `legacy_g1d/`: g1d's code not ported (policies, recording, inspection, cameras),
     unchanged, as reference (README there).
   - `PORTING_PLAN.md`: the plan; its status block lists what changed against it and why.
 - `phone_teleop/`: the iOS app (v2: world_epoch, the Mac's state banner + haptics, a one-thumb
@@ -99,24 +109,29 @@ Findings:
 ## 5. Next steps, in order
 
 ### A. On the Mac, no arm power yet
-1. `cd elrobot_deploy && uv sync --extra runtime && uv run pytest -q` (91 tests, ~20 s). The
-   suite was written on Linux; run it on the Mac once (macOS `/dev/shm`-less shared memory, the
-   ARM memory fence).
-2. `uv run elrobot_deploy run --sim` in one terminal, `uv run elrobot_deploy fake-phone` in
-   another: the whole chain without the phone (the fake phone circles 3 cm left/up).
-3. **Build the app** (`phone_teleop/README.md`). The Swift changes were written without a
+1. `cd elrobot_deploy && uv sync --extra runtime && uv run pytest -q` (112 tests, ~30 s). The
+   suite was written on Linux; run it on the Mac once (macOS shared memory, the ARM memory
+   fence).
+2. `uv run elrobot_deploy view`, open http://127.0.0.1:8080: the URDF, the home pose (green)
+   and the exit pose (orange), sliders per joint. Is home where you want it?
+3. `uv run elrobot_deploy run --sim` in one terminal, `uv run elrobot_deploy fake-phone` in
+   another, the dashboard in the browser: press Home, then Start; the fake phone then circles
+   the simulated arm 3 cm left/up.
+4. **Build the app** (`phone_teleop/README.md`). The Swift changes were written without a
    compiler: expect to fix small errors in Xcode. Then `uv run elrobot_deploy phone-bench`: hold
    the phone as described, hold the pad, push forward -> `fwd` grows; left -> `left` grows; up
    -> `up` grows; tip the top down -> `rot about left` positive.
-4. `uv run elrobot_deploy run --sim` driven by the real phone (M2). Read P11's per-engagement
+5. `uv run elrobot_deploy run --sim` driven by the real phone (M2). Read P11's per-engagement
    latency line (`L_n - L_1` p99, "the deadline map slid"): is the 40 ms lead enough on your WiFi?
 
 ### B. The real arm
-5. Check `[poses] home` (TCP 25 cm out, 10 cm up, pitched 45 deg down: `[0,-30,0,35,0,40,0,3]`
+6. `uv run elrobot_deploy run --dry-run` (arm powered, torque never on): the hardware check
+   reads every servo; the measured arm on the dashboard must match the real one; Home and
+   Start move only the blue ghost; driving with the phone moves only the ghost.
+7. Check `[poses] home` (TCP 25 cm out, 10 cm up, pitched 45 deg down: `[0,-30,0,35,0,40,0,3]`
    deg) and `exit` (rest) against the real arm and table; adjust the profile.
-6. `uv run elrobot_deploy run --no-phone`: home, hold, Ctrl-C -> exit ramp -> torque off. A
-   bring-up of the launcher on the bus without anyone driving.
-7. First teleop (M3), small box and slow, hand on the 12 V switch, small motions first:
+8. `uv run elrobot_deploy run --no-phone`: check, Home, hold, Exit -> exit ramp -> torque off.
+9. First teleop (M3), small box and slow, hand on the 12 V switch, small motions first:
    ```bash
    uv run elrobot_deploy run --set limits.velocity_scale=0.3 \
        --set 'teleop.workspace_min=[-0.15, 0.15, 0.04]' --set 'teleop.workspace_max=[0.15, 0.32, 0.2]'
@@ -124,24 +139,27 @@ Findings:
    (Quote values with brackets: zsh would glob them.)
 
 ### C. Tuning (whenever; it is configuration now)
-8. Per-joint servo settings in `[executor]` (`p_coef`, `d_coef`, `friction`), from
+10. Per-joint servo settings in `[executor]` (`p_coef`, `d_coef`, `friction`), from
    `executor-test` sine runs (section 4): light joints 5-7 P16 + friction 1.0 deg is the current
    best guess; the gravity joints 2-4 (and 1) still need their own runs.
-9. Gravity compensation (sag ~ gravity torque / stiffness), squeeze margin vs force on a real
+11. Gravity compensation (sag ~ gravity torque / stiffness), squeeze margin vs force on a real
    object, TORQUE_LIMIT on servo 8.
-10. If level, sideways gripper motion is needed: the wrist-branch question (`tcp_qp.py`
+12. If level, sideways gripper motion is needed: the wrist-branch question (`tcp_qp.py`
     docstring); a new IK is `--set ik.solver=file.py:factory` (`runtime/ik/__init__.py`).
 
-### D. Later: cameras (M4), recording / dashboard / CHECK (M5), policies: from `legacy_g1d/`.
+### D. Later: recording (only the bus tick log exists), cameras (M4), policies: from
+`legacy_g1d/`. Optional: Start / Reset buttons on the phone.
 
 ## 6. Minimum checklist before teleoperating with the phone
 
 - [x] Single-arm schema; the executor runs as the launcher's bus process on the real ring
 - [x] Phone source with clutch, anchoring, gripper, guards; room-frame mapping for the grip
 - [x] P6 driving `tcp_qp` at 60 Hz; launcher teleop mode; end-to-end test in simulation
+- [x] Hardware check at startup; Home / Start gates; dashboard with the URDF; dry-run mode
 - [ ] The test suite run on the Mac
 - [ ] App v2 built and on the iPhone; `phone-bench` confirms the axis mapping
 - [ ] `run --sim` driven by the real phone; latency measured (lead 40 ms enough?)
+- [ ] `run --dry-run` on the real arm (check passes, measured arm matches reality)
 - [ ] Home and exit poses checked on the real arm; `run --no-phone` on the real arm
 - [ ] Executor per-joint P/friction set (or accept the defaults for a first slow session)
 - [ ] Gripper squeeze margin and TORQUE_LIMIT checked on a real object
@@ -153,11 +171,14 @@ Findings:
 uv sync --extra runtime                                   # deploy env (includes ../elrobot)
 uv run pytest -q                                          # deploy tests (no hardware)
 uv run elrobot_deploy config                              # print the resolved profile
+uv run elrobot_deploy view                                # the URDF + poses in the browser
 uv run elrobot_deploy phone-bench                         # the grip check, no robot
 uv run elrobot_deploy run --sim                           # simulated servos
 uv run elrobot_deploy fake-phone                          # drive a --sim run without the phone
-uv run elrobot_deploy run --no-phone                      # real arm: home, hold, exit
+uv run elrobot_deploy run --dry-run                       # real arm read, torque OFF (ghost only)
+uv run elrobot_deploy run --no-phone                      # real arm: check, home, hold, exit
 uv run elrobot_deploy run                                 # real arm, phone teleop
+#   dashboard: http://127.0.0.1:8080 ; run flags: --auto-home --auto-start --no-dashboard
 uv run elrobot_deploy executor-test --joints 6 --p-coef 16 --friction-deg 1.0   # sine test
 #   (also: python -m elrobot_deploy.cli.executor_test ...; flags unchanged: --hold, --d-coef,
 #   --goal-speed, --rewrite-every, --amp-deg, --freq, --sim, --dry-run)

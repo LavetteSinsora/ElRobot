@@ -31,6 +31,7 @@ class Recorder(Launcher):
 
     def __init__(self, cfg, **kw):
         self.lines = []
+        kw = {"auto_home": True, "auto_start": True} | kw
         super().__init__(cfg, phone=False, arena_name=arena_name(),
                          log=self.lines.append, **kw)
         self.seen = {}
@@ -146,3 +147,53 @@ def test_a_profile_name_is_not_mistaken_for_a_directory(tmp_path, monkeypatch):
     (tmp_path / "elrobot").mkdir()
     monkeypatch.chdir(tmp_path)
     assert load("elrobot", sets=["bus.driver=sim"]).profile.endswith("elrobot.toml")
+
+
+def test_nothing_moves_until_home_and_nothing_starts_until_start(fast):
+    """The default session: hold where found until HOME, hold at home until START."""
+    p0 = Recorder(fast, auto_home=False, auto_start=False)
+    seen = {}
+
+    def operator():
+        while p0.rings is None or p0.rings["control"].wait != schema.WAIT_HOME:
+            time.sleep(0.01)
+        time.sleep(0.5)                                       # nothing moves meanwhile
+        seen["held"] = p0.rings["state"].latest()["q_cmd"].copy()
+        assert p0.rings["control"].session == schema.CHECK
+        p0.rings["control"].request = schema.REQ_START        # the wrong request: ignored
+        time.sleep(0.1)
+        assert p0.rings["control"].session == schema.CHECK
+        p0.rings["control"].request = schema.REQ_HOME
+        while p0.rings["control"].wait != schema.WAIT_START:
+            time.sleep(0.01)
+        seen["ready"] = p0.rings["control"].session
+        p0.rings["control"].request = schema.REQ_START
+        while p0.rings["control"].session != schema.ACTIVE:
+            time.sleep(0.01)
+        p0.rings["control"].request = schema.REQ_EXIT
+
+    threading.Thread(target=operator, daemon=True).start()
+    assert p0.run() == 0, "\n".join(p0.lines)
+    assert np.allclose(seen["held"], fast.poses.exit, atol=2e-3), "held where found (sim: exit)"
+    assert seen["ready"] == schema.READY
+    assert any("hardware check" in line for line in p0.lines)
+
+
+def test_a_dry_run_session_commands_but_never_moves_the_arm(fast):
+    p0 = Recorder(fast, dry_run=True)
+    seen = {}
+
+    def operator():
+        while p0.rings is None or p0.rings["control"].session != schema.ACTIVE:
+            time.sleep(0.01)
+        snap = p0.rings["state"].latest()
+        seen["q"], seen["q_cmd"] = snap["q"].copy(), snap["q_cmd"].copy()
+        seen["bus"] = p0.rings["control"].bus
+        p0.rings["control"].request = schema.REQ_EXIT
+
+    threading.Thread(target=operator, daemon=True).start()
+    assert p0.run() == 0, "\n".join(p0.lines)
+    assert seen["bus"] == schema.BUS_DRY
+    assert np.allclose(seen["q_cmd"], fast.poses.home, atol=1e-3), "the command went home"
+    assert np.allclose(seen["q"], fast.poses.exit, atol=1e-3), "the arm did not"
+    assert any("torque was never on" in line for line in p0.lines)

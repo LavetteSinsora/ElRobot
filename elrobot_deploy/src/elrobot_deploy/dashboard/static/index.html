@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ElRobot dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script type="importmap">
+    {"imports": {
+      "three": "/static/vendor/three/three.module.min.js",
+      "three/addons/loaders/STLLoader.js": "/static/vendor/three/STLLoader.js",
+      "three/addons/controls/OrbitControls.js": "/static/vendor/three/OrbitControls.js"
+    }}
+  </script>
+</head>
+<body>
+  <main>
+    <section id="view">
+      <canvas id="scene"></canvas>
+      <div id="legend">
+        <label><input type="checkbox" data-layer="measured" checked><i class="sw measured"></i>measured</label>
+        <label><input type="checkbox" data-layer="command" checked><i class="sw command"></i>commanded</label>
+        <label><input type="checkbox" data-layer="home" checked><i class="sw home"></i>home pose</label>
+        <label><input type="checkbox" data-layer="exit"><i class="sw exit"></i>exit pose</label>
+        <label><input type="checkbox" data-layer="target" checked><i class="sw target"></i>IK target</label>
+        <label><input type="checkbox" data-layer="workspace"><i class="sw workspace"></i>workspace</label>
+      </div>
+      <div id="loading">loading the arm…</div>
+    </section>
+
+    <aside id="panel">
+      <header>
+        <h1>ElRobot</h1>
+        <span id="mode" class="badge">—</span>
+        <span id="session" class="badge">—</span>
+      </header>
+
+      <div id="banner" class="banner">Connecting…</div>
+
+      <div id="buttons" class="buttons">
+        <button id="btn-home" data-request="HOME" disabled>Home</button>
+        <button id="btn-start" data-request="START" disabled>Start</button>
+        <button id="btn-reset" data-request="RESET" disabled>Reset</button>
+        <button id="btn-exit" data-request="EXIT" class="danger" disabled>Exit</button>
+      </div>
+
+      <div id="preview" class="card" hidden>
+        <h2>Pose</h2>
+        <div class="row-buttons">
+          <button data-pose="home">home</button>
+          <button data-pose="exit">exit</button>
+          <button data-pose="zero">zero</button>
+        </div>
+        <div id="sliders"></div>
+      </div>
+
+      <div class="card" id="phone-card">
+        <h2>Phone</h2>
+        <dl id="phone"></dl>
+      </div>
+
+      <div class="card">
+        <h2>Joints <span class="hint">deg</span></h2>
+        <table id="joints">
+          <thead><tr><th>#</th><th>measured</th><th>command</th><th>error</th><th>°C</th><th>load</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p id="ik" class="hint"></p>
+      </div>
+
+      <details class="card" id="check-card">
+        <summary><h2>Hardware check</h2> <span id="check-summary" class="hint"></span></summary>
+        <table id="check">
+          <thead><tr><th>#</th><th>angle</th><th>supply</th><th>°C</th><th>P/D</th><th>status</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <ul id="check-notes"></ul>
+      </details>
+    </aside>
+  </main>
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>
