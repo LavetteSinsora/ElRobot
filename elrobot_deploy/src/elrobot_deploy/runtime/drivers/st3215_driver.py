@@ -71,6 +71,7 @@ class St3215Driver:
     def __init__(self, *, port: str | None = None, bus=None, cals=None, qdot_max=None,
                  goal_speed_factor: float = 1.5, acceleration: int = 0,
                  torque_limit: dict[int, int] | None = None, p_coef: dict[int, int] | None = None,
+                 d_coef: dict[int, int] | None = None,
                  goal_speed: dict[int, int] | None = None, rewrite_every: int = 1,
                  clock=time.monotonic, sleep=time.sleep):
         from elrobot.calibration import RAD_PER_STEP, load
@@ -101,10 +102,11 @@ class St3215Driver:
             self.goal_speed[int(j)] = int(v)
         self.acceleration = int(acceleration)
         self.torque_limit = dict(TORQUE_LIMIT if torque_limit is None else torque_limit)
-        # Per servo ID, for this session only: written with the EEPROM locked, so it lives in
+        # P and D per servo ID, for this session only: written with the EEPROM locked, so it lives in
         # RAM until power-off, and `release()` puts the original back (as `elrobot.hold_test`).
-        self.p_coef = {int(k): int(v) for k, v in (p_coef or {}).items()}
-        self._p_original: dict[int, int] = {}
+        self.gains = {(R.P_COEF, int(j)): int(v) for j, v in (p_coef or {}).items()}
+        self.gains.update({(R.D_COEF, int(j)): int(v) for j, v in (d_coef or {}).items()})
+        self._gain_original: dict = {}
         self.clock, self.sleep = clock, sleep
         self.torque_on = False
         self._goal_encode = R.GOAL_POSITION.encode
@@ -185,9 +187,9 @@ class St3215Driver:
         bus.sync_write_reg(R.GOAL_SPEED, self.goal_speed)
         bus.sync_write_reg(R.ACCELERATION, {j: self.acceleration for j in self.ids})
         bus.sync_write_reg(R.TORQUE_LIMIT, {j: self.torque_limit[j] for j in self.ids})
-        for j, p in self.p_coef.items():
-            self._p_original.setdefault(j, bus.read_reg(j, R.P_COEF))
-            bus.write_reg(j, R.P_COEF, p)
+        for (reg, j), v in self.gains.items():
+            self._gain_original.setdefault((reg, j), bus.read_reg(j, reg))
+            bus.write_reg(j, reg, v)
         bus.sync_write_reg(R.TORQUE_ENABLE, {j: 1 for j in self.ids})
         self.torque_on = True
         q0 = self.to_rad(start)
@@ -195,7 +197,11 @@ class St3215Driver:
         while self.clock() - t0 < ENABLE_WATCH_S:
             moved = np.flatnonzero(np.abs(self.read() - q0) > RUNAWAY_RAD)
             if moved.size:
-                self.release()
+                try:
+                    self.release()
+                except DriverError as exc:
+                    raise DriverError(f"a joint ran away when torque came on, and then: {exc}. "
+                                      "Switch the 12 V supply off.") from exc
                 raise DriverError(
                     f"joints {[self.ids[i] for i in moved]} started moving on their own when "
                     "torque came on (the controller disagrees with the reading). Torque is off "
@@ -204,15 +210,31 @@ class St3215Driver:
         return q0
 
     def release(self, joints: list[int] | None = None) -> None:
-        idx = range(N_JOINTS) if joints is None else joints
-        self.bus.sync_write_reg(self.R.TORQUE_ENABLE, {self.ids[i]: 0 for i in idx})
+        """Torque off, CONFIRMED: a sync_write has no reply, and one sent just before the port
+        closes can be lost (2026-10-17: "Torque off." printed, the next run found all 8 on). So
+        read it back and resend, and raise if a servo still holds."""
+        R = self.R
+        ids = [self.ids[i] for i in (range(N_JOINTS) if joints is None else joints)]
+        still = ids
+        for _ in range(3):
+            self.bus.sync_write_reg(R.TORQUE_ENABLE, {j: 0 for j in still})
+            on = self.bus.sync_read_reg(still, R.TORQUE_ENABLE)
+            still = [j for j in still if on[j]]
+            if not still:
+                break
+        if joints is None:
+            for (reg, j), v in self._gain_original.items():
+                self.bus.write_reg(j, reg, v)
+            self._gain_original.clear()
+        if still:
+            raise DriverError(f"torque is still on for {still} after three tries")
         if joints is None:
             self.torque_on = False
-            for j, p in self._p_original.items():
-                self.bus.write_reg(j, self.R.P_COEF, p)
-            self._p_original.clear()
 
     def close(self) -> None:
+        flush = getattr(self.bus.ser, "flush", None)
+        if flush is not None:
+            flush()                          # anything still queued goes out before the port shuts
         self.bus.close()
 
 

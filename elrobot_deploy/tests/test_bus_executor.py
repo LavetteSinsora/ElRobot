@@ -160,6 +160,20 @@ def test_squeeze_bound_caps_how_far_the_jaw_command_leads_the_measured_jaw(rings
     assert run_to(s, 1.204, 1.3, meas)[GRIPPER] == pytest.approx(0.65)
 
 
+def test_friction_compensation_leads_the_line_while_moving_and_not_while_holding(rings):
+    _, _, r = rings
+    goal = np.full(8, 0.2)
+    r["targets"].write(0, 1.0, goal, intervene=0)          # 0.2 rad/s on every joint
+    st = ExecutorSettings(filter_hz=0.0, friction=math.radians(0.5))
+    s = servo(r, settings=st)
+    q = run_to(s, 0.0, 0.5)
+    lead = q - s.q_line_last
+    want = math.radians(0.5) * math.tanh(0.2 / st.friction_v)
+    assert np.allclose(lead[:7], want) and lead[GRIPPER] == 0.0   # the jaw is the squeeze's
+    q = run_to(s, 0.504, 1.5)                              # ring dry: holding, no lead
+    assert np.allclose(q, goal)
+
+
 # --- shaping, with rows arriving like the phone's ----------------------------------------
 
 
@@ -326,6 +340,68 @@ def test_st3215_driver_rewrite_every_sends_only_changed_goals(fake_bus_mod):
     assert servos_in_last_write() == [6]
     drv.write(q2)                                          # 4th write: the refresh, everyone
     assert servos_in_last_write() == list(range(1, 9))
+
+
+def test_st3215_driver_release_confirms_torque_off_and_resends(fake_bus_mod):
+    """2026-10-17: a torque-off sync_write sent just before the port closed was lost."""
+    from elrobot.calibration import load
+    from elrobot.st3215 import protocol
+    from elrobot.st3215 import registers as R
+
+    cals = load()
+    bus, servos = _fake_arm(fake_bus_mod, cals, [cals[j].zero_reading for j in range(1, 9)])
+    sim = fake_bus_mod.SimClock()
+    drv = St3215Driver(bus=bus, cals=cals, clock=sim.now, sleep=sim.sleep)
+    drv.connect()
+    ser, write = bus.ser, bus.ser.write
+    dropped = []
+
+    def lossy(packet, always=False):
+        if (packet[4] == protocol.SYNC_WRITE and packet[5] == R.TORQUE_ENABLE.addr
+                and (always or not dropped)):
+            dropped.append(packet)
+            return
+        write(packet)
+
+    ser.write = lossy                                      # the first torque-off is lost
+    drv.release()
+    assert len(dropped) == 1 and all(s.get(R.TORQUE_ENABLE) == 0 for s in servos)
+
+    for s in servos:
+        s.set(R.TORQUE_ENABLE, 1)
+    drv.torque_on = True
+    ser.write = lambda p: lossy(p, always=True)            # every torque-off is lost
+    with pytest.raises(DriverError, match="still on"):
+        drv.release()
+
+
+def test_bus_process_never_releases_an_arm_it_did_not_enable(rings, monkeypatch):
+    """A refused connect may mean another program holds the arm: turning it off would drop it."""
+    import signal
+
+    name, _, _ = rings
+    calls = []
+
+    class Refuses:
+        def connect(self):
+            raise DriverError("torque is already on for [1, 2]")
+
+        def release(self, joints=None):
+            calls.append("release")
+
+        def close(self):
+            calls.append("close")
+
+    monkeypatch.setattr(p7_bus, "make_driver", lambda kind, **kw: Refuses())
+    status, sigint = queue.Queue(), signal.getsignal(signal.SIGINT)
+    try:
+        p7_bus.run(name, driver="x", driver_kw={}, settings=ExecutorSettings(), limits=WIDE,
+                   status=status)
+    finally:
+        signal.signal(signal.SIGINT, sigint)
+    msgs = [status.get_nowait() for _ in range(status.qsize())]
+    assert calls == ["close"]
+    assert msgs[0][0] == "fault" and "already on" in msgs[0][1] and msgs[-1][0] == "done"
 
 
 def test_st3215_driver_refuses_a_held_arm_and_aborts_a_runaway(fake_bus_mod):

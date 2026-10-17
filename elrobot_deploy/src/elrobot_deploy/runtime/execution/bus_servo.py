@@ -21,7 +21,13 @@ What changes, because the ST3215 takes a goal position and nothing else:
     lead the MEASURED jaw toward closed by at most `squeeze_margin`. On a position servo the grip
     force is roughly `P x (commanded - measured)`, so this, not the command, sets how hard an
     object is held (PORTING_PLAN.md C2). It is applied here, every tick, against the freshest
-    read, because this is the last thing before the wire.
+    read, because this is the last thing before the wire;
+  * **friction compensation** (off by default, `friction`): the arm joints' goal leads the line
+    by `friction * tanh(v / friction_v)` in the direction of motion. A P-only servo makes
+    torque from position error, so it stalls until the error beats static friction and then
+    lurches (measured on joint 6: speed swinging +-40 %, stalls up to 60 ms, a 0.5-0.8 deg dead
+    zone at each reversal). Leading by about that dead zone supplies the error up front; tanh
+    makes it fade through zero at a reversal instead of flipping.
 
 `step()` is pure: no clock, no bus. The process (`runtime/processes/p7_bus.py`) supplies both.
 """
@@ -52,6 +58,8 @@ class ExecutorSettings:
     velocity_scale: float = 0.5       # x the URDF's 4.71 rad/s (about the ST3215's no-load speed)
     squeeze_margin: float = math.radians(5.0)   # gripper rad; a first guess, to calibrate on force
     slow_every: int = 5               # speed / load / temperature every Nth tick (50 Hz at 250)
+    friction: float = 0.0             # rad the goal leads in the direction of motion; 0 = off
+    friction_v: float = math.radians(2.0)   # rad/s over which that lead fades in (tanh scale)
 
     def shaping(self, q0: np.ndarray) -> Shaping:
         if self.filter_hz <= 0:
@@ -83,6 +91,9 @@ class BusServo:
         self.seg = Segment(ring, control, self.q_line_last, t0, cursor=cursor)
         #: Which branch the last published command came from: "hold" or "inside".
         self.phase = "hold"
+        self._zero = np.zeros_like(self.q_cmd_last)
+        self._arm = np.ones_like(self.q_cmd_last)      # friction compensation: not the gripper
+        self._arm[GRIPPER] = 0.0
 
     stalled = property(lambda self: self.seg.stalled)
 
@@ -101,11 +112,16 @@ class BusServo:
         q_line = self._walk(t_now, phase)
         if self.shaping.smoother is None:
             q = q_line
+            u = self.seg.u_raw(t_now)
+            v = (self.seg.delta / self.seg.span if phase is Phase.INSIDE and 0.0 <= u <= 1.0
+                 else self._zero)
         else:
             reference = line_ahead(self.seg, self.ring, t_now, self.shaping.lead_s)
             h = min(max(t_now - self.t_last, 0.0), self.h_max)
-            q, _, _ = self.shaping.smoother.step(reference, h)
+            q, v, _ = self.shaping.smoother.step(reference, h)
         self.t_last = t_now
+        if self.settings.friction > 0.0:
+            q = q + self._arm * self.settings.friction * np.tanh(v / self.settings.friction_v)
 
         q = np.clip(q, self.q_cmd_last - self.slew, self.q_cmd_last + self.slew)
         if q_meas is not None:

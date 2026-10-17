@@ -266,18 +266,20 @@ def analyze(log: np.ndarray, targets: np.ndarray, plan: Plan, t_start: float, *,
     hold = (log["t"] >= h0) & (log["t"] <= h1)       # the centre hold just before the sine
     deg = np.degrees
     out.append("")
-    out.append("joint  amp meas/cmd  delay cmd->meas  reversal dead zone  hold err  "
+    out.append("joint  amp meas/line  delay line->meas  reversal dead zone  hold err  "
                "err vs line rms/max  cmd step max")
     for j in plan.joints:
-        y_line = np.interp(t, targets[:, 1], targets[:, 3 + j])     # the line, at its deadlines
+        # Everything against the TARGET LINE (at its deadlines), which is what the operator asked
+        # for: the command may lead it on purpose (--friction-deg).
+        y_line = np.interp(t, targets[:, 1], targets[:, 3 + j])
         cmd, meas = log["cmd"][sel, j], log["meas"][sel, j]
-        a_cmd, d_cmd = _sine_fit(t, cmd, plan.freq)
+        a_line, d_line = _sine_fit(t, y_line, plan.freq)
         a_meas, d_meas = _sine_fit(t, meas, plan.freq)
-        dz = _reversal_dead_zone(cmd, meas, plan.amp)
-        herr = deg(np.mean(log["meas"][hold, j] - log["cmd"][hold, j])) if hold.any() else np.nan
+        dz = _reversal_dead_zone(y_line, meas, plan.amp)
+        herr = deg(np.mean(log["meas"][hold, j] - log["line"][hold, j])) if hold.any() else np.nan
         err = deg(meas - y_line)
         step = deg(np.max(np.abs(np.diff(cmd)))) if cmd.size > 1 else 0.0
-        out.append(f"  {j + 1:<4} {a_meas / a_cmd:>10.3f} {1e3 * (d_meas - d_cmd):>13.0f} ms "
+        out.append(f"  {j + 1:<4} {a_meas / a_line:>11.3f} {1e3 * (d_meas - d_line):>14.0f} ms "
                    f"{dz:>15.2f} deg {herr:>+7.2f} deg {np.sqrt(np.mean(err ** 2)):>10.2f} / "
                    f"{np.max(np.abs(err)):<5.2f} deg {step:>8.3f} deg")
         ripple, stall = _smoothness(log, sel, j, plan)
@@ -285,11 +287,11 @@ def analyze(log: np.ndarray, targets: np.ndarray, plan: Plan, t_start: float, *,
                    f"average (peak speed {math.degrees(plan.amp * 2 * math.pi * plan.freq):.1f}); "
                    f"longest stall while it should move fast {stall:.0f} ms")
     out.append("")
-    out.append("delay: the servo's phase lag on the sine, as time. reversal dead zone: how far "
-               "the command comes back after a turn before the joint follows by one encoder step "
-               "(friction against a P-only servo shows here, and inflates the delay). hold err: "
-               "measured minus commanded while holding still. err vs line: measured minus the "
-               "target line at its deadlines (capture -> arm = lead + delay).")
+    out.append("delay: the arm's phase lag behind the target line on the sine, as time (capture "
+               "-> arm = lead + delay). reversal dead zone: how far the line comes back after a "
+               "turn before the joint follows by one encoder step (friction against a P-only "
+               "servo shows here, and inflates the delay). hold err: measured minus the line while "
+               "holding still. err vs line: measured minus the target line at its deadlines.")
     return "\n".join(out)
 
 
@@ -328,6 +330,13 @@ def main(argv=None) -> int:
     ap.add_argument("--p-coef", type=int, default=None,
                     help="P gain for the TESTED joints only, this run only (RAM, restored at the "
                          "end; the servos' own is 32)")
+    ap.add_argument("--d-coef", type=int, default=None,
+                    help="D gain for the TESTED joints only, this run only (RAM, restored; the "
+                         "servos' own is 32): more damping against ringing")
+    ap.add_argument("--friction-deg", type=float, default=0.0,
+                    help="friction compensation: the arm joints' goal leads the line by this "
+                         "much in the direction of motion (fades through zero at reversals); "
+                         "try about the measured reversal dead zone, 0.5")
     ap.add_argument("--goal-speed", type=int, default=None,
                     help="GOAL_SPEED cap (steps/s, 1 step = 0.088 deg) for the TESTED joints, "
                          "instead of the high ceiling: near the commanded speed, the servo ramps "
@@ -350,7 +359,10 @@ def main(argv=None) -> int:
     limits = urdf_limits()
     settings = ExecutorSettings(hz=args.hz, filter_hz=args.filter_hz,
                                 filter_lead=not args.no_filter_lead,
-                                velocity_scale=args.velocity_scale)
+                                velocity_scale=args.velocity_scale,
+                                friction=math.radians(args.friction_deg))
+    if not 0.0 <= args.friction_deg <= 2.0:
+        ap.error("--friction-deg is 0..2")
     qdot_max = limits.velocity * settings.velocity_scale
     peak = math.radians(args.amp_deg) * 2 * math.pi * args.freq
     if peak > 0.8 * qdot_max.min():
@@ -368,6 +380,11 @@ def main(argv=None) -> int:
                 print("refusing: --p-coef is 1..128 (the servos ship with 32)")
                 return 1
             driver_kw["p_coef"] = {j + 1: args.p_coef for j in args.joints}
+        if args.d_coef is not None:
+            if not 0 <= args.d_coef <= 128:
+                print("refusing: --d-coef is 0..128 (the servos ship with 32)")
+                return 1
+            driver_kw["d_coef"] = {j + 1: args.d_coef for j in args.joints}
         if args.goal_speed is not None:
             if not 1 <= args.goal_speed <= 3400:
                 print("refusing: --goal-speed is 1..3400 steps/s")
@@ -445,6 +462,10 @@ def main(argv=None) -> int:
         tag += f"_rw{args.rewrite_every}"
     if args.p_coef is not None:
         tag += f"_p{args.p_coef}"
+    if args.d_coef is not None:
+        tag += f"_d{args.d_coef}"
+    if args.friction_deg > 0:
+        tag += f"_f{args.friction_deg:g}"
     if args.goal_speed is not None:
         tag += f"_gs{args.goal_speed}"
     log_dir = REPO / "logs" / "executor"
@@ -463,12 +484,14 @@ def main(argv=None) -> int:
                                "limits": limits, "status": status, "log_path": str(exec_path)})
     proc.start()
     code, rows, t_start = 0, np.zeros((0, 3 + N_JOINTS)), clock.now()
+    started = False                       # the executor turned torque on (and so must turn it off)
     try:
         kind, *rest = status.get(timeout=15)
         # A spawned child shares this process's resource tracker, and `Arena.attach` unregisters
         # the segment there (right for g1d's separately launched processes). Register it back,
         # so this process's `unlink()` below is the one that balances it.
         resource_tracker.register(arena.shm._name, "shared_memory")
+        started = kind == "ready"
         if kind != "ready":
             print(f"stopped: {rest[0]}")
             code = 1
@@ -493,7 +516,7 @@ def main(argv=None) -> int:
         code = 1
     finally:
         control.session = schema.STOPPED
-        saved = None
+        saved, done, release_failed = None, False, False
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
             try:
@@ -503,14 +526,19 @@ def main(argv=None) -> int:
                     break
                 continue
             if kind == "done":
-                saved = rest[0]
+                saved, done = rest[0], True
                 break
+            release_failed |= "turning torque off failed" in str(rest[0])
             print(f"executor: {rest[0]}")
         proc.join(timeout=5)
         arena.close()
         arena.unlink()
-    if not args.sim:
-        print("Torque off.")
+    if not args.sim and started:
+        if done and not release_failed:
+            print("Torque off (read back from every servo).")
+        else:
+            print("WARNING: torque off was NOT confirmed. Support the arm and run "
+                  "`uv run python -m elrobot.relax`.")
     if len(rows):
         save_targets(rows, target_path)
         print(f"Targets: {target_path}")

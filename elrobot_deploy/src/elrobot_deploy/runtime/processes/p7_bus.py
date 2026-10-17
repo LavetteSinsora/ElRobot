@@ -157,12 +157,15 @@ def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettin
     r = open_bus_rings(arena)
     control, ring, state = r["control"], r["targets"], r["state"]
     log = TickLog()
-    drv = None
+    drv, connected = None, False
     try:
         try:
             drv = make_driver(driver, **driver_kw)
             q0 = drv.connect()
+            connected = True
         except Exception as exc:  # noqa: BLE001 - any startup failure is reported, not raised
+            # Not ours to release: a refused connect may mean ANOTHER program holds the arm, and
+            # turning its torque off would drop it. (A runaway at enable released inside connect.)
             say("fault", f"could not start the bus: {exc}")
             return
         nan = np.full(N_JOINTS, np.nan)
@@ -235,7 +238,8 @@ def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettin
             t = pacer.wait()
     finally:
         if drv is not None:
-            for what, call in (("turning torque off", drv.release), ("closing the port", drv.close)):
+            steps = [("turning torque off", drv.release)] if connected else []
+            for what, call in [*steps, ("closing the port", drv.close)]:
                 try:
                     call()
                 except BUS_ERRORS as exc:
