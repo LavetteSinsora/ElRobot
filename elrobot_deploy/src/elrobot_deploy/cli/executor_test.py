@@ -203,6 +203,22 @@ def _smoothness(log, sel, j, plan) -> tuple[float, float]:
     return ripple, (longest + 1) * period_ms
 
 
+def _hold_summary(log, sel, seconds) -> list[str]:
+    """Per joint, over a --hold section: does the encoder see any motion at all?"""
+    slow = sel & (log["slow"] == 1)
+    out = ["", f"holding rest for {seconds:.1f} s (encoder step = {math.degrees(ENCODER_STEP):.3f} deg)",
+           "joint  encoder p-p  changes/s  meas - cmd  load range (fraction of stall)"]
+    for j in range(N_JOINTS):
+        m, c = log["meas"][sel, j], log["cmd"][sel, j]
+        ld = log["load"][slow, j]
+        out.append(f"  {j + 1:<4} {np.ptp(m) / ENCODER_STEP:>7.0f} steps {np.sum(np.diff(m) != 0) / seconds:>8.1f} "
+                   f"{math.degrees(np.mean(m - c)):>+9.2f} deg  {ld.min():+.3f}..{ld.max():+.3f}")
+    out.append("No encoder motion while you feel shaking means it is below one step, or in the "
+               "structure rather than the joints. Compare the feel with `elrobot.move rest`'s hold "
+               "(no bus traffic at all) and with --rewrite-every 25 (goals only when they change).")
+    return out
+
+
 def _reversal_dead_zone(cmd, meas, amp) -> float:
     """Median, over the sine's turns, of how far (deg) the command travels back before the
     joint has moved one encoder step the new way."""
@@ -244,6 +260,8 @@ def analyze(log: np.ndarray, targets: np.ndarray, plan: Plan, t_start: float, *,
         out.append("no sine section in the log (stopped early?)")
         return "\n".join(out)
     t = log["t"][sel]
+    if not plan.joints:
+        return "\n".join(out + _hold_summary(log, sel, s1 - s0))
     h0, h1 = t_start + plan.edges[1] + lead_s + 0.2, t_start + plan.edges[2] + lead_s
     hold = (log["t"] >= h0) & (log["t"] <= h1)       # the centre hold just before the sine
     deg = np.degrees
@@ -288,7 +306,13 @@ def _parse_joints(text: str) -> list[int]:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--joints", type=_parse_joints, required=True, help="e.g. 6 or 3,4 (1-8)")
+    ap.add_argument("--joints", type=_parse_joints, default=None, help="e.g. 6 or 3,4 (1-8)")
+    ap.add_argument("--hold", type=float, default=None, metavar="SECONDS",
+                    help="no sine: ramp to rest, then stream that unchanged pose for SECONDS "
+                         "(is holding still, under streaming, calm?)")
+    ap.add_argument("--rewrite-every", type=int, default=1, metavar="N",
+                    help="send a servo its goal only when it changes, plus everyone every Nth "
+                         "tick (1 = every goal every tick, as normal)")
     ap.add_argument("--amp-deg", type=float, default=5.0)
     ap.add_argument("--freq", type=float, default=0.25, help="sine frequency, Hz")
     ap.add_argument("--cycles", type=float, default=3)
@@ -315,6 +339,13 @@ def main(argv=None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="print the plan, move nothing")
     ap.add_argument("--yes", action="store_true", help="don't ask for 'go' (only with --sim)")
     args = ap.parse_args(argv)
+    if args.hold is not None:
+        # A plan with no sine joints holds the centre (rest) through the "sine" section.
+        args.joints, args.cycles = [], args.hold * args.freq
+    elif args.joints is None:
+        ap.error("give --joints (a sine) or --hold SECONDS")
+    if args.rewrite_every < 1:
+        ap.error("--rewrite-every is 1 or more")
 
     limits = urdf_limits()
     settings = ExecutorSettings(hz=args.hz, filter_hz=args.filter_hz,
@@ -330,7 +361,8 @@ def main(argv=None) -> int:
         driver, driver_kw = "sim", {"q0": limits.clip(np.radians(REST_DEG)).tolist()}
     else:
         driver, driver_kw = "st3215", {"port": args.port, "qdot_max": qdot_max.tolist(),
-                                       "acceleration": args.acceleration}
+                                       "acceleration": args.acceleration,
+                                       "rewrite_every": args.rewrite_every}
         if args.p_coef is not None:
             if not 1 <= args.p_coef <= 128:
                 print("refusing: --p-coef is 1..128 (the servos ship with 32)")
@@ -384,8 +416,12 @@ def main(argv=None) -> int:
         print(f"{j + 1:<7}{deg(q_now[j]):>+8.1f}{deg(plan.centre[j]):>+8.1f}{sine:>16}"
               f"{deg(plan.end[j]):>+8.1f}   {deg(limits.lower[j]):+.1f}..{deg(limits.upper[j]):+.1f}")
     ramp = float(np.max(np.abs(deg(plan.centre - plan.q0))))
+    middle = (f"hold rest {args.hold:g} s" if args.hold is not None else
+              f"{args.cycles:g} x {args.amp_deg:g} deg at {args.freq:g} Hz")
+    rewrite = (f" Goals only when changed, all every {args.rewrite_every} ticks."
+               if args.rewrite_every > 1 else "")
     print(f"\n{plan.duration:.1f} s: ramp {plan.t_ramp1:.1f} s (largest {ramp:.0f} deg), "
-          f"{args.cycles:g} x {args.amp_deg:g} deg at {args.freq:g} Hz, ramp back {plan.t_ramp2:.1f} s."
+          f"{middle}, ramp back {plan.t_ramp2:.1f} s.{rewrite}"
           f"\nTargets {args.target_hz:g} Hz, lead {args.lead_ms:g} ms -> executor {args.hz:g} Hz, "
           f"filter {args.filter_hz:g} Hz{'' if settings.filter_lead else ' (no look-ahead)'}, "
           f"{'SIMULATED servos' if args.sim else 'REAL servos'}.")
@@ -403,7 +439,10 @@ def main(argv=None) -> int:
             return 1
 
     stamp = time.strftime("%Y%m%d_%H%M%S")
-    tag = ("sim_" if args.sim else "") + "j" + "".join(str(j + 1) for j in plan.joints)
+    tag = ("sim_" if args.sim else "") + ("j" + "".join(str(j + 1) for j in plan.joints)
+                                           if plan.joints else f"hold{args.hold:g}s")
+    if args.rewrite_every > 1:
+        tag += f"_rw{args.rewrite_every}"
     if args.p_coef is not None:
         tag += f"_p{args.p_coef}"
     if args.goal_speed is not None:

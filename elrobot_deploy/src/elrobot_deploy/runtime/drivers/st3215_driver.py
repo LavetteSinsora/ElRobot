@@ -71,8 +71,8 @@ class St3215Driver:
     def __init__(self, *, port: str | None = None, bus=None, cals=None, qdot_max=None,
                  goal_speed_factor: float = 1.5, acceleration: int = 0,
                  torque_limit: dict[int, int] | None = None, p_coef: dict[int, int] | None = None,
-                 goal_speed: dict[int, int] | None = None, clock=time.monotonic,
-                 sleep=time.sleep):
+                 goal_speed: dict[int, int] | None = None, rewrite_every: int = 1,
+                 clock=time.monotonic, sleep=time.sleep):
         from elrobot.calibration import RAD_PER_STEP, load
         from elrobot.st3215 import registers as R
         from elrobot.st3215.bus import Bus
@@ -109,6 +109,12 @@ class St3215Driver:
         self.torque_on = False
         self._goal_encode = R.GOAL_POSITION.encode
         self._goal_addr, self._goal_size = R.GOAL_POSITION.addr, R.GOAL_POSITION.size
+        # 1: every servo's goal goes out every tick. N > 1: a servo is sent its goal only when
+        # the reading changes, and everyone is re-sent every Nth write (a lost sync_write has no
+        # reply to notice it by). Tests whether re-writing an unchanged goal disturbs the servo.
+        self.rewrite_every = int(rewrite_every)
+        self._last_goal: np.ndarray | None = None
+        self._writes = 0
 
     # --- conversion ----------------------------------------------------------------------
 
@@ -133,8 +139,17 @@ class St3215Driver:
     def write(self, q: np.ndarray) -> None:
         enc = self._goal_encode
         r = self.to_readings(q)
+        self._writes += 1
+        if self.rewrite_every <= 1 or self._last_goal is None or \
+                self._writes % self.rewrite_every == 0:
+            send = range(len(self.ids))              # everyone (also the periodic refresh)
+        else:
+            send = np.flatnonzero(r != self._last_goal)
+            if not send.size:
+                return
         self.bus.sync_write(self._goal_addr, self._goal_size,
-                            {j: enc(int(v)) for j, v in zip(self.ids, r)})
+                            {self.ids[i]: enc(int(r[i])) for i in send})
+        self._last_goal = r
 
     def read_full(self):
         R = self.R

@@ -299,6 +299,35 @@ def test_st3215_driver_converts_and_enables_like_move(fake_bus_mod):
     assert all(s.get(R.P_COEF) == 32 for s in servos)      # the session's P is undone
 
 
+def test_st3215_driver_rewrite_every_sends_only_changed_goals(fake_bus_mod):
+    from elrobot.calibration import load
+    from elrobot.st3215 import protocol
+
+    cals = load()
+    bus, _ = _fake_arm(fake_bus_mod, cals, [cals[j].zero_reading for j in range(1, 9)])
+    ser = bus.ser
+    drv = St3215Driver(bus=bus, cals=cals, rewrite_every=4)
+
+    def servos_in_last_write():
+        p = ser.sent[-1]
+        assert p[4] == protocol.SYNC_WRITE
+        params = p[5:-1]
+        return [params[2 + k * (params[1] + 1)] for k in range((len(params) - 2) // (params[1] + 1))]
+
+    q = np.zeros(8)
+    drv.write(q)                                           # first: everyone
+    assert servos_in_last_write() == list(range(1, 9))
+    n = len(ser.sent)
+    drv.write(q)                                           # unchanged: nothing on the wire
+    assert len(ser.sent) == n
+    q2 = q.copy()
+    q2[5] = math.radians(1)
+    drv.write(q2)                                          # one changed: only servo 6
+    assert servos_in_last_write() == [6]
+    drv.write(q2)                                          # 4th write: the refresh, everyone
+    assert servos_in_last_write() == list(range(1, 9))
+
+
 def test_st3215_driver_refuses_a_held_arm_and_aborts_a_runaway(fake_bus_mod):
     from elrobot.calibration import load
     from elrobot.st3215 import registers as R
