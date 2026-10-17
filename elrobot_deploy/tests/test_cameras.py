@@ -282,8 +282,11 @@ def test_p2_streams_into_the_arena_until_stopped(quick):
 
 def test_the_profile_declares_the_wrist_camera_and_sets_reach_into_it():
     cfg = load()
-    (wrist,) = cfg.cameras
+    (wrist,) = cfg.cameras_for(astra=False).cameras        # a teleop session: the wrist alone
     assert wrist.name == "wrist" and wrist.lens == "fisheye" and wrist.exposure == "camera_first"
+    exo = cfg.camera("exo")                                 # the iPhone, Astra sessions only
+    assert (exo.use, exo.lens, exo.device) == ("astra", "normal", "continuity")
+    assert [c.name for c in cfg.cameras_for(astra=True).cameras] == ["exo", "wrist"]
     cfg = load(sets=['cameras.wrist.exposure="sticky"',
                      "cameras.wrist.fallback_lens_circle=[663, 334, 344]"])
     assert cfg.camera("wrist").exposure == "sticky"
@@ -293,15 +296,18 @@ def test_the_profile_declares_the_wrist_camera_and_sets_reach_into_it():
     with pytest.raises(ConfigError, match="exposure"):
         load(sets=['cameras.wrist.exposure="auto"'])
     with pytest.raises(ConfigError, match="no table"):
-        load(sets=['cameras.exo.exposure="camera"'])
+        load(sets=['cameras.side.exposure="camera"'])
+    with pytest.raises(ConfigError, match="use"):
+        load(sets=['cameras.exo.use="sometimes"'])
     with pytest.raises(ConfigError, match="no key"):
         load(sets=["cameras.wrist.colour=1"])
 
 
 def test_each_camera_has_its_own_rings_in_the_layout():
-    cfg = load()
+    cfg = load().cameras_for(astra=False)
     lay = layout_for(cfg)
     assert lay.cameras == ("wrist",)
+    assert layout_for(load()).cameras == ("exo", "wrist")
     assert lay.region("cam_wrist_rec").dtype["pixels"].shape == (720, 1280, 3)
     assert layout_for(cfg.with_cameras(none=True)).hash != lay.hash
 
@@ -349,6 +355,22 @@ def test_auto_picks_the_one_usb_camera_never_an_iphone():
     with pytest.raises(sources.CameraError, match="2 cameras"):
         sources.resolve_avf("auto", devices + [twin])
     assert sources.resolve_avf("10bb:2b08@0x14220000", devices + [twin])["uid"] == twin["uid"]
+
+
+def test_continuity_picks_the_one_iphone_never_the_builtin_or_a_usb_camera():
+    # As AVFoundation listed them on this Mac, 2026-10-17 (the exocentric iPhone).
+    devices = [
+        {"name": "FaceTime HD", "uid": "1FD4", "model": "FaceTime HD", "usb": None},
+        {"name": "AIRPLAY camera", "uid": "6435F80F-0001", "model": "iPhone15,3", "usb": None},
+        {"name": "HX200S", "uid": "0x1421000010bb2b08", "model": "UVC",
+         "usb": (0x14210000, 0x10BB, 0x2B08)},
+    ]
+    assert sources.resolve_avf("continuity", devices)["uid"] == "6435F80F-0001"
+    with pytest.raises(sources.CameraError, match="Continuity"):
+        sources.resolve_avf("continuity", [devices[0], devices[2]])
+    second = dict(devices[1], uid="77", model="iPhone14,2")
+    with pytest.raises(sources.CameraError, match="2 cameras"):
+        sources.resolve_avf("continuity", devices + [second])
 
 
 # --- the dashboard ------------------------------------------------------------------------------

@@ -1,0 +1,161 @@
+"""The Astra harness end to end: the MCP server over real stdio, and a whole session on
+simulated servos with synthetic cameras (P0, P2 x2, P6, P7, P9, P12 and the harness, real)."""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import socket
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from pathlib import Path
+
+import pytest
+
+from elrobot_deploy.astra.mcp_server import Server
+from elrobot_deploy.astra.session import create
+from elrobot_deploy.config_loading.config import load
+from elrobot_deploy.runtime.launcher import Launcher
+from elrobot_deploy.runtime.shared_memory import schema
+from tests.conftest import arena_name
+
+
+def _stub_harness(path: str, image: Path, seen: list) -> socket.socket:
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(path)
+    srv.listen(4)
+
+    def loop():
+        while True:
+            try:
+                conn, _ = srv.accept()
+            except OSError:
+                return
+            req = json.loads(conn.makefile().readline())
+            seen.append(req)
+            conn.sendall(json.dumps({"text": f"did {req['tool']}", "images": [str(image)],
+                                     "is_error": False}).encode() + b"\n")
+            conn.close()
+
+    threading.Thread(target=loop, daemon=True).start()
+    return srv
+
+
+def test_the_mcp_server_speaks_json_rpc_on_stdio_and_forwards_tool_calls():
+    with tempfile.TemporaryDirectory(dir="/tmp") as d:      # short: a socket path <= 104 bytes
+        d = Path(d)
+        sock = str(d / "h.sock")
+        (d / "session.json").write_text(json.dumps({"sockets": {"harness": sock}}))
+        image = d / "x.jpg"
+        image.write_bytes(b"\xff\xd8fakejpeg")
+        seen: list = []
+        srv = _stub_harness(sock, image, seen)
+        msgs = [
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+             "params": {"protocolVersion": "2025-03-26", "capabilities": {},
+                        "clientInfo": {"name": "codex", "version": "0"}}},
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+             "params": {"name": "send_action", "arguments": {"waypoints": []}}},
+            {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "fly"}},
+            {"jsonrpc": "2.0", "id": 5, "method": "resources/list"},
+        ]
+        proc = subprocess.run(
+            [sys.executable, "-m", "elrobot_deploy.astra.mcp_server", "--session", str(d)],
+            input="".join(json.dumps(m) + "\n" for m in msgs), capture_output=True, text=True,
+            timeout=30, check=False)
+        srv.close()
+    out = [json.loads(line) for line in proc.stdout.splitlines()]
+    assert [o["id"] for o in out] == [1, 2, 3, 4, 5]          # no answer to a notification
+    assert out[0]["result"]["protocolVersion"] == "2025-03-26"
+    assert {t["name"] for t in out[1]["result"]["tools"]} == {
+        "send_action", "inspect_observation", "finish"}
+    content = out[2]["result"]["content"]
+    assert content[0] == {"type": "text", "text": "did send_action"}
+    assert content[1]["type"] == "image" and content[1]["mimeType"] == "image/jpeg"
+    assert out[3]["error"]["code"] == -32602 and out[4]["error"]["code"] == -32601
+    assert seen == [{"tool": "send_action", "args": {"waypoints": []}}]
+
+
+def test_an_astra_session_on_simulated_servos(tmp_path):
+    pytest.importorskip("mink")
+    cfg = load(sets=["bus.driver=sim", "poses.min_s=0.3", "poses.velocity_margin=0.6",
+                     f'astra.sessions_dir="{tmp_path}/astra"',
+                     f'record.dir="{tmp_path}/records"']).cameras_for(astra=True).with_cameras(
+        fake=True)
+    launch = create(cfg, "touch the table", stamp=f"t{os.getpid()}")
+    p0 = Launcher(cfg, arena_name=arena_name(), auto_home=True, auto_start=True,
+                  log=lambda s: None, astra=launch)
+    folder = Path(launch.session_dir)
+    got: dict = {}
+
+    def agent():
+        try:
+            end = time.monotonic() + 60
+            while not (folder / "start_codex.sh").exists() and time.monotonic() < end:
+                time.sleep(0.05)
+            mcp = Server(launch.harness_socket)
+
+            def call(name, args):
+                r = mcp.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                                "params": {"name": name, "arguments": args}})["result"]
+                return r["isError"], r["content"]
+
+            got["act"] = call("send_action", {"waypoints": [
+                {"xyz": [0.03, 0, 0], "rpy": [0, 0, 0], "gripper_mm": 40},
+                {"xyz": [0.03, 0.02, -0.02], "rpy": [0, 0, 15], "gripper_mm": 10}]})
+            got["bad"] = call("send_action", {"waypoints": [
+                {"xyz": [0, 0, 0], "rpy": [0, 0, 0], "gripper_mm": 99}]})
+            got["insp"] = call("inspect_observation", {"ticks": [0, 3, 6], "cams": ["wrist"]})
+            got["fin"] = call("finish", {"success": True, "summary": "touched it"})
+            got["after"] = call("send_action", {"waypoints": [
+                {"xyz": [0, 0, 0], "rpy": [0, 0, 0], "gripper_mm": 10}]})
+        finally:
+            time.sleep(1.5)
+            p0.rings["control"].request = schema.REQ_EXIT
+
+    threading.Thread(target=agent, daemon=True).start()
+    assert p0.run() == 0
+
+    err, content = got["act"]
+    text = content[0]["text"]
+    assert not err, text
+    assert [c["type"] for c in content] == ["text", "image", "image"]
+    assert "# Current observation" in text and "# Action 1 result" in text
+    out = json.loads((folder / "actions/0001/execution_outcome.json").read_text())
+    assert [w["wp"] for w in out["waypoints"]] == [1, 2]
+    last = out["waypoints"][-1]
+    # Simulated servos follow: the measured pose at the deadline is the commanded one.
+    for a, b in zip(last["commanded"]["xyz"], last["measured"]["xyz"]):
+        assert a == pytest.approx(b, abs=0.004)
+    assert last["measured"]["gripper_mm"] == pytest.approx(10, abs=2)
+    assert out["interrupted"] is None and out["tick_end"] > out["tick_start"]
+    assert out["reference"]["rpy"][1] == pytest.approx(45, abs=2)      # started at home
+
+    assert got["bad"][0] and "99 is outside" in got["bad"][1][0]["text"]
+    assert not got["insp"][0] and len(got["insp"][1]) == 2              # one sheet of 3 ticks
+    assert not got["fin"][0]
+    assert got["after"][0] and "finished" in got["after"][1][0]["text"]
+
+    for f in ("README.md", "opening_prompt.md", "start_codex.sh", "actions.jsonl",
+              "actions/0001/observation_now.jpg", "actions/0001/observation.txt",
+              "actions/0001/action.json", "actions/0002/observation_history.jpg",
+              "actions/0002/inspections/001.jpg", "actions/0002/rejected.jsonl"):
+        assert (folder / f).exists(), f
+    session = json.loads((folder / "session.json").read_text())
+    assert session["finish"]["success"] is True and session["finish"]["actions"] == 1
+    assert session["clock"]["anchor_camera"] == "wrist"
+    db = sqlite3.connect(folder / "timeline.sqlite")
+    n, executing = db.execute("SELECT count(*), sum(phase = 'executing') FROM timeline").fetchone()
+    assert n > 30 and executing > 10
+    path, = db.execute("SELECT wrist_path FROM timeline WHERE action_id = 1 LIMIT 1").fetchone()
+    assert (folder / path).exists()
+    assert (folder / "record" / "manifest.json").exists()
+    readme = (folder / "README.md").read_text()
+    assert "touch the table" in readme and not re.search(r"\$[a-z_]", readme)  # all filled

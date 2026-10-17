@@ -100,6 +100,37 @@ guard_gripper = false   # the gripper fights its command by design: not checked
 recover = true          # false: on a fault just hold where it is, torque on
 recover_via_home = false   # true: recover through the home pose first (home, then rest)
 
+[record]
+# P9, the recorder (runtime/processes/p9_record.py): one directory per rollout (Start to
+# Reset / Exit) with every bus read, every target, the operator's rows and every camera frame
+# as a JPEG; `elrobot_deploy.record` reads it back. `run --record` turns it on for a teleop
+# session; an `astra` session always records.
+dir = "logs/records"    # relative to ElRobot/ (logs/ is not versioned)
+jpeg_quality = 90       # a fisheye is recorded as its lens square, a normal camera whole
+
+[astra]
+# The harness an agent (GPT-6 Astra, through Codex and MCP) drives the arm with:
+# `elrobot_deploy astra --task "..."`. What it is and how a session looks: docs/astra.md.
+sessions_dir = "logs/astra"     # one folder per session, relative to ElRobot/
+cameras = ["exo", "wrist"]      # left to right in every image; a camera not running is skipped
+anchor_camera = "wrist"         # its frames are the ticks (30 Hz); else the first one running
+gripper_open_mm = 55.0          # the jaws' inner gap at the open end (3 deg), ruler, 2026-10-17
+gripper_closed_mm = 0.0         # ... at the closed end of the calibrated range (139.8 deg);
+                                # linear in between (the URDF's jaws are a rack: ~20 mm/rad)
+# The trajectory law (Astra sends waypoints; we time them). Peaks, at speed "normal"; "slow"
+# takes twice as long. The IK's joint speeds are then held to joint_speed_margin x the
+# [limits] velocity limit: a segment that would need more is stretched.
+max_speed_m_s = 0.10
+max_rot_deg_s = 45.0
+max_accel_m_s2 = 0.5
+max_rot_accel_deg_s2 = 180.0
+max_gripper_mm_s = 60.0
+joint_speed_margin = 0.8
+min_segment_s = 0.1             # no segment shorter (3 camera frames)
+settle_s = 0.3                  # the last pose is held this long before the arm is released
+max_rotation_deg = 170.0        # a waypoint rotated further from the reference is refused
+jpeg_quality = 90               # the images the harness renders for Astra
+
 [dashboard]
 # The live dashboard (`elrobot_deploy run` starts it; `elrobot_deploy view` without the robot).
 host = "127.0.0.1"      # "0.0.0.0" to open it from another device on the LAN (no password!)
@@ -109,8 +140,9 @@ port = 8080
 # One [cameras.<name>] table per camera; each gets its own process (P2), arena ring and
 # dashboard pane. Delete the table (or `run --no-cameras`) for none; `run --fake-cameras` swaps
 # in synthetic frames. Override a key for one run with `--set cameras.wrist.exposure="camera"`.
-# A second camera (an exocentric view) is another table, e.g. [cameras.exo] with
-# lens = "normal", device = "<its name>". `elrobot_deploy camera list` shows what is plugged in;
+# A second camera (an exocentric view) is another table, like [cameras.exo] below.
+# `use = "astra"` starts a camera only in `elrobot_deploy astra` sessions.
+# `elrobot_deploy camera list` shows what is plugged in;
 # `elrobot_deploy camera test` runs one camera on its own and says how its exposure does.
 # The code: runtime/cameras/ (docs/architecture.md, "Cameras").
 
@@ -143,3 +175,20 @@ pinned_gain = 64
 white_balance = 0       # kelvin to pin while WE own exposure; 0 = leave white balance auto
 slots = 8               # frames kept in the arena (~2.8 MB each at 720p)
 required = false        # true: no session without this camera; false: warn and carry on
+
+[cameras.exo]
+# An iPhone on a stand that sees the whole arm and the table: the exocentric view for Astra.
+# It reaches the Mac as a Continuity Camera (same Apple ID, WiFi and Bluetooth on, the phone
+# locked, on its stand, near the Mac); no app. Its exact pose is not needed: it only shows.
+# Measured 2026-10-17: AVFoundation lists it (model iPhone15,3) with 640x480, 1280x720,
+# 1920x1080 and 1920x1440 modes at 30 and 60 fps.
+source = "avfoundation"
+device = "continuity"   # the one iPhone / iPad Continuity Camera; or its uniqueID (`camera list`)
+width = 1280
+height = 720
+fps = 30
+lens = "normal"
+exposure = "camera"     # its own auto-exposure: it has no UVC controls
+slots = 8
+required = false
+use = "astra"           # never in a teleop session: the teleop iPhone could be taken instead

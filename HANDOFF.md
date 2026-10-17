@@ -171,9 +171,24 @@ and the servo adapter share the VIA USB 2 hub: 0x0213... and 0x0211...; PORTING_
 6); `fallback_lens_circle = [635, 385, 326]` in the profile if a fit ever fails at start; the
 camera-to-joint time offset (D4); an exocentric camera is another `[cameras.<name>]` table.
 
-### E. Later: recording (only the bus tick log exists; the camera ring already carries capture
-times and the exposure per frame), policies: from `legacy_g1d/`. Optional: Start / Reset
-buttons on the phone.
+### E. Recording and the Astra harness (built 2026-10-17, branch `claude/astra-harness`;
+`elrobot_deploy/docs/astra.md`)
+
+- **P9, the recorder**, ported from g1d: one record per rollout under `logs/records/` (bus
+  reads, targets, operator rows, every camera frame as JPEG). `run --record` for teleop.
+- **The Astra harness**: GPT-6 Astra (Codex + MCP) drives the arm with `send_action`,
+  `inspect_observation`, `finish`, the exp_011 design ported to one arm. **P12** replaces the
+  phone source on the intervention ring (one action = one engagement), the harness writes the
+  session folder from P9's record, `start_codex.sh` starts Codex on it. Decided with the user:
+  a P9 like g1d's; no lag / sag in Astra's README; no workspace box (the bus guards are the
+  safety); the exo camera is a second iPhone as a Continuity Camera (`[cameras.exo]`,
+  `use = "astra"`, never in teleop); gripper 55 mm open (ruler), linear.
+- **Tested in simulation end to end** (`tests/test_astra_session.py`); **not yet run with
+  Codex (not installed on this Mac), with the iPhone streaming, or on the arm.** Order:
+  `astra --sim --fake-cameras` + Codex, then `--dry-run`, then the arm slowly
+  (`--set limits.velocity_scale=0.3`). docs/astra.md section 10 lists what is open.
+
+Later: policies, from `legacy_g1d/`. Optional: Start / Reset buttons on the phone.
 
 ## 6. Minimum checklist before teleoperating with the phone
 
@@ -181,7 +196,7 @@ buttons on the phone.
 - [x] Phone source with clutch, anchoring, gripper, guards; room-frame mapping for the grip
 - [x] P6 driving `tcp_qp` at 60 Hz; launcher teleop mode; end-to-end test in simulation
 - [x] Hardware check at startup; Home / Start gates; dashboard with the URDF; dry-run mode
-- [ ] The test suite run on the Mac
+- [x] The test suite run on the Mac (2026-10-17: 164 passed, with the Astra harness)
 - [ ] App v2 built and on the iPhone; `phone-bench` confirms the axis mapping
 - [ ] `run --sim` driven by the real phone; latency measured (lead 40 ms enough?)
 - [ ] `run --dry-run` on the real arm (check passes, measured arm matches reality)
@@ -201,6 +216,9 @@ uv run elrobot_deploy phone-bench                         # the grip check, no r
 uv run elrobot_deploy run --sim                           # simulated servos
 uv run elrobot_deploy fake-phone                          # drive a --sim run without the phone
 uv run elrobot_deploy run --dry-run                       # real arm read, torque OFF (ghost only)
+uv run elrobot_deploy run --record                        # ... and record every rollout (P9)
+uv run elrobot_deploy astra --task "..." --sim --fake-cameras   # Astra drives (docs/astra.md)
+../logs/astra/current/start_codex.sh                      # Codex on that session, once READY
 uv run elrobot_deploy run --no-phone                      # real arm: check, home, hold, exit
 uv run elrobot_deploy run                                 # real arm, phone teleop
 #   dashboard: http://127.0.0.1:8080 ; run flags: --auto-home --auto-start --no-dashboard

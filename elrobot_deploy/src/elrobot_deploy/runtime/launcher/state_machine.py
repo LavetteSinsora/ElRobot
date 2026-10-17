@@ -8,10 +8,12 @@ rollout.
     INIT    the arena
     CHECK   the bus process (the hardware check, then it takes the serial port and holds the
             measured posture), then the phone source: the phone must stream (>= 30 Hz for a
-            second, tracking normal) before the arm moves
+            second, tracking normal) before the arm moves. An Astra session starts the Astra
+            source (P12) in its place: the harness's actions, through the same ring
     HOME    a ramp to `[poses] home`
     READY   wait for START (a teleop launch starts at once: only the clutch moves the arm)
-    ACTIVE  P6 runs; the operator drives while holding the clutch
+    ACTIVE  P6 runs; the operator drives while holding the clutch (or Astra, one action at a
+            time); P9 records it when the run records
     (RESET  stop P6, ramp back home, READY again)
     EXITING a ramp to `[poses] exit`, then
     STOPPED every child closes itself; the bus process releases torque if P0 said it may
@@ -83,11 +85,19 @@ class Launcher:
     def __init__(self, cfg, *, phone: bool = True, auto_home: bool = False,
                  auto_start: bool = False, dry_run: bool = False, dashboard: bool = False,
                  terminal: bool = False, arena_name: str | None = None, clock=_clock,
-                 spawn=None, event=None, log=print, log_dir: str | Path | None = None):
+                 spawn=None, event=None, log=print, log_dir: str | Path | None = None,
+                 record: bool = False, astra=None):
         self.cfg = cfg
-        #: Start the phone source (P11). Without it nothing ever drives the arm: a launch that
-        #: only homes and exits (a bring-up check).
-        self.phone = phone
+        #: An Astra session (`astra.session.AstraLaunch`): the harness and the Astra source
+        #: (P12) instead of the phone source, and always a recording.
+        self.astra = astra
+        #: Start the phone source (P11). Without it (and without Astra) nothing ever drives the
+        #: arm: a launch that only homes and exits (a bring-up check).
+        self.phone = phone and astra is None
+        #: Start the recorder (P9): one record per rollout under `[record] dir`.
+        self.record = record or astra is not None
+        #: The process that owns `control.intervene`, if any.
+        self.source = "p12_astra" if astra is not None else ("p11_phone" if self.phone else None)
         #: Ramp home without waiting for a HOME request (the arm moves right after CHECK).
         self.auto_home = auto_home
         #: READY -> ACTIVE without waiting for a START request.
@@ -110,6 +120,9 @@ class Launcher:
         self._recovering = False
         self._failure: BaseException | None = None
         self._cameras_lost: set[str] = set()
+        self._harness_lost = False
+        #: Rollouts started so far (an Astra session is one: its episode).
+        self._rollouts = 0
         self.stamp = time.strftime("%Y%m%d_%H%M%S")
 
     # --- helpers -------------------------------------------------------------------------
@@ -222,8 +235,9 @@ class Launcher:
         it handed back. Not waited for if the phone source is gone (then the counter can no
         longer change, and the ramp is stamped with whatever it is)."""
         control = self.rings["control"]
-        self._wait(lambda: control.intervene % 2 == 0 or not self.children.alive("p11_phone"),
-                   "the phone source to release the clutch")
+        source = self.source or "p11_phone"
+        self._wait(lambda: control.intervene % 2 == 0 or not self.children.alive(source),
+                   "the operator source to release the arm")
 
     def _ramp_to(self, q_to, what: str) -> None:
         """A cosine ramp from the held command to `q_to`, forward from `k_exec + 2`, waited
@@ -264,6 +278,16 @@ class Launcher:
         for cam in self.cfg.cameras:
             self.children.start(f"p2_{cam.name}", "elrobot_deploy.runtime.processes.p2_camera.run",
                                 (self.name, self.cfg), gated=True, camera=cam.name)
+        if self.record:
+            # It writes nothing before the first ACTIVE (and nothing at all if the run never
+            # starts); an Astra session's record is named after the session.
+            self.children.start("p9_record", "elrobot_deploy.runtime.processes.p9_record.run",
+                                (self.name, self.cfg), out_dir=str(self.cfg.record.dir),
+                                record_name=None if self.astra is None else self.astra.session_id)
+            self.log(f"[P0] recording every rollout to {self.cfg.record.dir}")
+        if self.astra is not None:
+            self.children.start("astra_harness", "elrobot_deploy.astra.harness.run",
+                                (self.name, self.cfg), launch=self.astra)
 
     def check(self) -> None:
         """Start the producers and confirm they produce, before anything moves."""
@@ -286,6 +310,17 @@ class Launcher:
                  f"{', DRY RUN: torque off, nothing is written' if self.dry_run else ''}); "
                  f"arm at {np.round(np.degrees(q), 1).tolist()} deg")
         self._await_cameras()
+        if self.astra is not None:
+            # The agent's counterpart of the phone source: it drives only during ACTIVE, one
+            # action at a time, and holds the arm between them.
+            self.children.start("p12_astra", "elrobot_deploy.runtime.processes.p12_astra.run",
+                                (self.name, self.cfg), gated=True,
+                                socket_path=self.astra.player_socket)
+            ready = self.children.ready["p12_astra"]
+            self._wait(lambda: ready.is_set() or not self.children.alive("p12_astra"),
+                       "the Astra source to load its model")
+            if not ready.is_set():
+                raise ConfigError("the Astra source (P12) did not start (its traceback is above)")
         if self.phone:
             # A PRODUCER, so CHECK proves it produces before anything moves, as g1d's CHECK did
             # for the PICO: no Home until the phone has streamed steadily with good tracking.
@@ -377,10 +412,18 @@ class Launcher:
                 self.log(f"[P0] WARNING camera {cam.name} stopped: {why}")
 
     def _note_phone(self) -> None:
-        """The phone source must stay alive for the whole session."""
+        """The phone source (or the Astra source) must stay alive for the whole session; the
+        Astra harness dying is said once (the arm holds: nothing can drive it any more)."""
         self._note_cameras()
         if self.phone and not self.children.alive("p11_phone"):
             raise ConfigError("the phone source exited (its traceback is above)")
+        if self.astra is not None:
+            if not self.children.alive("p12_astra"):
+                raise ConfigError("the Astra source (P12) exited (its traceback is above)")
+            if not self._harness_lost and not self.children.alive("astra_harness"):
+                self._harness_lost = True
+                self.log("[P0] WARNING the Astra harness exited (its traceback is above): the "
+                         "arm holds; Reset or Exit to end the session")
 
     def _log_report(self) -> None:
         """The bus process's hardware check, as a table on the terminal."""
@@ -430,19 +473,32 @@ class Launcher:
 
     def ready(self) -> None:
         self._set(schema.READY)
+        if self.astra is not None and self._rollouts:
+            # One Astra session is one episode: the harness has finished it (or it was reset).
+            # Only Exit is left; the arm holds at home meanwhile.
+            self._await_request(schema.WAIT_NONE, schema.REQ_EXIT,
+                                "the Astra episode is over and the arm is home. Press EXIT on "
+                                "the dashboard or Ctrl-C to end the session (exit ramp, torque "
+                                "off).")
+            raise _ExitNow
         if self.auto_start:
             return
+        drive = ("then start Astra: the harness prints how" if self.astra is not None
+                 else "then tap ENGAGE on the phone to drive")
         self._await_request(schema.WAIT_START, schema.REQ_START,
                             f"READY: the arm holds at home. Press {self._how()} to START "
-                            f"(then tap ENGAGE on the phone to drive); Ctrl-C to exit.")
+                            f"({drive}); Ctrl-C to exit.")
 
     def active(self) -> None:
         """Spawn P6 and hand the arm over. Returns on RESET; EXIT leaves by raising."""
+        self._rollouts += 1
         self._set(schema.ACTIVE)
         self.children.start("p6_target", "elrobot_deploy.runtime.processes.p6_target.run",
                             (self.name, self.cfg))
-        self.log("[P0] ACTIVE: tap ENGAGE on the phone to drive the arm. "
-                 "Ctrl-C to exit (twice to stop where it is).")
+        self.log("[P0] ACTIVE: " + ("Astra drives the arm through the harness. "
+                                    if self.astra is not None
+                                    else "tap ENGAGE on the phone to drive the arm. ")
+                 + "Ctrl-C to exit (twice to stop where it is).")
         while True:
             request = self._take_request()
             if request == schema.REQ_RESET:

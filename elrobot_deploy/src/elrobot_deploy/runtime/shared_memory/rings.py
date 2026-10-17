@@ -583,6 +583,23 @@ class CameraRing:
         fence()
         return meta if int(self._seq[i]) == s0 else None
 
+    def read(self, frame_id: int, out: np.ndarray) -> CameraFrame | None:
+        """Frame `frame_id` (not only the newest: a recorder catching up) into `out`; None if
+        it is not in the ring (not yet published, or already overwritten) or was overwritten
+        during the copy."""
+        fid = int(frame_id)
+        if fid <= 0 or fid > int(self._head[0]):
+            return None
+        i = self._slot(fid)
+        s0 = int(self._seq[i])
+        fence()
+        if s0 & 1 or int(self._rec[i]["frame_id"]) != fid:
+            return None
+        meta = self._meta(self._rec[i])
+        np.copyto(out, self._rec[i]["pixels"])
+        fence()
+        return meta if int(self._seq[i]) == s0 else None
+
 
 def open_all(arena) -> dict:
     """Every accessor a process might want, built once at attach."""

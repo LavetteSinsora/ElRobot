@@ -116,6 +116,7 @@ class CameraConfig:
     white_balance: int = 0           # kelvin to pin while we own exposure; 0 = leave it auto
     slots: int = 8                   # frames the arena keeps
     required: bool = False           # refuse the session if this camera cannot start
+    use: str = "always"              # always | astra (only `elrobot_deploy astra` starts it)
 
     @property
     def shape(self) -> tuple[int, int, int]:
@@ -128,6 +129,38 @@ class CameraConfig:
 
 
 CAMERA_SOURCES = ("usb", "avfoundation", "v4l2", "realsense", "fake")
+CAMERA_USES = ("always", "astra")
+
+
+@dataclass(frozen=True)
+class RecordConfig:
+    """`[record]`: P9, the recorder (`runtime/processes/p9_record.py`)."""
+
+    dir: Path = REPO / "logs" / "records"
+    jpeg_quality: int = 90
+
+
+@dataclass(frozen=True)
+class AstraConfig:
+    """`[astra]`: the harness that lets an agent drive the arm (`astra/`, `docs/astra.md`).
+    Speeds are the trajectory law's caps in the TCP's own units; the joint speeds the IK needs
+    are held to `joint_speed_margin` x the run's velocity limit on top of them."""
+
+    sessions_dir: Path = REPO / "logs" / "astra"
+    cameras: tuple = ("exo", "wrist")       # left to right in every image; absent ones skipped
+    anchor_camera: str = "wrist"            # whose frames are the ticks (else the first running)
+    gripper_open_mm: float = 55.0           # the jaws' inner gap at the open end (3 deg)
+    gripper_closed_mm: float = 0.0          # ... and at the closed end of the calibrated range
+    max_speed_m_s: float = 0.10
+    max_rot_deg_s: float = 45.0
+    max_accel_m_s2: float = 0.5
+    max_rot_accel_deg_s2: float = 180.0
+    max_gripper_mm_s: float = 60.0
+    joint_speed_margin: float = 0.8
+    min_segment_s: float = 0.1
+    settle_s: float = 0.3
+    max_rotation_deg: float = 170.0
+    jpeg_quality: int = 90
 
 
 @dataclass(frozen=True)
@@ -147,6 +180,8 @@ class Config:
     guard: GuardSettings = field(default_factory=GuardSettings)
     #: The `[cameras.<name>]` tables, in name order; () = no camera process.
     cameras: tuple = ()
+    record: RecordConfig = field(default_factory=RecordConfig)
+    astra: AstraConfig = field(default_factory=AstraConfig)
     #: Every key that a `--set` changed, -> its value as given. For the run's printout.
     overrides: dict = field(default_factory=dict)
 
@@ -182,6 +217,14 @@ class Config:
         if fake:
             return replace(self, cameras=tuple(replace(c, source="fake") for c in self.cameras))
         return self
+
+    def cameras_for(self, *, astra: bool) -> Config:
+        """The cameras a launch starts: an ordinary session leaves out the `use = "astra"`
+        ones (the exocentric iPhone: a Continuity Camera would take the teleop phone's
+        camera, and nothing but the harness looks at it)."""
+        if astra:
+            return self
+        return replace(self, cameras=tuple(c for c in self.cameras if c.use != "astra"))
 
     def camera(self, name: str) -> CameraConfig:
         for c in self.cameras:
@@ -288,9 +331,12 @@ def _cameras(tables: dict) -> tuple:
             pinned_exposure=int(t.get("pinned_exposure", d.pinned_exposure)),
             pinned_gain=int(t.get("pinned_gain", d.pinned_gain)),
             white_balance=int(t.get("white_balance", d.white_balance)),
-            slots=int(t.get("slots", d.slots)), required=bool(t.get("required", d.required)))
+            slots=int(t.get("slots", d.slots)), required=bool(t.get("required", d.required)),
+            use=str(t.get("use", d.use)))
         if cam.source not in CAMERA_SOURCES:
             raise ConfigError(f"[cameras.{name}] source {cam.source!r}: one of {CAMERA_SOURCES}")
+        if cam.use not in CAMERA_USES:
+            raise ConfigError(f"[cameras.{name}] use {cam.use!r}: one of {CAMERA_USES}")
         if cam.lens not in ("fisheye", "normal"):
             raise ConfigError(f"[cameras.{name}] lens {cam.lens!r}: fisheye or normal")
         if cam.exposure not in MODES:
@@ -449,6 +495,13 @@ def load(profile: str | Path | None = None, *, sets=()) -> Config:
     if unknown:
         raise ConfigError(f"[safety]: unknown keys {sorted(unknown)}")
 
+    r, rd = sec("record"), RecordConfig()
+    record = RecordConfig(dir=_resolve(str(r.get("dir", "logs/records"))),
+                          jpeg_quality=int(r.get("jpeg_quality", rd.jpeg_quality)))
+    if not 1 <= record.jpeg_quality <= 100:
+        raise ConfigError(f"[record] jpeg_quality {record.jpeg_quality}: must be in 1..100")
+    astra = _astra(sec("astra"))
+
     db = sec("dashboard")
     dashboard = DashboardConfig(host=str(db.get("host", "127.0.0.1")),
                                 port=int(db.get("port", 8080)))
@@ -456,11 +509,47 @@ def load(profile: str | Path | None = None, *, sets=()) -> Config:
     return Config(profile=str(path), urdf=urdf, calibration=calibration, limits=limits,
                   velocity_scale=velocity_scale, bus=bus, executor=executor, gains=gains,
                   poses=poses, ik=ik, teleop=teleop, dashboard=dashboard, guard=guard,
-                  cameras=_cameras(sec("cameras")), overrides=overrides)
+                  cameras=_cameras(sec("cameras")), record=record, astra=astra,
+                  overrides=overrides)
+
+
+def _astra(t: dict) -> AstraConfig:
+    d = AstraConfig()
+    unknown = set(t) - set(d.__dataclass_fields__)
+    if unknown:
+        raise ConfigError(f"[astra]: unknown keys {sorted(unknown)}")
+    kw = {}
+    for name in d.__dataclass_fields__:
+        if name not in t:
+            continue
+        if name == "sessions_dir":
+            kw[name] = _resolve(str(t[name]))
+        elif name == "anchor_camera":
+            kw[name] = str(t[name])
+        elif name == "cameras":
+            kw[name] = tuple(str(v) for v in t[name])
+        else:
+            kw[name] = type(getattr(d, name))(t[name])
+    a = AstraConfig(**kw)
+    if not a.gripper_open_mm > a.gripper_closed_mm >= 0:
+        raise ConfigError("[astra] gripper_open_mm must be above gripper_closed_mm (>= 0)")
+    positive = ("max_speed_m_s", "max_rot_deg_s", "max_accel_m_s2", "max_rot_accel_deg_s2",
+                "max_gripper_mm_s", "min_segment_s")
+    for name in positive:
+        if not getattr(a, name) > 0:
+            raise ConfigError(f"[astra] {name}: must be > 0")
+    if not 0 < a.joint_speed_margin <= 1:
+        raise ConfigError("[astra] joint_speed_margin: must be in (0, 1]")
+    if not 0 < a.max_rotation_deg < 180:
+        raise ConfigError("[astra] max_rotation_deg: must be in (0, 180)")
+    if not a.settle_s >= 0:
+        raise ConfigError("[astra] settle_s: must be >= 0")
+    return a
 
 
 __all__ = [
     "REPO",
+    "AstraConfig",
     "BusConfig",
     "CameraConfig",
     "Config",
@@ -468,6 +557,7 @@ __all__ = [
     "DriverGains",
     "IKConfig",
     "Poses",
+    "RecordConfig",
     "TeleopConfig",
     "apply_sets",
     "load",

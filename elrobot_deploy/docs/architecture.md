@@ -36,8 +36,11 @@ exactly one writing process. Nothing calls anything else.
 | P2 | camera (one per `[cameras.<name>]`) | per frame (30 Hz) | that camera's ring and status | `runtime/processes/p2_camera.py` |
 | P6 | target | per phone frame (60 Hz) | the target ring | `runtime/processes/p6_target.py` |
 | P7 | bus process | 250 Hz | `k_exec`, the state ring, `bus`, `fault` | `runtime/processes/p7_bus.py` |
+| P9 | recorder (`run --record`, every `astra` session) | sweeps at 200 Hz | files only: one record per rollout | `runtime/processes/p9_record.py` |
 | P10 | dashboard | the page polls at 20 Hz | `request` (its buttons) | `dashboard/` |
 | P11 | phone source | per packet (60 Hz) | `intervene`, the intervention ring | `runtime/processes/p11_phone.py` |
+| P12 | Astra source (`astra` sessions, in place of P11) | per control tick (60 Hz) while an action runs | `intervene`, the intervention ring | `runtime/processes/p12_astra.py` |
+| | Astra harness (`astra` sessions) | | files, `request` (RESET at `finish`) | `astra/harness.py` |
 
 P7 replaces g1d's P1 (state), P7 (body) and P8 (hand): the bus is half-duplex, so one process
 owns the port, reads and writes. It runs for the whole session and is never restarted inside
@@ -285,15 +288,33 @@ uv run elrobot_deploy run                        # the real arm, driven by the p
 uv run elrobot_deploy executor-test --joints 6   # the executor's sine test
 uv run elrobot_deploy camera list                # the cameras; also: camera probe, camera test
 #   run flags for cameras: --no-cameras, --fake-cameras, --set cameras.wrist.exposure="camera"
+uv run elrobot_deploy run --record               # ... and record every rollout (P9)
+uv run elrobot_deploy astra --task "..."         # Astra drives (docs/astra.md); --sim --fake-cameras
+logs/astra/current/start_codex.sh                # (from ElRobot/) Codex on that session, once READY
 ```
 
 The bus process's tick log (every tick: the line, the command, the measurement, timing; the
 last ten minutes of a session) is written to `ElRobot/logs/sessions/<stamp>_bus.csv` at exit;
 `p7_bus.load_log` reads it back.
 
+## Recording (P9) and the Astra harness
+
+**P9** (`runtime/processes/p9_record.py`, ported from g1d) writes one record per ACTIVE period
+under `[record] dir`: every bus read, every target, every operator row, the control words'
+changes, and every camera frame as a JPEG (a fisheye as its lens square), with a manifest
+carrying each stream's dtype, the resolved profile and the code's revision. It flushes every
+0.1 s, so a record can be read while it is written (`elrobot_deploy.record`: `load`, `Tail`).
+`run --record` turns it on; an `astra` session always records.
+
+**The Astra harness** (`elrobot_deploy astra --task "..."`, the whole design in
+**`astra.md`**) lets an agent (GPT-6 Astra through Codex and MCP) drive the arm: P12 takes
+the phone source's place on the intervention ring (one action = one engagement: timed
+waypoints streamed like phone rows, then a release, so the arm holds while the agent thinks),
+and the harness process turns P9's record into the session folder Astra reads (frames per
+tick, `timeline.sqlite`, rendered strips, one folder per decision) and serves the three tools
+to the MCP server Codex runs.
+
 ## Not here yet
 
-Policies (P5, the policy contract, chunk blending), recording (P9; today only the bus
-process's tick log; the camera ring already carries what it will need: capture times and the
-exposure per frame) and rollout inspection are g1d's, in `../legacy_g1d/`, to be ported when
-their milestone comes (`../PORTING_PLAN.md` section 4).
+Policies (P5, the policy contract, chunk blending) and rollout inspection are g1d's, in
+`../legacy_g1d/`, to be ported when their milestone comes (`../PORTING_PLAN.md` section 4).

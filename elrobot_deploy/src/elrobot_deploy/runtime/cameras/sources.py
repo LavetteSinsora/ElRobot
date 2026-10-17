@@ -125,8 +125,9 @@ def resolve_avf(spec: str, devices: list[dict] | None = None) -> dict:
     """The AVFoundation device a profile's `device` names.
 
     "auto" = the one USB camera (never the built-in one, never an iPhone's Continuity
-    Camera, which the teleop phone would lose its ARKit session to). Otherwise the exact
-    uniqueID, a `vid:pid[@location]`, or a case-insensitive part of the name.
+    Camera, which the teleop phone would lose its ARKit session to). "continuity" = the one
+    iPhone or iPad Continuity Camera (the exocentric view of an Astra session). Otherwise the
+    exact uniqueID, a `vid:pid[@location]`, or a case-insensitive part of the name.
     """
     devices = avf_devices() if devices is None else devices
     listing = "; ".join(f"{d['name']!r} ({d['uid']})" for d in devices) or "none"
@@ -134,6 +135,11 @@ def resolve_avf(spec: str, devices: list[dict] | None = None) -> dict:
     if spec == "auto":
         found = [d for d in devices if d["usb"] is not None]
         what = "a USB camera"
+    elif spec == "continuity":
+        found = [d for d in devices if d["usb"] is None
+                 and d.get("model", "").startswith(("iPhone", "iPad"))]
+        what = ("an iPhone Continuity Camera (same Apple ID, WiFi and Bluetooth on, the phone "
+                "near the Mac)")
     elif parse_usb_id(spec) is not None:
         vid, pid, loc = parse_usb_id(spec)
         found = [d for d in devices if d["usb"] is not None and d["usb"][1:] == (vid, pid)
