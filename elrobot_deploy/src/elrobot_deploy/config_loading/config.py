@@ -80,7 +80,7 @@ class TeleopConfig:
     port: int = 5005
     stale_s: float = 0.25
     scale: float = 1.0
-    gripper_rate: float = math.radians(200.0)           # rad/s
+    gripper_rate: float = math.radians(360.0)           # rad/s
     max_step_m: float = 0.05
     max_step: float = math.radians(30.0)                # rad
     phone_forward: tuple = (-1.0, 0.0, 0.0)             # device axis, ARKit camera frame
@@ -266,10 +266,10 @@ def load(profile: str | Path | None = None, *, sets=()) -> Config:
     velocity_scale = float(sec("limits").get("velocity_scale", 0.5))
     if not 0 < velocity_scale <= 1:
         raise ConfigError(f"[limits] velocity_scale {velocity_scale}: must be in (0, 1]")
-    gripper_velocity_scale = float(sec("limits").get("gripper_velocity_scale", 1.0))
-    if not 0 < gripper_velocity_scale <= 1:
+    gripper_velocity_scale = float(sec("limits").get("gripper_velocity_scale", 1.5))
+    if not 0 < gripper_velocity_scale <= 2:
         raise ConfigError(f"[limits] gripper_velocity_scale {gripper_velocity_scale}: must be "
-                          f"in (0, 1]")
+                          f"in (0, 2]")
 
     e = sec("executor")
     friction = _per_joint(e.get("friction"), "[executor] friction")
@@ -281,6 +281,9 @@ def load(profile: str | Path | None = None, *, sets=()) -> Config:
         filter_lead=bool(e.get("filter_lead", True)), velocity_scale=velocity_scale,
         gripper_velocity_scale=gripper_velocity_scale,
         squeeze_margin=math.radians(float(e.get("squeeze_margin", 5.0))),
+        jaw_free_lead=math.radians(float(e.get("jaw_free_lead", 45.0))),
+        jaw_stall_speed=math.radians(float(e.get("jaw_stall_speed", 15.0))),
+        jaw_contact_s=float(e.get("jaw_contact_s", 0.08)),
         slow_every=bus.slow_every, friction=friction,
         friction_v=math.radians(float(e.get("friction_v", 2.0))))
     gains = DriverGains(p_coef=_ids(e.get("p_coef"), "[executor] p_coef"),
@@ -319,7 +322,7 @@ def load(profile: str | Path | None = None, *, sets=()) -> Config:
         control_hz=float(t.get("control_hz", d.control_hz)),
         lead_s=float(t.get("lead_s", d.lead_s)), port=int(t.get("port", d.port)),
         stale_s=float(t.get("stale_s", d.stale_s)), scale=float(t.get("scale", d.scale)),
-        gripper_rate=math.radians(float(t.get("gripper_rate", 200.0))),
+        gripper_rate=math.radians(float(t.get("gripper_rate", 360.0))),
         max_step_m=float(t.get("max_step_m", d.max_step_m)),
         max_step=math.radians(float(t.get("max_step_deg", 30.0))),
         phone_forward=_axis(t.get("phone_forward", "-x"), "[teleop] phone_forward"),

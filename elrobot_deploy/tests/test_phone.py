@@ -124,24 +124,26 @@ def follow_jaw(rings, cfg, jaw):
 def test_the_gripper_closes_while_held_and_holds_when_released(active):
     loop, ph, rings = active
     engage(ph)
-    for _ in range(30):                                  # half a second squeezing, free air
+    for _ in range(12):                                  # 0.2 s squeezing, free air
         ph.send(engage=True, grip=True)
         follow_jaw(rings, loop.cfg, rings["intervene"].newest(1).grip)
     closed = rings["intervene"].newest(1).grip
     lo = loop.cfg.limits.lower[schema.GRIPPER]
-    assert closed == pytest.approx(lo + 30 / 60 * loop.cfg.teleop.gripper_rate, rel=1e-3)
+    assert closed == pytest.approx(lo + 12 / 60 * loop.cfg.teleop.gripper_rate, rel=1e-3)
     ph.send(engage=False)                                # clutch released: no rows, jaw held
     assert loop.gripper.cmd == pytest.approx(closed)
 
 
-def test_on_an_object_the_jaw_command_leads_the_jaw_by_the_squeeze_margin(active):
+def test_on_an_object_the_jaw_command_runs_only_a_little_ahead_of_the_bus(active):
+    """The bus process holds its jaw command at the object (its squeeze bound); the phone's
+    command may run only `jaw_slack` past it, so letting go of GRIP opens within ~0.1 s."""
     loop, ph, rings = active
     engage(ph)
-    follow_jaw(rings, loop.cfg, 0.5)                     # an object stops the jaw at 0.5 rad
+    follow_jaw(rings, loop.cfg, 0.5)                     # the bus holds the jaw command at 0.5
     for _ in range(60):
         ph.send(engage=True, grip=True)
-    assert rings["intervene"].newest(1).grip == pytest.approx(
-        0.5 + loop.cfg.executor.squeeze_margin)
+    assert rings["intervene"].newest(1).grip == pytest.approx(0.5 + loop.jaw_slack)
+    assert loop.jaw_slack / loop.cfg.teleop.gripper_rate <= 0.1 + 1e-9
 
 
 # --- the guards -----------------------------------------------------------------------------

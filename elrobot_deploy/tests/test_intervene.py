@@ -160,13 +160,13 @@ def test_hold_to_close_on_device_time_and_open_on_release():
     assert g.step(True, 10.0) == pytest.approx(0.125 + Gripper.MAX_DT), "a gap is capped"
 
 
-def test_the_squeeze_bound_is_stored_so_release_opens_at_once():
-    g = Gripper(rate=1.0, lo=0.05, hi=2.4, squeeze_margin=0.1)
+def test_the_ceiling_is_stored_so_release_opens_at_once():
+    g = Gripper(rate=1.0, lo=0.05, hi=2.4)
     g.engage(0.5)
-    for _ in range(50):                          # held closed on an object stopped at 0.6
-        g.step(True, 0.1, measured=0.6)
+    for _ in range(50):                          # held closed on an object: ceiling 0.7
+        g.step(True, 0.1, ceiling=0.7)
     assert g.cmd == pytest.approx(0.7)
-    assert g.step(False, 0.1, measured=0.6) == pytest.approx(0.6), "opens on the first step"
+    assert g.step(False, 0.1, ceiling=0.7) == pytest.approx(0.6), "opens on the first step"
 
 
 def test_engage_continues_from_the_command_and_clips():

@@ -7,8 +7,8 @@ is held during ACTIVE, turned into one row of the intervention ring for P6:
     clutch      `Console`: the engage button, held. A press re-anchors everything.
     motion      `RoomFrame`: the phone's motion since the press, in the robot's axes
                 (room-frame: forward is where the phone's top pointed at the press).
-    gripper     `Gripper`: hold-to-close on the phone's clock, squeeze-bounded against the
-                measured jaw (the state ring), stored bounded.
+    gripper     `Gripper`: hold-to-close on the phone's clock, bounded a little ahead of the
+                bus process's jaw command (the state ring), stored bounded.
     deadline    `Pace`: capture time + lead, re-pinned at every press.
 
 THE COUNTER. P11 is the only writer of `control.intervene`: it bumps it to ODD at a press and
@@ -79,8 +79,11 @@ class PhoneLoop:
         self.console = Console()
         self.room = RoomFrame(t.phone_forward, t.base_forward, t.base_up, scale=t.scale)
         g = schema.GRIPPER
-        self.gripper = Gripper(t.gripper_rate, cfg.limits.lower[g], cfg.limits.upper[g],
-                               squeeze_margin=cfg.executor.squeeze_margin)
+        self.gripper = Gripper(t.gripper_rate, cfg.limits.lower[g], cfg.limits.upper[g])
+        #: How far the jaw command may run ahead of the bus process's own (which carries the
+        #: squeeze bound): enough not to slow a free close, little enough that releasing GRIP
+        #: on an object opens within ~0.1 s.
+        self.jaw_slack = max(cfg.executor.squeeze_margin, 0.1 * t.gripper_rate)
         self.pace = Pace(t.lead_s)
         self.max_step_m, self.max_step = t.max_step_m, t.max_step
         self.stale_s = t.stale_s
@@ -149,7 +152,8 @@ class PhoneLoop:
         if self.engaged and pkt.engage:       # a packet with the clutch up is a plain release
             why = None
             if not active:
-                why = "the rollout ended"
+                why = (f"the session left ACTIVE ("
+                       f"{schema.SESSION_NAMES.get(self.control.session, '?')}): P0 has the arm")
             elif pkt.track != phone.TRACK_NORMAL:
                 why = f"tracking {pkt.track_text or 'lost'}"
             elif epoch_changed:
@@ -207,8 +211,9 @@ class PhoneLoop:
     def _row(self, pkt: phone.PhonePacket, last, t_recv: float) -> None:
         dt = 0.0 if self._lat == [] or last is None else pkt.t - last.t
         snap = self.state.latest()
-        measured = float(snap["q"][schema.GRIPPER]) if snap is not None else None
-        grip = self.gripper.step(pkt.grip, dt, measured)
+        ceiling = (float(snap["q_cmd"][schema.GRIPPER]) + self.jaw_slack
+                   if snap is not None else None)
+        grip = self.gripper.step(pkt.grip, dt, ceiling)
         deadline = self.pace.due(pkt.t, t_recv)
         self._lat.append(t_recv - pkt.t)
         self.rows.write(intervene=self.counter, deadline=deadline, delta=self.room.delta(pkt.T),
@@ -234,7 +239,9 @@ class PhoneLoop:
             if not fresh:
                 self.release(f"no packet from the phone for {self.stale_s * 1e3:.0f} ms")
             elif self.control.session != schema.ACTIVE:
-                self.release("the rollout ended")
+                self.release(f"the session left ACTIVE ("
+                             f"{schema.SESSION_NAMES.get(self.control.session, '?')}): P0 has "
+                             f"the arm")
 
     def close(self) -> None:
         """Leave on an EVEN counter (hand back), whatever happened."""

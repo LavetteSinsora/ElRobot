@@ -18,7 +18,10 @@ faults, each with its own response in the bus process:
             far).
   read      `read_fails` position reads in a row failed: the arm cannot be seen.
 
-Joints whose torque was turned off (`ignore`) are not checked again.
+Joints whose torque was turned off (`ignore`) are not checked again. The gripper is not checked
+at all unless `guard_gripper`: it fights its command by design (squeezing an object, held off
+it, springing back on release), and a runaway jaw only closes on its own stop at its hardware
+torque limit (servo 8's TORQUE_LIMIT).
 """
 
 from __future__ import annotations
@@ -47,6 +50,8 @@ class GuardSettings:
     lag_s: float = 1.5
     stuck_deg: float = 3.0
     read_fails: int = 5
+    #: Check the gripper too (runaway rule). Off: its comparisons misfire (session 2 on the arm).
+    guard_gripper: bool = False
     #: On a runaway or blocked fault, keep following the ring so P0 can bring the arm to rest
     #: before torque goes off (`schema.BUS_RECOVERING`). False: hold where it is.
     recover: bool = True
@@ -87,6 +92,8 @@ class Guard:
         err = np.asarray(meas, dtype=np.float64) - np.asarray(cmd, dtype=np.float64)
         live = np.ones(len(err), dtype=bool)
         live[list(self.ignore)] = False
+        if not s.guard_gripper:
+            live[GRIPPER] = False
 
         # runaway: far off, and moving further away (or grossly off)
         self._hist.append((t, np.array(meas, dtype=np.float64), err))

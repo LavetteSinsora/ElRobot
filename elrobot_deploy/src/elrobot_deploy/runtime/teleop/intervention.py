@@ -173,13 +173,12 @@ class Gripper:
     opens at the same rate. Integrated on DEVICE time (the phone's capture clock), so the speed
     does not depend on how packets bunch up on WiFi; each step's `dt` is capped.
 
-    `lo` is open and `hi` closed (servo angle, + closes). **The squeeze bound** (`measured`):
-    the command may lead the measured jaw toward closed by at most `squeeze_margin`, and the
-    bounded value is what is STORED (anti-windup), so releasing the button opens at once
-    instead of first unwinding a command that ran on to "fully closed" against an object. On a
-    position servo the grip force is about P x (command - measured), so this margin, not the
-    command, sets how hard an object is held. The bus process applies the same bound every tick
-    against the freshest read; this one keeps the integrator honest.
+    `lo` is open and `hi` closed (servo angle, + closes). **Anti-windup** (`ceiling`): the
+    command may not run further toward closed than `ceiling`, and the bounded value is what is
+    STORED, so releasing the button opens at once instead of first unwinding a command that ran
+    on to "fully closed" against an object. The caller passes the bus process's own jaw command
+    plus a little (the bus process owns the squeeze bound, `bus_servo.JawBound`: on contact it
+    holds the jaw command a `squeeze_margin` ahead of the measured jaw, which sets the force).
 
     **While the clutch is released the command holds** (the caller simply does not step it),
     so repositioning the hand never drops what is held.
@@ -187,10 +186,9 @@ class Gripper:
 
     MAX_DT = 0.1
 
-    def __init__(self, rate: float, lo: float, hi: float, *, squeeze_margin: float = np.inf):
+    def __init__(self, rate: float, lo: float, hi: float):
         self.rate = float(rate)
         self.lo, self.hi = float(lo), float(hi)
-        self.squeeze_margin = float(squeeze_margin)
         self.cmd = self.lo
 
     def engage(self, commanded: float) -> None:
@@ -198,11 +196,11 @@ class Gripper:
         object holds open: anchoring there would drop the grip's force to zero)."""
         self.cmd = float(np.clip(commanded, self.lo, self.hi))
 
-    def step(self, close: bool, dt: float, measured: float | None = None) -> float:
+    def step(self, close: bool, dt: float, ceiling: float | None = None) -> float:
         dt = min(max(float(dt), 0.0), self.MAX_DT)
         cmd = self.cmd + (self.rate if close else -self.rate) * dt
-        if measured is not None and np.isfinite(measured):
-            cmd = min(cmd, float(measured) + self.squeeze_margin)
+        if ceiling is not None and np.isfinite(ceiling):
+            cmd = min(cmd, float(ceiling))
         self.cmd = float(np.clip(cmd, self.lo, self.hi))
         return self.cmd
 

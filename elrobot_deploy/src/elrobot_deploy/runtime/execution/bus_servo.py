@@ -17,11 +17,14 @@ What changes, because the ST3215 takes a goal position and nothing else:
   * **the calibrated position limits** clamp every command (`JointLimits`, from our URDF). P7
     relied on the IK for that; here the gripper is commanded from a button, and a joint
     commanded into its stop is a stall at full current;
-  * **the gripper squeeze bound**, the one clamp that reads the measurement: the jaw command may
-    lead the MEASURED jaw toward closed by at most `squeeze_margin`. On a position servo the grip
-    force is roughly `P x (commanded - measured)`, so this, not the command, sets how hard an
-    object is held (PORTING_PLAN.md C2). It is applied here, every tick, against the freshest
-    read, because this is the last thing before the wire;
+  * **the gripper squeeze bound**, the one clamp that reads the measurement (`JawBound`): once
+    the jaw is ON something, its command may lead the MEASURED jaw toward closed by at most
+    `squeeze_margin`. On a position servo the grip force is roughly `P x (commanded - measured)`,
+    so this, not the command, sets how hard an object is held (PORTING_PLAN.md C2). In free air
+    the lead may be up to `jaw_free_lead`, so the servo closes at full effort: a 5 deg lead in
+    free air made the jaw crawl (session 2 on the arm). Contact is the jaw stalling (closing
+    slower than `jaw_stall_speed` for `jaw_contact_s`) while told to close. Applied here, every
+    tick, against the freshest read, because this is the last thing before the wire;
   * **friction compensation** (off by default, `friction`): the arm joints' goal leads the line
     by `friction * tanh(v / friction_v)` in the direction of motion. A P-only servo makes
     torque from position error, so it stalls until the error beats static friction and then
@@ -35,6 +38,7 @@ What changes, because the ST3215 takes a goal position and nothing else:
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass
 
 import numpy as np
@@ -48,6 +52,41 @@ from elrobot_deploy.runtime.execution.servo_filter import (
 from elrobot_deploy.runtime.execution.servo_segment import Phase, Segment
 
 
+class JawBound:
+    """How far the jaw command may lead the measured jaw toward closed (+ closes), and whether the
+    jaw is on something. `limit(t, meas, wanted)` -> the largest command allowed now."""
+
+    WINDOW_S = 0.04
+
+    def __init__(self, margin: float, free_lead: float, stall_speed: float, contact_s: float):
+        self.margin, self.free_lead = float(margin), float(free_lead)
+        self.stall_speed, self.contact_s = float(stall_speed), float(contact_s)
+        self.contact = False
+        self._stall_since: float | None = None
+        self._hist: deque = deque()
+
+    def limit(self, t: float, meas: float, wanted: float) -> float:
+        self._hist.append((t, meas))
+        while len(self._hist) > 2 and t - self._hist[1][0] >= self.WINDOW_S:
+            self._hist.popleft()
+        t0, m0 = self._hist[0]
+        speed = (meas - m0) / (t - t0) if t > t0 else 0.0        # + = closing
+        pushing = wanted - meas > self.margin
+        if self.contact:
+            # Off the object: the operator opens, or the jaw moves on (it slipped, or gave).
+            if not pushing or speed > 2.0 * self.stall_speed:
+                self.contact = False
+                self._stall_since = None
+        elif pushing and speed < self.stall_speed:
+            if self._stall_since is None:
+                self._stall_since = t
+            if t - self._stall_since >= self.contact_s:
+                self.contact = True
+        else:
+            self._stall_since = None
+        return meas + (self.margin if self.contact else self.free_lead)
+
+
 @dataclass(frozen=True)
 class ExecutorSettings:
     """The executor's knobs. Defaults are the ones agreed for iPhone teleop (PORTING_PLAN.md §1)."""
@@ -58,6 +97,9 @@ class ExecutorSettings:
     velocity_scale: float = 0.5       # x the URDF's 4.71 rad/s (about the ST3215's no-load speed)
     gripper_velocity_scale: float = 1.0   # the gripper's own: a light jaw may run at full speed
     squeeze_margin: float = math.radians(5.0)   # gripper rad; a first guess, to calibrate on force
+    jaw_free_lead: float = math.radians(45.0)   # the lead allowed in free air (no contact)
+    jaw_stall_speed: float = math.radians(15.0)  # rad/s: closing slower than this ...
+    jaw_contact_s: float = 0.08                 # ... this long while told to close = contact
     slow_every: int = 5               # speed / load / temperature every Nth tick (50 Hz at 250)
     #: rad the goal leads in the direction of motion: one value for every arm joint, or (8,)
     #: per joint (the gripper's is ignored: the squeeze bound owns the jaw). 0 = off.
@@ -102,6 +144,8 @@ class BusServo:
                                          self.q_cmd_last.shape).copy()
         self._friction[GRIPPER] = 0.0
         self._friction_on = bool(np.any(self._friction > 0.0))
+        self.jaw = JawBound(settings.squeeze_margin, settings.jaw_free_lead,
+                            settings.jaw_stall_speed, settings.jaw_contact_s)
 
     stalled = property(lambda self: self.seg.stalled)
 
@@ -134,7 +178,8 @@ class BusServo:
         q = np.clip(q, self.q_cmd_last - self.slew, self.q_cmd_last + self.slew)
         if q_meas is not None:
             # + closes the gripper, so the bound is an upper one.
-            q[GRIPPER] = min(q[GRIPPER], q_meas[GRIPPER] + self.settings.squeeze_margin)
+            q[GRIPPER] = min(q[GRIPPER], self.jaw.limit(t_now, float(q_meas[GRIPPER]),
+                                                        float(q[GRIPPER])))
         q = self.limits.clip(q)
         self.q_cmd_last = q
         return q
@@ -149,4 +194,4 @@ class BusServo:
         return q
 
 
-__all__ = ["BusServo", "ExecutorSettings"]
+__all__ = ["BusServo", "ExecutorSettings", "JawBound"]

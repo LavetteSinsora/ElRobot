@@ -153,9 +153,28 @@ def test_squeeze_bound_caps_how_far_the_jaw_command_leads_the_measured_jaw(rings
     meas = np.zeros(8)
     meas[GRIPPER] = 0.5                                    # an object stops the jaw here
     q = run_to(s, 0.0, 1.2, meas)
+    assert s.jaw.contact
     assert q[GRIPPER] == pytest.approx(0.6)                # measured + margin, not 2.0
     meas[GRIPPER] = 0.55                                   # it compresses: follow, same force
-    assert run_to(s, 1.204, 1.3, meas)[GRIPPER] == pytest.approx(0.65)
+    assert run_to(s, 1.204, 1.5, meas)[GRIPPER] == pytest.approx(0.65)
+
+
+def test_in_free_air_the_jaw_may_lead_far_so_it_closes_at_full_effort():
+    from elrobot_deploy.runtime.execution.bus_servo import JawBound
+    jb = JawBound(math.radians(5), math.radians(45), math.radians(15), 0.08)
+    t = np.arange(0, 0.5, 1 / 250)
+    for ti in t:                                            # the jaw closing at 250 deg/s ...
+        meas = math.radians(250) * ti
+        allowed = jb.limit(ti, meas, meas + math.radians(40))   # ... told 40 deg ahead
+        assert allowed == pytest.approx(meas + math.radians(45))
+    assert not jb.contact
+    # it hits an object and stops: after ~80 ms the bound drops to the squeeze margin
+    stop = math.radians(250) * t[-1]
+    for k in range(1, 40):
+        allowed = jb.limit(t[-1] + k / 250, stop, stop + math.radians(40))
+    assert jb.contact and allowed == pytest.approx(stop + math.radians(5))
+    # the operator opens: contact ends at once
+    assert jb.limit(t[-1] + 0.2, stop, stop - 0.1) == pytest.approx(stop + math.radians(45))
 
 
 def test_friction_compensation_leads_the_line_while_moving_and_not_while_holding(rings):
@@ -256,14 +275,25 @@ def test_a_joint_lagging_a_fast_command_is_not_a_runaway():
     assert f is None
 
 
+def test_the_gripper_is_not_guarded_by_default():
+    from elrobot_deploy.runtime.execution.guard import Guard, GuardSettings
+    t = np.arange(0, 1.0, 1 / 250)
+    cmd = np.zeros((len(t), 8))
+    meas = cmd.copy()
+    meas[:, 7] = np.radians(100) * t                    # "driving away": springs, objects ...
+    assert _run_guard(Guard(), cmd, meas)[0] is None
+    f, _ = _run_guard(Guard(GuardSettings(guard_gripper=True)), cmd, meas)
+    assert f.kind == "runaway" and f.joints == [7]
+
+
 def test_a_gripper_held_off_by_an_object_or_lagging_is_not_a_fault():
-    from elrobot_deploy.runtime.execution.guard import Guard
+    from elrobot_deploy.runtime.execution.guard import Guard, GuardSettings
     t = np.arange(0, 3.0, 1 / 250)
     cmd = np.zeros((len(t), 8))
     cmd[:, 7] = np.minimum(np.radians(200) * t, np.radians(130))     # closing fast ...
     meas = cmd.copy()
     meas[:, 7] = np.minimum(cmd[:, 7], np.radians(40))              # ... onto an object
-    f, _ = _run_guard(Guard(), cmd, meas)
+    f, _ = _run_guard(Guard(GuardSettings(guard_gripper=True)), cmd, meas)
     assert f is None
 
 

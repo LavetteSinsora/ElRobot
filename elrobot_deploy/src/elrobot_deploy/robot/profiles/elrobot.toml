@@ -18,7 +18,8 @@ slow_every = 5          # speed / load / temperature with every Nth read
 
 [limits]
 velocity_scale = 0.5    # x the URDF's <limit velocity> (4.71 rad/s, about no-load speed)
-gripper_velocity_scale = 1.0   # the gripper's own (its full stroke at 270 deg/s is ~0.5 s)
+gripper_velocity_scale = 1.5   # the gripper's own: 1.5 x 4.71 rad/s = 400 deg/s, above the
+                               # servo's own top (~300 deg/s), so the limit never slows it
 
 [executor]
 # How the bus process turns the 60 Hz target line into 250 Hz goals (runtime/execution/
@@ -26,7 +27,11 @@ gripper_velocity_scale = 1.0   # the gripper's own (its full stroke at 270 deg/s
 # leaves that setting at the servo's own value (P, D) or off (friction).
 filter_hz = 15.0        # critically damped command filter; 0 = the straight line
 filter_lead = true      # read the line 2/w ahead so the filter adds no lag
-squeeze_margin = 5.0    # deg: how far the jaw command may lead the measured jaw toward closed
+squeeze_margin = 5.0    # deg: ON AN OBJECT, how far the jaw command may lead the measured jaw
+                        # toward closed (sets the grip force: about P x this)
+jaw_free_lead = 45.0    # deg: the same lead in free air, so the jaw closes at full effort
+jaw_stall_speed = 15.0  # deg/s: contact = the jaw closing slower than this ...
+jaw_contact_s = 0.08    # ... for this long while told to close
 friction_v = 2.0        # deg/s over which friction compensation fades in
 p_coef = []             # e.g. [32, 32, 32, 32, 16, 16, 16, 16]; written at connect, restored at release
 d_coef = []             # e.g. [32, 32, 32, 32, 32, 32, 32, 32]
@@ -61,8 +66,8 @@ lead_s = 0.040          # phone capture -> due on the arm; covers the WiFi jitte
 port = 5005             # UDP, where the phone sends
 stale_s = 0.25          # no packet for this long while engaged: release (the arm holds)
 scale = 1.0             # phone translation -> TCP translation
-gripper_rate = 200.0    # deg/s the jaw closes while GRIP is held, opens once it is released:
-                        # the 137 deg stroke in ~0.7 s (the servo tops out near 270 deg/s)
+gripper_rate = 360.0    # deg/s the jaw command closes while GRIP is held, opens once released;
+                        # the servo itself tops out near 300 deg/s (stroke ~0.45 s)
 max_step_m = 0.05       # one frame moving the phone more than this: tracking glitch, release
 max_step_deg = 30.0     # same, for rotation
 # How the phone is held (the user's grip, 2026-10-17): screen facing LEFT, back camera RIGHT,
@@ -93,6 +98,7 @@ lag_deg = 15.0          # BLOCKED: behind by more than this ...
 lag_s = 1.5             # ... for this long, without a break ...
 stuck_deg = 3.0         # ... and moving less than this in that time (a moving joint is not blocked)
 read_fails = 5
+guard_gripper = false   # the gripper fights its command by design: not checked
 recover = true          # false: on a fault just hold where it is, torque on
 recover_via_home = false   # true: recover through the home pose first (home, then rest)
 

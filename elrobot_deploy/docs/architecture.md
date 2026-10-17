@@ -83,7 +83,9 @@ a **runaway** is a joint more than 25 deg off its command AND moving away from i
 the gripper); a lagging joint moves toward its command and never counts. Its torque goes off
 at once. **Blocked** is a joint more than 15 deg behind and not moving (less than 3 deg) for
 1.5 s; not the gripper, which an object holds off its command. `run --runaway-only` (or
-`safety.blocked = false`) turns the blocked rule off. Either one **recovers**: the bus
+`safety.blocked = false`) turns the blocked rule off. The gripper is not guarded at all
+(`safety.guard_gripper = false`): it fights its command by design, and a runaway jaw only
+closes on its stop at its hardware torque limit. Either one **recovers**: the bus
 process keeps following the ring (`BUS_RECOVERING`), P0 ramps the arm straight to the exit
 pose (through home first with `recover_via_home`), then torque goes off. **Unreadable** (5 failed reads in a row): the bus process cannot
 see the arm, so it HOLDS and the session ends with torque on; as does a second fault during a
@@ -141,11 +143,13 @@ is holding (`fk(q_cmd)`), seeds the IK there, and hands that configuration to th
 nominal pose. The phone source never needs a model of the arm: its rows carry motion, not
 poses.
 
-**The gripper**: hold-to-close (the pad's forward zone). The jaw command closes at
-`gripper_rate` while held and opens at the same rate when released, integrated on the phone's
-clock. The command may lead the measured jaw toward closed by at most `squeeze_margin`, which
-therefore sets the grip force (P × margin on a position servo); the bounded value is stored
-(anti-windup) and the bus process applies the same bound every tick against the freshest read.
+**The gripper**: hold-to-close (GRIP on the phone). The jaw command closes at `gripper_rate`
+(360 deg/s) while held and opens at the same rate when released, integrated on the phone's
+clock. The bus process owns the force (`bus_servo.JawBound`): once the jaw is ON something (it
+stalls while told to close), its command may lead the measured jaw by at most `squeeze_margin`,
+which sets the grip force (P × margin); in free air it may lead by `jaw_free_lead` (45 deg), so
+the jaw closes at full effort. The phone's command may run only a little past the bus
+process's (anti-windup), so letting go of GRIP opens at once.
 While the clutch is up the jaw holds.
 
 **Guards** (each forces a release, which needs a fresh press): tracking not "normal"; the
