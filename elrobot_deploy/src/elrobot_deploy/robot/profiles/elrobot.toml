@@ -27,9 +27,9 @@ gripper_velocity_scale = 1.5   # the gripper's own: 1.5 x 4.71 rad/s = 400 deg/s
 # leaves that setting at the servo's own value (P, D) or off (friction).
 filter_hz = 15.0        # critically damped command filter; 0 = the straight line
 filter_lead = true      # read the line 2/w ahead so the filter adds no lag
-squeeze_margin = 5.0    # deg: ON AN OBJECT, how far the jaw command may lead the measured jaw
+squeeze_margin = 10.0   # deg: ON AN OBJECT, how far the jaw command may lead the measured jaw
                         # toward closed (sets the grip force: about P x this)
-jaw_free_lead = 45.0    # deg: the same lead in free air, so the jaw closes at full effort
+jaw_free_lead = 90.0    # deg: the same lead in free air, so the jaw closes at full effort
 jaw_stall_speed = 15.0  # deg/s: contact = the jaw closing slower than this ...
 jaw_contact_s = 0.08    # ... for this long while told to close
 friction_v = 2.0        # deg/s over which friction compensation fades in
@@ -77,10 +77,8 @@ phone_forward = "-x"
 # The robot's base axes (base_link: z up, the arm reaches along +y at the zero pose).
 base_forward = [0.0, 1.0, 0.0]
 base_up = [0.0, 0.0, 1.0]
-# The TCP is clamped into this box (base frame, metres). The base sits at the origin, on the
-# table (z = 0).
-workspace_min = [-0.30, 0.08, 0.02]
-workspace_max = [0.30, 0.40, 0.35]
+# workspace_min = [-0.30, 0.08, 0.02]   # optional: clamp the TCP into this box (base frame, m;
+# workspace_max = [0.30, 0.40, 0.35]    # the base's bottom is z = 0). Off: no box at all.
 
 [safety]
 # The bus process's guards (runtime/execution/guard.py). A RUNAWAY is a joint far off its

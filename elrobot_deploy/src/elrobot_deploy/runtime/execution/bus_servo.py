@@ -96,8 +96,8 @@ class ExecutorSettings:
     filter_lead: bool = True          # read the line 2/w ahead, so the filter adds no lag
     velocity_scale: float = 0.5       # x the URDF's 4.71 rad/s (about the ST3215's no-load speed)
     gripper_velocity_scale: float = 1.0   # the gripper's own: a light jaw may run at full speed
-    squeeze_margin: float = math.radians(5.0)   # gripper rad; a first guess, to calibrate on force
-    jaw_free_lead: float = math.radians(45.0)   # the lead allowed in free air (no contact)
+    squeeze_margin: float = math.radians(10.0)  # gripper rad; a first guess, to calibrate on force
+    jaw_free_lead: float = math.radians(90.0)   # the lead allowed in free air (no contact)
     jaw_stall_speed: float = math.radians(15.0)  # rad/s: closing slower than this ...
     jaw_contact_s: float = 0.08                 # ... this long while told to close = contact
     slow_every: int = 5               # speed / load / temperature every Nth tick (50 Hz at 250)

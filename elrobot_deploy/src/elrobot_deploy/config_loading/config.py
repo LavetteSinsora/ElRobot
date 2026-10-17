@@ -86,8 +86,9 @@ class TeleopConfig:
     phone_forward: tuple = (-1.0, 0.0, 0.0)             # device axis, ARKit camera frame
     base_forward: tuple = (0.0, 1.0, 0.0)
     base_up: tuple = (0.0, 0.0, 1.0)
-    workspace_min: tuple = (-0.30, 0.08, 0.02)
-    workspace_max: tuple = (0.30, 0.40, 0.35)
+    #: An optional box (base frame, m) the TCP is clamped into; None = none (the default).
+    workspace_min: tuple | None = None
+    workspace_max: tuple | None = None
 
 
 @dataclass(frozen=True)
@@ -280,8 +281,8 @@ def load(profile: str | Path | None = None, *, sets=()) -> Config:
         hz=bus.hz, filter_hz=float(e.get("filter_hz", 15.0)),
         filter_lead=bool(e.get("filter_lead", True)), velocity_scale=velocity_scale,
         gripper_velocity_scale=gripper_velocity_scale,
-        squeeze_margin=math.radians(float(e.get("squeeze_margin", 5.0))),
-        jaw_free_lead=math.radians(float(e.get("jaw_free_lead", 45.0))),
+        squeeze_margin=math.radians(float(e.get("squeeze_margin", 10.0))),
+        jaw_free_lead=math.radians(float(e.get("jaw_free_lead", 90.0))),
         jaw_stall_speed=math.radians(float(e.get("jaw_stall_speed", 15.0))),
         jaw_contact_s=float(e.get("jaw_contact_s", 0.08)),
         slow_every=bus.slow_every, friction=friction,
@@ -328,11 +329,16 @@ def load(profile: str | Path | None = None, *, sets=()) -> Config:
         phone_forward=_axis(t.get("phone_forward", "-x"), "[teleop] phone_forward"),
         base_forward=_axis(t.get("base_forward", d.base_forward), "[teleop] base_forward"),
         base_up=_axis(t.get("base_up", d.base_up), "[teleop] base_up"),
-        workspace_min=tuple(float(v) for v in t.get("workspace_min", d.workspace_min)),
-        workspace_max=tuple(float(v) for v in t.get("workspace_max", d.workspace_max)))
+        workspace_min=(tuple(float(v) for v in t["workspace_min"])
+                       if t.get("workspace_min") else None),
+        workspace_max=(tuple(float(v) for v in t["workspace_max"])
+                       if t.get("workspace_max") else None))
     if abs(float(np.dot(teleop.base_forward, teleop.base_up))) > 1e-6:
         raise ConfigError("[teleop] base_forward and base_up must be perpendicular")
-    if not all(lo < hi for lo, hi in zip(teleop.workspace_min, teleop.workspace_max)):
+    if (teleop.workspace_min is None) != (teleop.workspace_max is None):
+        raise ConfigError("[teleop] workspace_min and workspace_max: give both, or neither")
+    if teleop.workspace_min is not None and not all(
+            lo < hi for lo, hi in zip(teleop.workspace_min, teleop.workspace_max)):
         raise ConfigError("[teleop] workspace_min must be below workspace_max on every axis")
     if not 0 < teleop.lead_s < 0.5:
         raise ConfigError(f"[teleop] lead_s {teleop.lead_s}: must be in (0, 0.5) s")

@@ -20,8 +20,8 @@ freezes the TCP pose at the same instant: `fk` of the command the bus process is
 state ring's `q_cmd`, which is where the arm is being held, rather than the newest target, which
 the bus abandoned when the counter moved). That configuration also seeds the first solve and is
 handed to the solver as its nominal pose (`set_nominal`), so the redundant DOF leans toward the
-posture the operator started from. The workspace box is widened to contain the anchor, so a
-press outside it never jumps.
+posture the operator started from. An optional workspace box (`[teleop] workspace_min/max`,
+none by default) is widened to contain the anchor, so a press outside it never jumps.
 
 THE GRID
 
@@ -88,8 +88,9 @@ class Target:
         self.qdot_max = np.asarray(cfg.qdot_max, dtype=np.float64)
         self.lower = np.asarray(cfg.limits.lower, dtype=np.float64)
         self.upper = np.asarray(cfg.limits.upper, dtype=np.float64)
-        self.box = (np.asarray(cfg.teleop.workspace_min, dtype=np.float64),
-                    np.asarray(cfg.teleop.workspace_max, dtype=np.float64))
+        self.box = None if cfg.teleop.workspace_min is None else (
+            np.asarray(cfg.teleop.workspace_min, dtype=np.float64),
+            np.asarray(cfg.teleop.workspace_max, dtype=np.float64))
 
         self._intervene: int | None = None          # the counter as last seen; None = never
         self.k: int | None = None                   # the last tick written this engagement
@@ -134,9 +135,10 @@ class Target:
         set_nominal = getattr(self.solver, "set_nominal", None)
         if callable(set_nominal):
             set_nominal(q[:schema.ARM_DOF])
-        lo, hi = self.box
-        p = self.anchor_pose[:3]
-        self._box = (np.minimum(lo, p), np.maximum(hi, p))
+        if self.box is not None:
+            lo, hi = self.box
+            p = self.anchor_pose[:3]
+            self._box = (np.minimum(lo, p), np.maximum(hi, p))
         self._seed_q, self._seed_t = q.copy(), self._now()
 
     def _held_command(self) -> np.ndarray | None:
@@ -156,7 +158,8 @@ class Target:
             return Step(None, False, None, "decimated")
         k = (self.control.k_exec + 2) if self.k is None else self.k + 1
         pose = apply_delta(self.anchor_pose, row.delta)
-        pose[:3] = np.clip(pose[:3], *self._box)
+        if self._box is not None:
+            pose[:3] = np.clip(pose[:3], *self._box)
         step = self._commit(k, pose, row.grip, row.deadline, counter)
         if step.written:
             self.k = k

@@ -68,7 +68,8 @@ class Source:
                "driver": cfg.bus.driver, "home": _floats(cfg.poses.home),
                "exit": _floats(cfg.poses.exit),
                "lower": _floats(cfg.limits.lower), "upper": _floats(cfg.limits.upper),
-               "workspace": [list(cfg.teleop.workspace_min), list(cfg.teleop.workspace_max)]}
+               "workspace": None if cfg.teleop.workspace_min is None else
+               [list(cfg.teleop.workspace_min), list(cfg.teleop.workspace_max)]}
         if self.rings is None:
             return out
         c = self.rings["control"]

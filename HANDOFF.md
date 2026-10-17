@@ -131,12 +131,12 @@ Findings:
 7. Check `[poses] home` (TCP 25 cm out, 10 cm up, pitched 45 deg down: `[0,-30,0,35,0,40,0,3]`
    deg) and `exit` (rest) against the real arm and table; adjust the profile.
 8. `uv run elrobot_deploy run --no-phone`: check, Home, hold, Exit -> exit ramp -> torque off.
-9. First teleop (M3), small box and slow, hand on the 12 V switch, small motions first:
+9. First teleop (M3), slow, hand on the 12 V switch, small motions first:
    ```bash
-   uv run elrobot_deploy run --set limits.velocity_scale=0.3 \
-       --set 'teleop.workspace_min=[-0.15, 0.15, 0.04]' --set 'teleop.workspace_max=[0.15, 0.32, 0.2]'
+   uv run elrobot_deploy run --set limits.velocity_scale=0.3
    ```
-   (Quote values with brackets: zsh would glob them.)
+   No workspace box by default; an optional one is `--set 'teleop.workspace_min=[...]'
+   --set 'teleop.workspace_max=[...]'` (quote brackets: zsh would glob them).
 
 ### C. Tuning (whenever; it is configuration now)
 10. Per-joint servo settings in `[executor]` (`p_coef`, `d_coef`, `friction`), from
@@ -163,7 +163,7 @@ Findings:
 - [ ] Home and exit poses checked on the real arm; `run --no-phone` on the real arm
 - [ ] Executor per-joint P/friction set (or accept the defaults for a first slow session)
 - [ ] Gripper squeeze margin and TORQUE_LIMIT checked on a real object
-- [ ] First hardware session: small workspace box, low velocity_scale, hand on the 12 V switch
+- [ ] First hardware session: low velocity_scale, hand on the 12 V switch
 
 ## 7. How to run things (from `ElRobot/elrobot_deploy/`)
 

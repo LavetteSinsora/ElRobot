@@ -147,7 +147,8 @@ poses.
 (360 deg/s) while held and opens at the same rate when released, integrated on the phone's
 clock. The bus process owns the force (`bus_servo.JawBound`): once the jaw is ON something (it
 stalls while told to close), its command may lead the measured jaw by at most `squeeze_margin`,
-which sets the grip force (P × margin); in free air it may lead by `jaw_free_lead` (45 deg), so
+which sets the grip force (P × margin, 10 deg); in free air it may lead by `jaw_free_lead`
+(90 deg), so
 the jaw closes at full effort. The phone's command may run only a little past the bus
 process's (anti-windup), so letting go of GRIP opens at once.
 While the clutch is up the jaw holds.
@@ -155,7 +156,8 @@ While the clutch is up the jaw holds.
 **Guards** (each forces a release, which needs a fresh press): tracking not "normal"; the
 phone's `world_epoch` changed; one frame moved more than `max_step_m` / `max_step_deg`; no
 packet for `stale_s`; the phone pointing straight up or down at the press; the rollout ended.
-P6 clamps the TCP into the workspace box (widened to contain the anchor, so a press outside it
+There is no workspace box by default; `[teleop] workspace_min/max`, if given, makes P6 clamp the
+TCP into one (widened to contain the anchor, so a press outside it
 never jumps).
 
 ## Timing
