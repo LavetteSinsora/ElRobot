@@ -73,8 +73,8 @@ class BusFault(RuntimeError):
 
 
 class BusRecovering(BusFault):
-    """A guard fired but the bus process still follows the ring: bring the arm home, then to
-    rest, then let torque go off."""
+    """A guard fired but the bus process still follows the ring: bring the arm to rest (through
+    home with `[safety] recover_via_home`), then let torque go off."""
 
 
 class Launcher:
@@ -435,7 +435,7 @@ class Launcher:
             if not self._skip_ramp:
                 self._check_bus()
                 self._await_even()
-                if self._recovering:
+                if self._recovering and self.cfg.guard.recover_via_home:
                     self._ramp_to(self.cfg.poses.home, "recovery: back to the home pose")
                 self._ramp_to(self.cfg.poses.exit, "exit ramp")
                 ramped = True
@@ -511,7 +511,8 @@ class Launcher:
             # The guard's response: home, then rest, then torque off (in `exit`).
             self._recovering = True
             self._failure = exc
-            self.log(f"[P0] FAULT: {exc}. Recovering: home, then the exit pose, then torque off.")
+            via = "home, then " if self.cfg.guard.recover_via_home else ""
+            self.log(f"[P0] FAULT: {exc}. Recovering: {via}the exit pose, then torque off.")
         except _SkipRamp:
             self._skip_ramp = True
         except BaseException as exc:                        # noqa: BLE001

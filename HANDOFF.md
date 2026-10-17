@@ -198,8 +198,8 @@ uv run pytest -q                                          # root repo tests
 - Bus guard stops (session 2 on the arm): the old rules (20 deg off at any instant; 8 deg
   behind for 0.5 s) tripped on a lagging joint 5 and on the gripper opening during homing.
   Replaced by `[safety]` (`runtime/execution/guard.py`): runaway = far off AND moving away;
-  blocked = far behind AND not moving for 1.5 s (never the gripper); both recover home -> rest
-  -> torque off. Tune with `--set safety.<key>=...`.
+  blocked = far behind AND not moving for 1.5 s (never the gripper); both recover: straight
+  to rest -> torque off (`safety.recover_via_home` to go through home first). Tune with `--set safety.<key>=...`.
 - One Ctrl-C under `uv run` reaches the process twice; two within 0.5 s count as one. A real
   second Ctrl-C (later) skips the exit ramp and leaves the arm held.
 - The clutch only counts if pressed after the rollout starts (and after any forced release):

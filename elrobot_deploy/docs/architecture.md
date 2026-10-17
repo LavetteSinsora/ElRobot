@@ -83,8 +83,8 @@ a **runaway** is a joint more than 25 deg off its command AND moving away from i
 the gripper); a lagging joint moves toward its command and never counts. Its torque goes off
 at once. **Blocked** is a joint more than 15 deg behind and not moving (less than 3 deg) for
 1.5 s; not the gripper, which an object holds off its command. Either one **recovers**: the bus
-process keeps following the ring (`BUS_RECOVERING`), P0 ramps the arm home, then to the exit
-pose, then torque goes off. **Unreadable** (5 failed reads in a row): the bus process cannot
+process keeps following the ring (`BUS_RECOVERING`), P0 ramps the arm straight to the exit
+pose (through home first with `recover_via_home`), then torque goes off. **Unreadable** (5 failed reads in a row): the bus process cannot
 see the arm, so it HOLDS and the session ends with torque on; as does a second fault during a
 recovery.
 

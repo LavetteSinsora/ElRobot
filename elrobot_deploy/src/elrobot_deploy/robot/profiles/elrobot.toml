@@ -82,7 +82,7 @@ workspace_max = [0.30, 0.40, 0.35]
 # command AND moving away from it (a lagging joint moves toward it, so it never counts); its
 # torque goes off at once. BLOCKED is a joint far behind and not moving for a long time (not the
 # gripper).
-# Either one, with `recover`, brings the arm home, then to the exit pose, then torque off.
+# Either one, with `recover`, brings the arm to the exit pose, then torque off.
 # Lost position reads (the arm cannot be seen) always just hold, torque on.
 runaway_deg = 25.0      # off by more than this ...
 runaway_grow_deg = 10.0 # ... and the error grew this much, the joint moving that way ...
@@ -92,7 +92,8 @@ lag_deg = 15.0          # BLOCKED: behind by more than this ...
 lag_s = 1.5             # ... for this long, without a break ...
 stuck_deg = 3.0         # ... and moving less than this in that time (a moving joint is not blocked)
 read_fails = 5
-recover = true
+recover = true          # false: on a fault just hold where it is, torque on
+recover_via_home = false   # true: recover through the home pose first (home, then rest)
 
 [dashboard]
 # The live dashboard (`elrobot_deploy run` starts it; `elrobot_deploy view` without the robot).

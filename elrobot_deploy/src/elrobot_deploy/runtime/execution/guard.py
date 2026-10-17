@@ -44,9 +44,11 @@ class GuardSettings:
     lag_s: float = 1.5
     stuck_deg: float = 3.0
     read_fails: int = 5
-    #: On a runaway or blocked fault, keep following the ring so P0 can bring the arm home and
-    #: then to rest before torque goes off (`schema.BUS_RECOVERING`). False: hold where it is.
+    #: On a runaway or blocked fault, keep following the ring so P0 can bring the arm to rest
+    #: before torque goes off (`schema.BUS_RECOVERING`). False: hold where it is.
     recover: bool = True
+    #: Recover through the home pose first (home, then rest) instead of straight to rest.
+    recover_via_home: bool = False
 
 
 class Fault(NamedTuple):
