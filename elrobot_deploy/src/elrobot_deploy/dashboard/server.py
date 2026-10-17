@@ -11,6 +11,8 @@ What the page shows, live (polling `/api/state` ~20 times a second):
     green ghost: where the arm will go when you press Home); the IK's target point;
   * the session, what P0 waits for, the bus process's state, the hardware check, every joint
     (measured, commanded, error, temperature, load), the phone (streaming, engaged, latency);
+  * each camera, live (`GET /camera/<name>.mjpg`, the lens square at up to 15 fps), and what
+    its process says: frame rate, who owns exposure, p99.5 and clipping inside the lens;
   * the buttons Home / Start / Reset / Exit. A button only STORES a request in the arena
     (`control.request`); P0 decides. The page never commands the arm.
 
@@ -40,6 +42,10 @@ from elrobot_deploy.dashboard.robot import describe
 from elrobot_deploy.runtime.shared_memory import schema
 
 STATIC = Path(__file__).resolve().parent / "static"
+
+#: The dashboard's camera view: at most this many pixels across, this many frames a second.
+CAMERA_PX = 480
+CAMERA_FPS = 15.0
 
 REQUESTS = {"HOME": schema.REQ_HOME, "START": schema.REQ_START, "RESET": schema.REQ_RESET,
             "EXIT": schema.REQ_EXIT}
@@ -115,7 +121,26 @@ class Source:
             if math.isfinite(float(m["latency_s"])) and m["samples"] else None,
             "age_s": round(now - t_last, 3) if t_last > 0 else None,
         }
+        cams = {}
+        for name, ring in self.rings.get("cameras", {}).items():
+            try:
+                st = json.loads(ring.status() or "{}")
+            except ValueError:
+                st = {}
+            meta = ring.peek()
+            st["age_s"] = None if meta is None else round(now - meta.t_recv, 1)
+            cams[name] = st
+        out["cameras"] = cams
         return out
+
+    def camera(self, name: str):
+        """The ring of camera `name`, or None."""
+        if self.rings is None:
+            return None
+        return self.rings.get("cameras", {}).get(name)
+
+    def live(self) -> bool:
+        return self.rings is not None and self.rings["control"].session < schema.STOPPED
 
     def request(self, name: str) -> bool:
         if self.rings is None or name not in REQUESTS:
@@ -157,6 +182,8 @@ def make_handler(source: Source, robot: dict, meshes: list[Path]):
                 return self._send(robot_json, "application/json")
             if path == "/api/state":
                 return self._json(source.state())
+            if path.startswith("/camera/") and path.endswith(".mjpg"):
+                return self._mjpeg(path[len("/camera/"):-len(".mjpg")])
             if path.startswith("/mesh/"):
                 try:
                     f = meshes[int(path[len("/mesh/"):])]
@@ -176,6 +203,44 @@ def make_handler(source: Source, robot: dict, meshes: list[Path]):
             ok = source.request(name)
             return self._json({"ok": ok, "request": name},
                               HTTPStatus.OK if ok else HTTPStatus.CONFLICT)
+
+        def _mjpeg(self, name: str):
+            """A camera's newest frames as an MJPEG stream (`multipart/x-mixed-replace`, which
+            an <img> plays natively): the lens square (or the whole frame), at most
+            `CAMERA_PX` wide, at most `CAMERA_FPS`, until the session ends or the page goes."""
+            ring = source.camera(name)
+            if ring is None:
+                return self._json({"error": f"no camera {name!r}"}, HTTPStatus.NOT_FOUND)
+            import cv2
+
+            from elrobot_deploy.runtime.cameras.lens import cut
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            buf = np.empty(ring.shape, np.uint8)
+            last, t_next = 0, 0.0
+            try:
+                while source.live():
+                    meta = ring.read_newest(buf, after=last)
+                    if meta is None or time.monotonic() < t_next:
+                        time.sleep(0.01)
+                        continue
+                    last, t_next = meta.frame_id, time.monotonic() + 1.0 / CAMERA_FPS
+                    x0, y0, x1, y1 = meta.crop
+                    view = cut(buf, x0, y0, x1 - x0) if x1 - x0 == y1 - y0 else buf
+                    scale = CAMERA_PX / max(view.shape[:2])
+                    if scale < 1:
+                        view = cv2.resize(view, None, fx=scale, fy=scale,
+                                          interpolation=cv2.INTER_AREA)
+                    ok, jpg = cv2.imencode(".jpg", view, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                    if not ok:
+                        continue
+                    self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
+                                     + str(len(jpg)).encode() + b"\r\n\r\n" + jpg.tobytes()
+                                     + b"\r\n")
+            except (BrokenPipeError, ConnectionResetError):
+                pass
 
         def _file(self, f: Path, cache=False):
             if not f.is_file():
@@ -200,8 +265,8 @@ def serve(source: Source, host: str, port: int) -> ThreadingHTTPServer:
 def run_session(shm_name: str, cfg, *, dry_run: bool = False) -> None:
     """P10 as P0 starts it: serve the live arena until the session is STOPPED (and a few
     seconds after, so the page shows the end)."""
-    from elrobot_deploy.runtime.shared_memory import Arena, build, open_all
-    arena = Arena.attach(shm_name, build())
+    from elrobot_deploy.runtime.shared_memory import Arena, layout_for, open_all
+    arena = Arena.attach(shm_name, layout_for(cfg))
     httpd = None
     try:
         rings = open_all(arena)

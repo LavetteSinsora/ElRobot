@@ -31,6 +31,18 @@ runtime = [
     # The ST3215 bus and calibration: the repo's bring-up package (../elrobot), used by the
     # bus process (runtime/drivers/st3215_driver.py).
     "elrobot",
+    # The cameras (P2): below.
+    "elrobot_deploy[camera]",
+]
+# The cameras (runtime/cameras/): OpenCV for the image maths and the dashboard's view;
+# AVFoundation through pyobjc for frames on a Mac (not OpenCV's macOS backend: sources.py says
+# why); pyusb + a bundled libusb for the UVC controls (exposure, gain) beside the stream.
+camera = [
+    "opencv-python-headless>=4.8",
+    "pyobjc-framework-AVFoundation>=10; sys_platform == 'darwin'",
+    "pyobjc-framework-libdispatch>=10; sys_platform == 'darwin'",
+    "pyusb>=1.2",
+    "libusb-package>=1.0.26",
 ]
 
 [dependency-groups]

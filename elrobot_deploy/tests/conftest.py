@@ -40,4 +40,4 @@ def rings(arena):
 @pytest.fixture
 def cfg():
     """The shipped profile, on simulated servos."""
-    return load(sets=["bus.driver=sim"])
+    return load(sets=["bus.driver=sim"]).with_cameras(none=True)

@@ -45,7 +45,7 @@ from elrobot_deploy.runtime import timing as clock
 from elrobot_deploy.runtime.drivers.st3215_driver import BUS_ERRORS, DriverError, make_driver
 from elrobot_deploy.runtime.execution.bus_servo import BusServo, ExecutorSettings
 from elrobot_deploy.runtime.execution.guard import Guard, GuardSettings
-from elrobot_deploy.runtime.shared_memory import Arena, build, open_all, schema
+from elrobot_deploy.runtime.shared_memory import Arena, build, layout_for, open_all, schema
 
 PHASES = {"hold": 0, "inside": 1, "fault": 2}
 
@@ -124,13 +124,13 @@ def run_config(shm_name: str, cfg, *, ready=None, log_path: str | None = None,
     session's last ten minutes."""
     run(shm_name, driver=cfg.bus.driver, driver_kw=cfg.driver_kw(), settings=cfg.executor,
         limits=cfg.limits, ready=ready, log_path=log_path, release=None, log_max_s=600.0,
-        dry_run=dry_run, check=True, guard=cfg.guard)
+        dry_run=dry_run, check=True, guard=cfg.guard, layout=layout_for(cfg))
 
 
 def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettings,
         limits: JointLimits, status=None, ready=None, log_path: str | None = None,
         release: bool | None = True, log_max_s: float | None = None, dry_run: bool = False,
-        check: bool = False, guard: GuardSettings | None = None) -> None:
+        check: bool = False, guard: GuardSettings | None = None, layout=None) -> None:
     """The process. Runs until `control.session` reaches STOPPED.
 
     `check`: run the driver's hardware check first, publish it (`control.report`) and refuse
@@ -147,7 +147,7 @@ def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettin
     # Ctrl-C belongs to the person at the terminal, who wants the arm HELD, not dropped: the
     # parent catches it and stops writing targets; this loop keeps holding until STOPPED.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-    arena = Arena.attach(shm_name, build())
+    arena = Arena.attach(shm_name, layout or build())
     r = open_all(arena)
     control, ring, state = r["control"], r["targets"], r["state"]
 

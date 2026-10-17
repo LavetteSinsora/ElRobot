@@ -48,7 +48,7 @@ import numpy as np
 
 from elrobot_deploy.robot.transforms import mat_from_quat, quat_angle, quat_from_mat
 from elrobot_deploy.runtime import timing as clock
-from elrobot_deploy.runtime.shared_memory import Arena, build, open_all, schema
+from elrobot_deploy.runtime.shared_memory import Arena, layout_for, open_all, schema
 from elrobot_deploy.runtime.teleop import phone
 from elrobot_deploy.runtime.teleop.intervention import (
     Console,
@@ -253,7 +253,7 @@ class PhoneLoop:
 
 def run(shm_name: str, cfg) -> None:
     """P11 as a process. Runs until the session reaches STOPPED."""
-    arena = Arena.attach(shm_name, build())
+    arena = Arena.attach(shm_name, layout_for(cfg))
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         rings = open_all(arena)

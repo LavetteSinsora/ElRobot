@@ -33,6 +33,7 @@ exactly one writing process. Nothing calls anything else.
 | | process | rate | writes | module |
 |---|---|---|---|---|
 | P0 | launcher | | `session`, ramps into the target ring, `release_torque` | `runtime/launcher/` |
+| P2 | camera (one per `[cameras.<name>]`) | per frame (30 Hz) | that camera's ring and status | `runtime/processes/p2_camera.py` |
 | P6 | target | per phone frame (60 Hz) | the target ring | `runtime/processes/p6_target.py` |
 | P7 | bus process | 250 Hz | `k_exec`, the state ring, `bus`, `fault` | `runtime/processes/p7_bus.py` |
 | P10 | dashboard | the page polls at 20 Hz | `request` (its buttons) | `dashboard/` |
@@ -50,7 +51,9 @@ INIT -> CHECK -(Home)-> HOME -> READY -(Start)-> ACTIVE -> EXITING -> STOPPED
                                   └──── HOME ◀─────┘ (Reset)
 ```
 
-- **INIT**: create the arena; start the dashboard (P10).
+- **INIT**: create the arena; start the dashboard (P10) and the cameras (P2: open, settle, fit
+  the lens, a few seconds, in parallel with the bus process's check; CHECK waits for them). A
+  camera that cannot start is a warning, or refuses the session if it is `required`.
 - **CHECK**: start the bus process. Before it writes anything it runs the **hardware check**
   (`St3215Driver.check`): every servo answers, is an STS3215 in position mode, has its
   calibrated offset, has torque off, reads a sane supply voltage and temperature, has no alarm
@@ -117,7 +120,8 @@ offline. The page draws our URDF (`/api/robot`, the meshes from `description/`) 
 times: the arm as **measured** (solid), as **commanded** by the bus process (blue ghost), the
 **home** pose (green ghost) and the exit pose (orange), plus the IK's target point. Beside it:
 the session and what P0 waits for, the Home / Start / Reset / Exit buttons (enabled only when
-P0 would take them), the phone (streaming, clutch, tracking, latency, forced releases), every
+P0 would take them), each camera, live (the lens square at up to 15 fps, `/camera/<name>.mjpg`, with who owns its
+exposure and how clipped the disc is), the phone (streaming, clutch, tracking, latency, forced releases), every
 joint (measured, commanded, error, temperature, load) and the hardware check. It polls
 `/api/state` 20 times a second and redraws only when something changed.
 
@@ -184,6 +188,7 @@ never jumps).
 | `state` | P7 | one row per bus read: measured `q`, the command `q_cmd`, speed / load / temperature (every 5th), alarms |
 | `target` | P6, P0 | one row per tick: `k`, `deadline`, `intervene`, the 8 joints, the IK's input pose and residual |
 | `intervene` | P11 | one row per phone packet while engaged: the motion since the press, the jaw command, the deadline |
+| `cam_<name>_*` | that camera's P2 | a ring of whole frames (BGR, native size), each with its capture time, the lens square to cut, and the exposure in effect; a status block (JSON) |
 
 `schema.py` is the vocabulary (bump `VERSION` when a record's meaning changes), `layout.py` the
 regions and their hash (every process refuses an arena built differently), `rings.py` every
@@ -212,6 +217,46 @@ limits. `elrobot_deploy executor-test` is the bench for it (sine targets through
 and process, with a lag / dead zone / smoothness summary). `bus.driver = "sim"` swaps in
 `SimDriver` (first-order lags at the real bus's timing).
 
+## Cameras (`runtime/cameras/`, P2)
+
+One `[cameras.<name>]` table per camera in the profile; each gets its own P2, its own ring and
+its own pane on the dashboard. A second camera (an exocentric view) is another table
+(`lens = "normal"`, its own `device`); a new KIND of camera is one class with the source
+contract (`sources.py`) added to `cameras.SOURCES`.
+
+- **Frames** (`sources.py`): on the Mac, AVFoundation through pyobjc (`AvfCamera`), at the
+  camera's own mode (1280x720 at 30 fps; MJPEG over USB, which macOS lists as `420v`), BGRA
+  unscaled, each frame stamped with its presentation time on the host clock (the clock
+  `time.monotonic` reads). Not OpenCV's macOS backend: it opens every camera at the "medium"
+  preset and only scales. `device = "auto"` is the one USB camera, never the built-in one or
+  an iPhone's Continuity Camera. Also `v4l2` (Linux), `realsense`, and `fake` (a synthetic
+  fisheye whose "auto-exposure" blows the disc out, for tests and `run --fake-cameras`).
+- **Controls** (`uvc.py`): exposure, gain, white balance as UVC class requests over libusb,
+  sent to the device without claiming its interface, so they work beside AVFoundation's
+  stream, without root. Measured on our camera (10bb:2b08): every control reads and writes
+  while streaming; exposure 1..10000 (100 us units), gain 0..128 (default 64), auto-exposure
+  modes manual and aperture priority; in auto, exposure is not writable (a USB STALL) and reads
+  back the register, not what the camera's loop chose. The AVFoundation device and the USB
+  device are matched exactly by the USB location both report.
+- **The lens** (`lens.py`, ported from g1d): P2 fits the 210 deg lens circle from its own first
+  frames (the rim is the steepest brightness drop: exposure-independent), and every frame
+  carries the square around it. The ring holds whole frames, so the fit never sizes the arena,
+  and a fit that failed at start is retried every 5 s. Ours at 720p: cx 635, cy 385, r 326
+  (residual 1.3-1.9 px).
+- **Exposure** (`exposure.py`, "THE MODES"): `camera_first` (the default) puts the camera's
+  own settings back and leaves them alone while measuring inside the lens circle; it takes over
+  (from the camera's own values, then `sticky`) only if the camera's loop is clearly failing for
+  2 s: 15 % of the disc clipped (`takeover_clip_pct`), or the disc's mean >= 190, or dark. The
+  law it then runs is g1d's (`step`: p99.5 held at 245, 10/20/30 ms bands, gain trims), with
+  the sticky timing from PORTING_PLAN.md section 6. Measured 2026-10-17 with a lit monitor in
+  view: the camera's own loop clipped 7 % (the monitor) with the workspace well exposed, and a
+  takeover would have darkened the workspace to save the monitor, so camera_first leaves it.
+  Also `camera`, `sticky`, `servo`, `pinned`. P2 hands the camera's own settings back at exit.
+- **The bench**: `elrobot_deploy camera list` (what AVFoundation and USB see, every mode),
+  `camera probe` (every control, before and while streaming, and whether a write changes the
+  image), `camera test` (one camera exactly as P2 runs it, a line a second, snapshots and a CSV
+  in `ElRobot/logs/camera/`). macOS asks once for camera access for the terminal app.
+
 ## Configuration
 
 One TOML robot profile, `src/elrobot_deploy/robot/profiles/elrobot.toml` (every key commented
@@ -238,6 +283,8 @@ uv run elrobot_deploy run --no-phone             # the real arm: check, home, ho
 uv run elrobot_deploy run                        # the real arm, driven by the phone
 #   run flags: --auto-home, --auto-start (skip the waits), --no-dashboard (Enter only)
 uv run elrobot_deploy executor-test --joints 6   # the executor's sine test
+uv run elrobot_deploy camera list                # the cameras; also: camera probe, camera test
+#   run flags for cameras: --no-cameras, --fake-cameras, --set cameras.wrist.exposure="camera"
 ```
 
 The bus process's tick log (every tick: the line, the command, the measurement, timing; the
@@ -247,5 +294,6 @@ last ten minutes of a session) is written to `ElRobot/logs/sessions/<stamp>_bus.
 ## Not here yet
 
 Policies (P5, the policy contract, chunk blending), recording (P9; today only the bus
-process's tick log), rollout inspection and cameras (P2) are g1d's, in `../legacy_g1d/`, to be
-ported when their milestone comes (`../PORTING_PLAN.md` section 4).
+process's tick log; the camera ring already carries what it will need: capture times and the
+exposure per frame) and rollout inspection are g1d's, in `../legacy_g1d/`, to be ported when
+their milestone comes (`../PORTING_PLAN.md` section 4).

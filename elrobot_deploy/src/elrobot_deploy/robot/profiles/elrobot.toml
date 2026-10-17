@@ -104,3 +104,42 @@ recover_via_home = false   # true: recover through the home pose first (home, th
 # The live dashboard (`elrobot_deploy run` starts it; `elrobot_deploy view` without the robot).
 host = "127.0.0.1"      # "0.0.0.0" to open it from another device on the LAN (no password!)
 port = 8080
+
+# --- cameras ---------------------------------------------------------------------------------
+# One [cameras.<name>] table per camera; each gets its own process (P2), arena ring and
+# dashboard pane. Delete the table (or `run --no-cameras`) for none; `run --fake-cameras` swaps
+# in synthetic frames. Override a key for one run with `--set cameras.wrist.exposure="camera"`.
+# A second camera (an exocentric view) is another table, e.g. [cameras.exo] with
+# lens = "normal", device = "<its name>". `elrobot_deploy camera list` shows what is plugged in;
+# `elrobot_deploy camera test` runs one camera on its own and says how its exposure does.
+# The code: runtime/cameras/ (docs/architecture.md, "Cameras").
+
+[cameras.wrist]
+# The HX200S 210 deg fisheye on the wrist (the same unit as g1d's fisheye wrists).
+source = "usb"          # usb (this Mac's USB camera, via AVFoundation) | fake | v4l2 | realsense
+device = "auto"         # auto = the one USB camera; or part of its name, its uniqueID, or
+                        # "vid:pid" / "vid:pid@location" (two identical cameras: by location)
+width = 1280            # the camera's own mode: no resize anywhere (g1d ran this lens at 720p;
+height = 720            #   the HX200S also offers 1080p, with a bigger lens circle)
+fps = 30
+lens = "fisheye"        # fisheye: the lens circle is fitted at every start and each frame
+                        # carries the square around it | normal: the whole frame
+fallback_lens_circle = []   # [cx, cy, r] px, used only if the fit fails; [] = none
+                            # (g1d's units at 720p: about [663, 334, 344])
+# Exposure (runtime/cameras/exposure.py, "THE MODES"):
+#   camera_first  the camera's own settings first; we meter inside the lens circle and take
+#                 over (sticky) only if the disc stays clipped or dark. The default.
+#   camera        the camera's own settings always (we only measure)
+#   sticky        ours from the start: hold, correct only on a sustained need
+#   servo         g1d's continuous loop
+#   pinned        pinned_exposure / pinned_gain
+exposure = "camera_first"
+takeover_clip_pct = 15  # camera_first takes over when this much of the disc stays clipped (or
+                        # the disc's mean >= 190, or it is dark). Measured 2026-10-17: the
+                        # camera's own exposure clipped 7% (a lit monitor) and suited the
+                        # workspace best; g1d's rig clipped 26%, a real failure
+pinned_exposure = 200   # pinned: 100 us units (200 = 20 ms, two 50 Hz flicker periods)
+pinned_gain = 64
+white_balance = 0       # kelvin to pin while WE own exposure; 0 = leave white balance auto
+slots = 8               # frames kept in the arena (~2.8 MB each at 720p)
+required = false        # true: no session without this camera; false: warn and carry on

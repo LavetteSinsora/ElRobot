@@ -52,7 +52,7 @@ from typing import NamedTuple
 import numpy as np
 
 from elrobot_deploy.runtime import timing as clock
-from elrobot_deploy.runtime.shared_memory import Arena, build, open_all, schema
+from elrobot_deploy.runtime.shared_memory import Arena, layout_for, open_all, schema
 from elrobot_deploy.runtime.teleop.intervention import apply_delta, is_intervening
 
 #: How early (in grid periods) a row may be and still be taken as its grid point's.
@@ -198,7 +198,7 @@ class Target:
 
 def run(shm_name: str, cfg) -> None:
     """P6 as a process. Runs while `session == ACTIVE`."""
-    arena = Arena.attach(shm_name, build())
+    arena = Arena.attach(shm_name, layout_for(cfg))
     try:
         rings = open_all(arena)
         # mujoco / mink are imported here, by the factory, and nowhere else in the runtime.

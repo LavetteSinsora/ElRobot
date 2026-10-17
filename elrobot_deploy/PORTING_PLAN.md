@@ -10,6 +10,14 @@ with `elrobot_deploy/` or `ElRobotRepo/`.
 
 **Status (2026-10-17, second session):** workstreams 0, 1 and most of C are done; the system
 map of what exists now is `docs/architecture.md`.
+- **Done (later the same day): workstream D, the cameras**, on the real camera. D1 resolved:
+  route (b), AVFoundation (pyobjc) for frames plus UVC requests (libusb, to the device, no
+  interface claimed, no root) for the controls, both at once. D2: P2 is one local process per
+  camera (capture, lens square, exposure). D3: the fit is P2's own, from its first frames, and
+  every frame carries its square (the ring holds whole frames), so the camera opens once.
+  **Changed against section 6:** exposure is the camera's own first (`camera_first`), sticky
+  only if that clearly fails; measured why in HANDOFF.md 5D. Still open: D4 (the time offset)
+  and the servo latency re-run with the camera streaming.
 - **Done: prune (0) and the single-arm schema (1).** The g1d code with no ElRobot counterpart,
   and the subsystems not ported yet (P5 / policy contract / chunk blending, P9, P10 and
   inspection, P2 and the cameras, CHECK), moved unchanged to `legacy_g1d/`. One 8-joint target

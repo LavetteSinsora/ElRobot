@@ -7,7 +7,8 @@ target into a startup error.
 
 P0 creates it (`Arena.create`), every other process attaches (`Arena.attach`). Adding or
 resizing a region changes the hash; changing what a region MEANS needs a `schema.VERSION` bump
-as well. The arena is small (well under 1 MB without cameras).
+as well. The arena is small (well under 1 MB) without cameras; each camera adds its ring
+(`slots` whole frames, ~2.8 MB each at 1280x720).
 """
 
 from __future__ import annotations
@@ -46,6 +47,7 @@ class Layout:
     regions: dict[str, Region]
     size: int
     hash: int
+    cameras: tuple[str, ...] = ()
 
     def region(self, name: str) -> Region:
         return self.regions[name]
@@ -75,8 +77,20 @@ class Sizes:
 DEFAULT_SIZES = Sizes()
 
 
-def build(sizes: Sizes = DEFAULT_SIZES) -> Layout:
-    """Pure: sizes in, region table out. Called identically by every process."""
+def camera_specs(cfg) -> tuple[tuple[str, int, int, int], ...]:
+    """`(name, height, width, slots)` of every camera a config declares: what `build` sizes
+    their rings from."""
+    return tuple((c.name, c.height, c.width, c.slots) for c in getattr(cfg, "cameras", ()))
+
+
+def layout_for(cfg, sizes: Sizes = DEFAULT_SIZES) -> Layout:
+    """The layout every process of a session computes from the config it was handed."""
+    return build(sizes, camera_specs(cfg))
+
+
+def build(sizes: Sizes = DEFAULT_SIZES, cameras=()) -> Layout:
+    """Pure: sizes (and the cameras' `(name, height, width, slots)`) in, region table out.
+    Called identically by every process (`layout_for`)."""
     regions: dict[str, Region] = {}
     offset = 0
 
@@ -102,13 +116,24 @@ def build(sizes: Sizes = DEFAULT_SIZES) -> Layout:
     add("intervene_rec", schema.INTERVENE, sizes.n_intervene)
     add("intervene_meta", schema.INTERVENE_META, 1)
 
+    # One ring per camera (`rings.CameraRing`): the newest published frame id, a seqlock
+    # counter per slot, the slots, and the camera's status text under its own counter.
+    names = []
+    for name, height, width, slots in sorted(cameras):
+        names.append(name)
+        add(f"cam_{name}_head", np.uint64, 1)
+        add(f"cam_{name}_seq", np.uint64, int(slots))
+        add(f"cam_{name}_rec", schema.camera_dtype(int(height), int(width)), int(slots))
+        add(f"cam_{name}_status_seq", np.uint64, 1)
+        add(f"cam_{name}_status", schema.CAMERA_STATUS, 1)
+
     digest = hashlib.blake2b(digest_size=8)
     for r in regions.values():
         digest.update(f"{r.name}|{r.dtype.str}|{r.dtype.itemsize}|"
                       f"{r.count}|{r.offset}".encode())
     layout_hash = int.from_bytes(digest.digest(), "little")
 
-    return Layout(regions=regions, size=offset, hash=layout_hash)
+    return Layout(regions=regions, size=offset, hash=layout_hash, cameras=tuple(names))
 
 
 class LayoutMismatch(RuntimeError):

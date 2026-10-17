@@ -450,6 +450,140 @@ class TargetRing:
         return self._entry(snap)
 
 
+class CameraFrame(NamedTuple):
+    frame_id: int
+    t_capture: float
+    t_recv: float
+    crop: tuple                         # x0, y0, x1, y1
+    exposure_owner: int
+    exposure: int
+    gain: int
+
+
+class CameraRing:
+    """One camera's ring of N whole frames. The writer is that camera's P2.
+
+    Ported from g1d's `CameraRing` (`legacy_g1d/.../rings.py`), with memory fences (Apple
+    Silicon reorders stores; `primitives.fence`) and without the JPEG and source counter
+    (frames come straight off this machine's USB):
+
+    * `head` (1,): the `frame_id` of the newest PUBLISHED frame, stored LAST.
+    * `seq` (N,): a counter per slot, odd while the writer fills it.
+    * `rec` (N,): `schema.camera_dtype`, the metadata inside the slot with its pixels.
+
+    Frame `f` lives in slot `(f - 1) % N`. **The writer**: `spare()` makes the next slot odd
+    and hands it out, the source decodes straight into its `pixels`, `publish()` stamps the
+    metadata, makes it even, then stores `head`. Wait-free. **A reader** copies and verifies
+    (counter even before, unchanged after) and drops a frame that fails rather than ever
+    returning it torn; "the newest frame" retries from `head`.
+
+    The status block (`status`, JSON) is the camera's own state for the dashboard, under its
+    own counter, written by P2 a few times a second.
+    """
+
+    def __init__(self, arena, name: str):
+        self.name = name
+        self._head = arena.view(f"cam_{name}_head")
+        self._seq = arena.view(f"cam_{name}_seq")
+        self._rec = arena.view(f"cam_{name}_rec")
+        self._status = Seqlock(arena.view(f"cam_{name}_status_seq"),
+                               arena.view(f"cam_{name}_status"))
+        self.n = len(self._rec)
+        self.dtype = self._rec.dtype
+        self.shape = self.dtype["pixels"].shape
+        self._frame_id = int(self._head[0])
+        self._open = False
+
+    def _slot(self, frame_id: int) -> int:
+        return (int(frame_id) - 1) % self.n
+
+    # --- writer (P2) ---------------------------------------------------------------------
+
+    def spare(self) -> np.ndarray:
+        """The slot the next frame goes into, marked "being written". Idempotent until
+        `publish()`."""
+        i = self._frame_id % self.n
+        if not self._open:
+            if not int(self._seq[i]) & 1:
+                self._seq[i] += 1                 # -> odd: being written
+            fence()
+            self._open = True
+        return self._rec[i]
+
+    def publish(self, t_capture: float, t_recv: float, crop, *,
+                owner: int = schema.EXPOSURE_CAMERA, exposure: int = -1, gain: int = -1) -> int:
+        slot = self.spare()
+        i = self._frame_id % self.n
+        fid = self._frame_id + 1
+        slot["frame_id"] = fid
+        slot["t_capture"] = t_capture
+        slot["t_recv"] = t_recv
+        slot["crop"] = crop
+        slot["exposure_owner"] = owner
+        slot["exposure"] = exposure
+        slot["gain"] = gain
+        fence()                                   # the slot visible before ...
+        self._seq[i] += 1                         # -> even: consistent
+        fence()                                   # ... and the slot before the head
+        self._open = False
+        self._head[0] = fid
+        self._frame_id = fid
+        return fid
+
+    def set_status(self, text: str) -> None:
+        data = text.encode()[:schema.CAMERA_STATUS_BYTES]
+        with self._status.write(0) as rec:
+            rec["text"][:len(data)] = np.frombuffer(data, np.uint8)
+            rec["len"] = len(data)
+
+    # --- readers -------------------------------------------------------------------------
+
+    def status(self) -> str:
+        snap = self._status.snapshot(0, schema.CAMERA_STATUS)
+        return bytes(snap["text"][:int(snap["len"])]).decode(errors="replace")
+
+    def newest_id(self) -> int:
+        return int(self._head[0])
+
+    def _meta(self, rec) -> CameraFrame:
+        return CameraFrame(int(rec["frame_id"]), float(rec["t_capture"]), float(rec["t_recv"]),
+                           tuple(int(v) for v in rec["crop"]), int(rec["exposure_owner"]),
+                           int(rec["exposure"]), int(rec["gain"]))
+
+    def peek(self) -> CameraFrame | None:
+        """The newest frame's metadata, no pixels; None before the first."""
+        while True:
+            fid = int(self._head[0])
+            if fid == 0:
+                return None
+            i = self._slot(fid)
+            s0 = int(self._seq[i])
+            fence()
+            if s0 & 1 or int(self._rec[i]["frame_id"]) != fid:
+                continue                          # lapped under us: the next head is newer
+            meta = self._meta(self._rec[i])
+            fence()
+            if int(self._seq[i]) == s0:
+                return meta
+
+    def read_newest(self, out: np.ndarray, *, after: int = 0) -> CameraFrame | None:
+        """The newest frame's pixels into `out` (shape `self.shape`), and its metadata; None
+        if there is none newer than `after` yet, or it was overwritten during the copy (the
+        caller polls again)."""
+        fid = int(self._head[0])
+        if fid == 0 or fid <= after:
+            return None
+        i = self._slot(fid)
+        s0 = int(self._seq[i])
+        fence()
+        if s0 & 1 or int(self._rec[i]["frame_id"]) != fid:
+            return None
+        meta = self._meta(self._rec[i])
+        np.copyto(out, self._rec[i]["pixels"])
+        fence()
+        return meta if int(self._seq[i]) == s0 else None
+
+
 def open_all(arena) -> dict:
     """Every accessor a process might want, built once at attach."""
     return {
@@ -457,8 +591,10 @@ def open_all(arena) -> dict:
         "state": StateRing(arena),
         "targets": TargetRing(arena),
         "intervene": InterveneRing(arena),
+        "cameras": {name: CameraRing(arena, name)
+                    for name in getattr(arena.layout, "cameras", ())},
     }
 
 
-__all__ = ["Control", "InterveneRing", "InterveneRow", "StateRing", "TargetEntry",
-           "TargetRing", "open_all"]
+__all__ = ["CameraFrame", "CameraRing", "Control", "InterveneRing", "InterveneRow", "StateRing",
+           "TargetEntry", "TargetRing", "open_all"]

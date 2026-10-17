@@ -23,7 +23,8 @@ from tests.conftest import arena_name
 @pytest.fixture
 def fast():
     """The shipped profile on simulated servos, with short ramps."""
-    return load(sets=["bus.driver=sim", "poses.min_s=0.3", "poses.velocity_margin=0.6"])
+    return load(sets=["bus.driver=sim", "poses.min_s=0.3",
+                      "poses.velocity_margin=0.6"]).with_cameras(none=True)
 
 
 class Recorder(Launcher):

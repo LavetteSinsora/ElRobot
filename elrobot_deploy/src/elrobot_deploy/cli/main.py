@@ -6,6 +6,7 @@
     elrobot_deploy phone-bench                               check the phone grip, no robot
     elrobot_deploy fake-phone ...                            a synthetic phone (for --sim)
     elrobot_deploy executor-test ...                         the executor's sine test
+    elrobot_deploy camera list|probe|test ...                one camera on the bench, no robot
 
 `run` is thin on purpose: it resolves the profile and the overrides (`config_loading.config`),
 prints what was resolved, and hands over to P0 (`runtime/launcher/`), which owns every decision
@@ -61,6 +62,11 @@ def _parser() -> argparse.ArgumentParser:
                         "safety.blocked=false")
     r.add_argument("--no-dashboard", action="store_true",
                    help="do not start the dashboard (Home and Start then come from Enter)")
+    cams = r.add_mutually_exclusive_group()
+    cams.add_argument("--no-cameras", action="store_true",
+                      help="start no camera process (the profile's [cameras.*] are ignored)")
+    cams.add_argument("--fake-cameras", action="store_true",
+                      help="synthetic frames in place of every camera (no camera needed)")
     r.add_argument("--log-dir", default=str(REPO / "logs" / "sessions"),
                    help="where the bus process's tick log goes (default: ElRobot/logs/sessions)")
 
@@ -81,6 +87,8 @@ def _parser() -> argparse.ArgumentParser:
 
     sub.add_parser("fake-phone", help="send synthetic phone packets (its own --help)",
                    add_help=False)
+    sub.add_parser("camera", help="one camera on the bench: list, probe, test (its own --help)",
+                   add_help=False)
     sub.add_parser("executor-test", help="the executor's sine test (its own --help)",
                    add_help=False)
     return parser
@@ -90,7 +98,8 @@ def _config(args):
     sets = list(args.sets) + (["bus.driver=sim"] if args.sim else [])
     if getattr(args, "runaway_only", False):
         sets.append("safety.blocked=false")
-    return load(args.profile, sets=sets)
+    return load(args.profile, sets=sets).with_cameras(
+        fake=getattr(args, "fake_cameras", False), none=getattr(args, "no_cameras", False))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -98,6 +107,9 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:1] == ["executor-test"]:
         from elrobot_deploy.cli import executor_test
         return executor_test.main(argv[1:])
+    if argv[:1] == ["camera"]:
+        from elrobot_deploy.cli import camera
+        return camera.main(argv[1:])
     if argv[:1] == ["fake-phone"]:
         from elrobot_deploy.runtime.teleop import fake_phone
         return fake_phone.main(argv[1:])

@@ -69,7 +69,8 @@ arm with torque OFF (only the blue ghost moves).
   may lead the measured jaw toward closed by at most `squeeze_margin`, enforced in the phone
   source and in the bus process every tick; default 5 deg, uncalibrated); anti-windup (the
   bounded command is stored); hardware TORQUE_LIMIT on servo 8.
-- Control box: this Mac. Camera exposure: "sticky". Cameras/recording/dashboard come after teleop.
+- Control box: this Mac. Camera exposure: the camera's own settings first (`camera_first`),
+  ours ("sticky") only when they clearly fail (decided 2026-10-17, section 5D).
 
 ## 4. The executor: what was measured on the arm (joint 6, +-5 deg sine at 0.25 Hz)
 
@@ -147,8 +148,32 @@ Findings:
 12. If level, sideways gripper motion is needed: the wrist-branch question (`tcp_qp.py`
     docstring); a new IK is `--set ik.solver=file.py:factory` (`runtime/ik/__init__.py`).
 
-### D. Later: recording (only the bus tick log exists), cameras (M4), policies: from
-`legacy_g1d/`. Optional: Start / Reset buttons on the phone.
+### D. Cameras (done 2026-10-17, branch `claude/cameras`; `docs/architecture.md`, "Cameras")
+
+The wrist fisheye (HX200S, USB 10bb:2b08, the same unit as g1d's wrists) runs as P2 in every
+session, shown live on the dashboard; `elrobot_deploy camera list | probe | test` on the bench.
+Measured on this Mac, in the room, with the camera plugged in:
+- AVFoundation streams it at 1280x720, 30.1 fps, no drops (its MJPEG modes show as `420v`; raw
+  `yuvs` manages 10 fps at 720p). OpenCV's macOS backend is NOT used (medium preset, scaled).
+- **The macOS controls spike (PORTING_PLAN D1) is resolved**: UVC requests over libusb, without
+  root and without claiming the interface, read and write every control WHILE AVFoundation
+  streams (manual exposure at a quarter: frame mean 57 -> 2.9; handed back: 57.3).
+- Lens fit at 720p: cx 635, cy 385, r 326 px (residual 1.3-1.9 px); the circle fits the sensor.
+- **Exposure, "the camera's own settings first"**: its own auto-exposure held the disc at mean
+  157 with 7 % clipped, all of it a lit monitor, with the workspace well exposed. Taking over
+  with g1d's law (p99.5 at 245) saved the monitor and darkened the workspace to mean 48 at gain
+  97, worse for the arm. So `camera_first` (the default) keeps the camera's settings unless its
+  loop clearly fails for 2 s: 15 % of the disc clipped (`takeover_clip_pct`; g1d's rig: 26 %),
+  or the disc's mean >= 190, or dark. Then it takes over (sticky) and says why.
+
+Left for the cameras: **re-run the executor sine test with the camera streaming** (the camera
+and the servo adapter share the VIA USB 2 hub: 0x0213... and 0x0211...; PORTING_PLAN section
+6); `fallback_lens_circle = [635, 385, 326]` in the profile if a fit ever fails at start; the
+camera-to-joint time offset (D4); an exocentric camera is another `[cameras.<name>]` table.
+
+### E. Later: recording (only the bus tick log exists; the camera ring already carries capture
+times and the exposure per frame), policies: from `legacy_g1d/`. Optional: Start / Reset
+buttons on the phone.
 
 ## 6. Minimum checklist before teleoperating with the phone
 
@@ -179,6 +204,10 @@ uv run elrobot_deploy run --dry-run                       # real arm read, torqu
 uv run elrobot_deploy run --no-phone                      # real arm: check, home, hold, exit
 uv run elrobot_deploy run                                 # real arm, phone teleop
 #   dashboard: http://127.0.0.1:8080 ; run flags: --auto-home --auto-start --no-dashboard
+#   cameras: --no-cameras --fake-cameras ; --set cameras.wrist.exposure="camera"
+uv run elrobot_deploy camera list                         # what AVFoundation and USB see
+uv run elrobot_deploy camera probe                        # UVC controls, before/while streaming
+uv run elrobot_deploy camera test --seconds 20            # one camera as P2 runs it, + snapshots
 uv run elrobot_deploy executor-test --joints 6 --p-coef 16 --friction-deg 1.0   # sine test
 #   (also: python -m elrobot_deploy.cli.executor_test ...; flags unchanged: --hold, --d-coef,
 #   --goal-speed, --rewrite-every, --amp-deg, --freq, --sim, --dry-run)

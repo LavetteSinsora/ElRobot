@@ -31,8 +31,9 @@ def free_port() -> int:
 
 def test_the_phone_drives_the_simulated_arm():
     port = free_port()
+    # The synthetic camera rides along, so the whole session (P2 included) is the real one.
     cfg = load(sets=["bus.driver=sim", f"teleop.port={port}", "poses.min_s=0.3",
-                     "poses.velocity_margin=0.6"])
+                     "poses.velocity_margin=0.6"]).with_cameras(fake=True)
     lines = []
     p0 = Launcher(cfg, arena_name=arena_name(), log=lines.append, auto_home=True,
                   auto_start=True)

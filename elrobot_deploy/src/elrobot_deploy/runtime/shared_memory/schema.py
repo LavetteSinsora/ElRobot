@@ -95,12 +95,13 @@ MAGIC = 0x454C52000001  # "ELR" + 1
 
 #: 1: the single-arm arena (one 8-joint row; bus state; the phone's relative motion).
 #: 2: `CONTROL.wait` (what P0 waits for), the bus process's hardware report, REQ_HOME, BUS_DRY.
+#: 3: camera rings (`camera_dtype`, `CAMERA_STATUS`), one per `[cameras.<name>]`.
 #:
 #: THE RULE: bump this whenever a record's fields, a region's name or a ring's read protocol
 #: changes, anything a reader written against the old layout would misread rather than fail
 #: on. The layout hash already refuses an attach across different SIZES; this refuses one
 #: across different MEANINGS.
-VERSION = 2
+VERSION = 3
 
 #: Bytes of UTF-8 one line of "why" may take (a bus fault, a refused START).
 REASON_BYTES = 256
@@ -210,18 +211,62 @@ INTERVENE_META = np.dtype([
 ])
 
 
+# --- cameras --------------------------------------------------------------------------------
+#
+# One ring per `[cameras.<name>]`, written by that camera's P2 only (`rings.CameraRing`). The
+# slot holds the WHOLE frame, as the camera produced it, plus the square a reader should cut
+# from it (`lens.py`): the crop is metadata, so a refit mid-session (`lens.REFIT_RETRY_S`)
+# changes the next frame's square and never the ring's shape, and P2 opens its camera once
+# (the fit is its own, from its own first frames).
+
+#: Who set this frame's exposure: the camera's own loop, or ours (`cameras/exposure.py`).
+EXPOSURE_CAMERA, EXPOSURE_OURS = 0, 1
+
+#: Bytes of a camera's status (JSON: device, mode, lens decision, exposure state), for the
+#: dashboard and the terminal.
+CAMERA_STATUS_BYTES = 4096
+
+
+def camera_dtype(height: int, width: int) -> np.dtype:
+    """One camera-ring slot: the frame and what is true of it.
+
+    `exposure` / `gain` are the registers in effect when we own exposure (-1 while the
+    camera's own loop does, unless it was read back), so a recording can find every step
+    (PORTING_PLAN.md section 6, item 4).
+    """
+    return np.dtype([
+        ("frame_id", "<u8"),                 # this camera's frames, from 1; 0 = empty
+        ("t_capture", "<f8"),                # the frame's capture time (else its arrival)
+        ("t_recv", "<f8"),                   # when P2 received it
+        ("crop", "<i8", (4,)),               # x0, y0, x1, y1 (end exclusive; may overhang)
+        ("exposure_owner", "<i8"),           # EXPOSURE_*
+        ("exposure", "<i8"),                 # 100 us units, -1 = unknown
+        ("gain", "<i8"),                     # -1 = unknown
+        ("pixels", "u1", (height, width, 3)),   # BGR
+    ], align=True)
+
+
+CAMERA_STATUS = np.dtype([
+    ("len", "<u8"),
+    ("text", "u1", (CAMERA_STATUS_BYTES,)),
+])
+
+
 __all__ = [
     "ACTIVE",
     "ARM_DOF",
     "BUS_DONE",
-    "BUS_RECOVERING",
     "BUS_HOLDING",
     "BUS_NAMES",
+    "BUS_RECOVERING",
     "BUS_RUNNING",
     "BUS_STARTING",
+    "CAMERA_STATUS",
     "CHECK",
     "CONTROL",
     "EXITING",
+    "EXPOSURE_CAMERA",
+    "EXPOSURE_OURS",
     "GRIPPER",
     "HEADER",
     "HOME",
@@ -245,4 +290,5 @@ __all__ = [
     "TARGET",
     "VERSION",
     "WARMUP",
+    "camera_dtype",
 ]

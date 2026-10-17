@@ -4,14 +4,15 @@ attached by every process. How it fits together: `docs/architecture.md`, "The ar
 
 from elrobot_deploy.runtime.shared_memory import schema
 from elrobot_deploy.runtime.shared_memory.layout import (Arena, Layout, LayoutMismatch,
-                                                         ReadOnlyArena, Region, Sizes, build)
+                                                         ReadOnlyArena, Region, Sizes, build,
+                                                         layout_for)
 from elrobot_deploy.runtime.shared_memory.primitives import Seqlock, fence
-from elrobot_deploy.runtime.shared_memory.rings import (Control, InterveneRing, InterveneRow,
-                                                        StateRing, TargetEntry, TargetRing,
-                                                        open_all)
+from elrobot_deploy.runtime.shared_memory.rings import (CameraFrame, CameraRing, Control,
+                                                        InterveneRing, InterveneRow, StateRing,
+                                                        TargetEntry, TargetRing, open_all)
 
 __all__ = [
-    "Arena", "Control", "InterveneRing", "InterveneRow", "Layout", "LayoutMismatch",
-    "ReadOnlyArena", "Region", "Seqlock", "Sizes", "StateRing", "TargetEntry", "TargetRing",
-    "build", "fence", "open_all", "schema",
+    "Arena", "CameraFrame", "CameraRing", "Control", "InterveneRing", "InterveneRow", "Layout",
+    "LayoutMismatch", "ReadOnlyArena", "Region", "Seqlock", "Sizes", "StateRing",
+    "TargetEntry", "TargetRing", "build", "fence", "layout_for", "open_all", "schema",
 ]

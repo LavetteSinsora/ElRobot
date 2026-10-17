@@ -45,7 +45,7 @@ from elrobot_deploy.config_loading.errors import ConfigError
 from elrobot_deploy.runtime import timing as _clock
 from elrobot_deploy.runtime.launcher.children import _Children, _spawn_process
 from elrobot_deploy.runtime.launcher.ramps import cosine_ramp, write_ramp
-from elrobot_deploy.runtime.shared_memory import Arena, build, open_all, schema
+from elrobot_deploy.runtime.shared_memory import Arena, layout_for, open_all, schema
 
 #: How often P0 polls a word it waits on.
 POLL_S = 0.01
@@ -109,6 +109,7 @@ class Launcher:
         self._skip_ramp = False
         self._recovering = False
         self._failure: BaseException | None = None
+        self._cameras_lost: set[str] = set()
         self.stamp = time.strftime("%Y%m%d_%H%M%S")
 
     # --- helpers -------------------------------------------------------------------------
@@ -245,7 +246,7 @@ class Launcher:
     # --- the sequence --------------------------------------------------------------------
 
     def init(self) -> None:
-        layout = build()
+        layout = layout_for(self.cfg)
         self.arena = Arena.create(self.name, layout)
         self.rings = open_all(self.arena)
         self._set(schema.INIT)
@@ -258,6 +259,11 @@ class Launcher:
                                 (self.name, self.cfg), dry_run=self.dry_run)
             self.log(f"[P0] dashboard: http://{self.cfg.dashboard.host}:"
                      f"{self.cfg.dashboard.port}")
+        # The cameras open, settle and fit their lens (a few seconds) while the bus process
+        # runs its hardware check; CHECK waits for both.
+        for cam in self.cfg.cameras:
+            self.children.start(f"p2_{cam.name}", "elrobot_deploy.runtime.processes.p2_camera.run",
+                                (self.name, self.cfg), gated=True, camera=cam.name)
 
     def check(self) -> None:
         """Start the producers and confirm they produce, before anything moves."""
@@ -279,6 +285,7 @@ class Launcher:
         self.log(f"[P0] bus running ({self.cfg.bus.driver}"
                  f"{', DRY RUN: torque off, nothing is written' if self.dry_run else ''}); "
                  f"arm at {np.round(np.degrees(q), 1).tolist()} deg")
+        self._await_cameras()
         if self.phone:
             # A PRODUCER, so CHECK proves it produces before anything moves, as g1d's CHECK did
             # for the PICO: no Home until the phone has streamed steadily with good tracking.
@@ -330,8 +337,48 @@ class Launcher:
         finally:
             control.wait = schema.WAIT_NONE
 
+    def _camera_status(self, name: str) -> dict:
+        import json
+        try:
+            return json.loads(self.rings["cameras"][name].status() or "{}")
+        except ValueError:
+            return {}
+
+    def _await_cameras(self) -> None:
+        """Wait for every camera to be streaming with its lens decided, or to have given up.
+        A camera that cannot start refuses the session only if it is `required`; otherwise
+        the run goes on without it, and says so."""
+        for cam in self.cfg.cameras:
+            name = f"p2_{cam.name}"
+            ready = self.children.ready[name]
+            self._wait(lambda r=ready, n=name: r.is_set() or not self.children.alive(n),
+                       f"camera {cam.name}",
+                       lambda c=cam.name: self._camera_status(c).get("phase", "starting"))
+            st = self._camera_status(cam.name)
+            if ready.is_set():
+                ex = st.get("exposure", {})
+                self.log(f"[P0] camera {cam.name}: {st.get('device', '')}, exposure "
+                         f"{ex.get('mode', '?')} (controls: {st.get('controls', '?')})")
+                continue
+            why = st.get("error") or "it exited (its output is above)"
+            if cam.required:
+                raise ConfigError(f"camera {cam.name} did not start: {why}")
+            self.log(f"[P0] WARNING camera {cam.name} did not start: {why}. Going on without "
+                     f"it (required = false).")
+            self._cameras_lost.add(cam.name)
+
+    def _note_cameras(self) -> None:
+        """A camera that stops mid-session is said once; it does not end the session (nothing
+        downstream needs frames yet)."""
+        for cam in self.cfg.cameras:
+            if cam.name not in self._cameras_lost and not self.children.alive(f"p2_{cam.name}"):
+                self._cameras_lost.add(cam.name)
+                why = self._camera_status(cam.name).get("error") or "it exited"
+                self.log(f"[P0] WARNING camera {cam.name} stopped: {why}")
+
     def _note_phone(self) -> None:
         """The phone source must stay alive for the whole session."""
+        self._note_cameras()
         if self.phone and not self.children.alive("p11_phone"):
             raise ConfigError("the phone source exited (its traceback is above)")
 

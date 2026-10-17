@@ -95,6 +95,11 @@ td.bad { color: var(--bad); }
 #sliders { display: grid; grid-template-columns: 24px 1fr 56px; gap: 4px 8px; align-items: center; }
 #sliders input { width: 100%; }
 #sliders span { text-align: right; font-variant-numeric: tabular-nums; }
+.cam { margin: 8px 0 0; }
+.cam img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; background: #000;
+  border-radius: 8px; border: 1px solid var(--line); }
+.cam figcaption { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+.cam figcaption b { color: var(--text); font-weight: 600; }
 #check-notes { margin: 8px 0 0; padding-left: 18px; }
 #check-notes li.bad { color: var(--bad); }
 #check-notes li.warn { color: var(--warn); }

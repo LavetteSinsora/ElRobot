@@ -216,6 +216,35 @@ function updatePanel() {
     b.classList.toggle('primary', b.dataset.request === 'HOME' ? can.HOME : b.dataset.request === 'START' && can.START);
   }
 
+  // cameras: one live view each (an MJPEG stream from P10), with what P2 says about it
+  const cams = s.cameras || {};
+  $('camera-card').hidden = !s.live || !Object.keys(cams).length;
+  for (const [name, c] of Object.entries(cams)) {
+    let fig = document.getElementById(`cam-${name}`);
+    if (!fig) {
+      fig = document.createElement('figure');
+      fig.className = 'cam';
+      fig.id = `cam-${name}`;
+      fig.innerHTML = `<img alt="${name}" src="/camera/${encodeURIComponent(name)}.mjpg"><figcaption></figcaption>`;
+      $('cameras').appendChild(fig);
+    }
+    const e = c.exposure || {};
+    const owner = e.owner === 'ours'
+      ? `<b>ours</b> exp ${e.exposure} gain ${e.gain}${e.phase === 'correct' ? ' (correcting)' : ''}`
+      : `<b>the camera's own</b>${c.readback && c.readback[0] >= 0 ? ` (exp ${c.readback[0]} gain ${c.readback[1]})` : ''}`;
+    const clip = e.clip_pct === null || e.clip_pct === undefined ? '—' : `${fmt(e.clip_pct, 2)}%`;
+    const cls = c.error ? 'badc' : e.clip_pct > 1 ? 'warnc' : '';
+    const stale = c.age_s !== null && c.age_s > 1 ? ` <span class="badc">no frame for ${fmt(c.age_s)} s</span>` : '';
+    fig.querySelector('figcaption').innerHTML = c.error
+      ? `<b>${name}</b> <span class="badc">${c.error}</span>`
+      : `<b>${name}</b> ${c.phase === 'running' ? `${fmt(c.fps, 0)} fps` : c.phase}${stale}<br>
+         exposure ${e.mode || '—'}: ${owner}<br>
+         <span class="${cls}">p99.5 ${fmt(e.p995, 0)} · clipped ${clip}</span>${e.need ? ` · <span class="warnc">${e.need} ${fmt(e.need_s)} s</span>` : ''}
+         ${e.takeover ? `<br><span class="warnc">took over: ${e.takeover}</span>` : ''}
+         ${e.wants_takeover ? `<br><span class="warnc">would take over (${e.takeover}), no control channel</span>` : ''}
+         ${c.lens_used && c.lens_used !== 'fit' ? `<br><span class="warnc">lens: ${c.lens_used}</span>` : ''}`;
+  }
+
   // phone
   const p = s.phone;
   $('phone-card').hidden = !s.live;
@@ -354,7 +383,8 @@ async function poll() {
   try {
     state = await (await fetch('/api/state', { cache: 'no-store' })).json();
     const key = JSON.stringify([state.measured, state.command, state.target_pose, state.session,
-                                state.wait, state.bus, state.phone, state.report && state.report.problems]);
+                                state.wait, state.bus, state.phone, state.report && state.report.problems,
+                                state.cameras]);
     const changed = key !== lastKey;
     lastKey = key;
     if (!state.live && previewQ === null) {

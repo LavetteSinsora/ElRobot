@@ -98,6 +98,39 @@ class DashboardConfig:
 
 
 @dataclass(frozen=True)
+class CameraConfig:
+    """One `[cameras.<name>]` table (the profile documents every key)."""
+
+    name: str
+    source: str = "usb"              # usb | avfoundation | v4l2 | realsense | fake
+    device: str = "auto"             # which camera (see the profile)
+    width: int = 1280
+    height: int = 720
+    fps: float = 30.0
+    lens: str = "fisheye"            # fisheye: fit the circle, publish its square | normal
+    fallback_lens_circle: tuple | None = None    # (cx, cy, r) px at this resolution
+    exposure: str = "camera_first"   # runtime/cameras/exposure.py, "THE MODES"
+    takeover_clip_pct: float = 15.0  # camera_first: % of the disc clipped that is "failing"
+    pinned_exposure: int = 200       # `pinned`: 100 us units
+    pinned_gain: int = 64
+    white_balance: int = 0           # kelvin to pin while we own exposure; 0 = leave it auto
+    slots: int = 8                   # frames the arena keeps
+    required: bool = False           # refuse the session if this camera cannot start
+
+    @property
+    def shape(self) -> tuple[int, int, int]:
+        return (self.height, self.width, 3)
+
+    def line(self) -> str:
+        return (f"{self.name}: {self.source} {self.device!r} {self.width}x{self.height} "
+                f"@ {self.fps:g} fps, {self.lens}, exposure {self.exposure}"
+                f"{', required' if self.required else ''}")
+
+
+CAMERA_SOURCES = ("usb", "avfoundation", "v4l2", "realsense", "fake")
+
+
+@dataclass(frozen=True)
 class Config:
     profile: str                      # the file it came from
     urdf: Path
@@ -112,6 +145,8 @@ class Config:
     teleop: TeleopConfig
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
     guard: GuardSettings = field(default_factory=GuardSettings)
+    #: The `[cameras.<name>]` tables, in name order; () = no camera process.
+    cameras: tuple = ()
     #: Every key that a `--set` changed, -> its value as given. For the run's printout.
     overrides: dict = field(default_factory=dict)
 
@@ -140,6 +175,21 @@ class Config:
     def with_driver(self, driver: str) -> Config:
         return replace(self, bus=replace(self.bus, driver=driver))
 
+    def with_cameras(self, *, fake: bool = False, none: bool = False) -> Config:
+        """Every camera replaced by the synthetic one (`fake`), or no cameras (`none`)."""
+        if none:
+            return replace(self, cameras=())
+        if fake:
+            return replace(self, cameras=tuple(replace(c, source="fake") for c in self.cameras))
+        return self
+
+    def camera(self, name: str) -> CameraConfig:
+        for c in self.cameras:
+            if c.name == name:
+                return c
+        raise ConfigError(f"no camera {name!r} (the profile has "
+                          f"{[c.name for c in self.cameras] or 'none'})")
+
     def describe(self) -> str:
         e, t = self.executor, self.teleop
         return "\n".join([
@@ -158,7 +208,7 @@ class Config:
             f"{' (released there)' if self.poses.release_at_exit else ''}",
             f"ik          {self.ik.solver} {self.ik.options}",
             f"teleop      {t.control_hz:g} Hz, lead {t.lead_s * 1e3:.0f} ms, UDP {t.port}",
-        ] + [f"--set       {k} = {v!r}" for k, v in self.overrides.items()])
+        ] + [f"camera      {c.line()}" for c in self.cameras] + [f"--set      {k} = {v!r}" for k, v in self.overrides.items()])
 
 
 # --- loading --------------------------------------------------------------------------------
@@ -188,20 +238,69 @@ def _parse_value(text: str):
 
 def apply_sets(tree: dict, sets) -> dict:
     """`section.key=value` strings onto a parsed profile (a new dict). Unknown keys are refused:
-    a typo must not silently do nothing."""
-    out = {k: dict(v) if isinstance(v, dict) else v for k, v in tree.items()}
+    a typo must not silently do nothing. A camera's keys are one level deeper:
+    `cameras.wrist.exposure=...` (any `CameraConfig` key, listed in its table or not)."""
+    import copy
+    out = copy.deepcopy(tree)
     for item in sets or ():
         key, eq, text = str(item).partition("=")
         if not eq or "." not in key:
             raise ConfigError(f"--set {item!r}: expected section.key=value")
-        section, _, name = key.strip().partition(".")
-        if section not in out or not isinstance(out[section], dict):
-            raise ConfigError(f"--set {item!r}: no section [{section}] (have {sorted(out)})")
-        if name not in out[section] and not (section == "ik"):
-            raise ConfigError(f"--set {item!r}: [{section}] has no key {name!r} "
-                              f"(have {sorted(out[section])})")
-        out[section][name] = _parse_value(text.strip())
+        *path, name = key.strip().split(".")
+        node, where = out, ""
+        for part in path:
+            if not isinstance(node.get(part), dict):
+                have = sorted(k for k, v in node.items() if isinstance(v, dict))
+                raise ConfigError(f"--set {item!r}: no table [{where + part}] (have {have})")
+            node, where = node[part], f"{where}{part}."
+        open_keys = path == ["ik"] or (len(path) == 2 and path[0] == "cameras"
+                                       and name in CameraConfig.__dataclass_fields__)
+        if name not in node and not open_keys:
+            raise ConfigError(f"--set {item!r}: [{where[:-1]}] has no key {name!r} "
+                              f"(have {sorted(node)})")
+        node[name] = _parse_value(text.strip())
     return out
+
+
+def _cameras(tables: dict) -> tuple:
+    """The `[cameras.<name>]` tables, validated, in name order."""
+    from elrobot_deploy.runtime.cameras.exposure import MODES
+    out = []
+    for name in sorted(tables):
+        t = tables[name]
+        if not isinstance(t, dict):
+            raise ConfigError(f"[cameras] {name}: expected a table [cameras.{name}]")
+        fields = CameraConfig.__dataclass_fields__
+        unknown = set(t) - set(fields) - {"name"}
+        if unknown:
+            raise ConfigError(f"[cameras.{name}]: unknown keys {sorted(unknown)} "
+                              f"(have {sorted(set(fields) - {'name'})})")
+        d = CameraConfig(name=name)
+        circle = t.get("fallback_lens_circle")
+        cam = CameraConfig(
+            name=name, source=str(t.get("source", d.source)),
+            device=str(t.get("device", d.device)), width=int(t.get("width", d.width)),
+            height=int(t.get("height", d.height)), fps=float(t.get("fps", d.fps)),
+            lens=str(t.get("lens", d.lens)),
+            fallback_lens_circle=tuple(float(v) for v in circle) if circle else None,
+            exposure=str(t.get("exposure", d.exposure)),
+            takeover_clip_pct=float(t.get("takeover_clip_pct", d.takeover_clip_pct)),
+            pinned_exposure=int(t.get("pinned_exposure", d.pinned_exposure)),
+            pinned_gain=int(t.get("pinned_gain", d.pinned_gain)),
+            white_balance=int(t.get("white_balance", d.white_balance)),
+            slots=int(t.get("slots", d.slots)), required=bool(t.get("required", d.required)))
+        if cam.source not in CAMERA_SOURCES:
+            raise ConfigError(f"[cameras.{name}] source {cam.source!r}: one of {CAMERA_SOURCES}")
+        if cam.lens not in ("fisheye", "normal"):
+            raise ConfigError(f"[cameras.{name}] lens {cam.lens!r}: fisheye or normal")
+        if cam.exposure not in MODES:
+            raise ConfigError(f"[cameras.{name}] exposure {cam.exposure!r}: one of {MODES}")
+        if cam.fallback_lens_circle is not None and len(cam.fallback_lens_circle) != 3:
+            raise ConfigError(f"[cameras.{name}] fallback_lens_circle: [cx, cy, r] in pixels")
+        if not (cam.width > 0 and cam.height > 0 and cam.fps > 0 and cam.slots >= 3):
+            raise ConfigError(f"[cameras.{name}]: width, height, fps > 0 and slots >= 3")
+        out.append(cam)
+    return tuple(out)
 
 
 def _resolve(path_text: str) -> Path:
@@ -357,12 +456,13 @@ def load(profile: str | Path | None = None, *, sets=()) -> Config:
     return Config(profile=str(path), urdf=urdf, calibration=calibration, limits=limits,
                   velocity_scale=velocity_scale, bus=bus, executor=executor, gains=gains,
                   poses=poses, ik=ik, teleop=teleop, dashboard=dashboard, guard=guard,
-                  overrides=overrides)
+                  cameras=_cameras(sec("cameras")), overrides=overrides)
 
 
 __all__ = [
     "REPO",
     "BusConfig",
+    "CameraConfig",
     "Config",
     "DashboardConfig",
     "DriverGains",

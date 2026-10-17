@@ -13,7 +13,7 @@ subsystem by subsystem when its milestone comes:
 | policy runtime: P5, `policy_contract/`, chunk blending, real-time chunking, `examples/`, `skills/` | `src/elrobot_deploy/{policy_contract,runtime/processes/p5_policy.py,runtime/execution/chunk_blend.py}` | policies / DAgger (after M3) |
 | recording: P9, `rollout_record_utils/` | `src/elrobot_deploy/runtime/processes/p9_record.py` | M5 |
 | dashboards: P10 live, rollout inspection, web | `src/elrobot_deploy/dashboards/` | M5 |
-| cameras: P2, the fisheye lens fit, the board's image server and exposure loop | `src/elrobot_deploy/runtime/drivers/{cameras.py,fisheye_circle_fit.py,board/}` | M4 (workstream D) |
+| cameras: P2, the fisheye lens fit, the board's image server and exposure loop | `src/elrobot_deploy/runtime/drivers/{cameras.py,fisheye_circle_fit.py,board/}` | **ported 2026-10-17** to `runtime/cameras/` + `processes/p2_camera.py` (the lens fit and the exposure law unchanged; no board, ZMQ or SSH); kept here as reference |
 | CHECK verifiers, `elrobot_deploy check`, machine file, CPU pinning | `src/elrobot_deploy/{cli/check.py,runtime/launcher/startup_checks.py,config_loading/machine_file.py,runtime/cpu_pinning.py}` | M5 |
 | deploy.toml resolution (`config_loading/`) | `src/elrobot_deploy/config_loading/` | with the policy runtime |
 | G1-only, never coming back: DDS, `rt/lowstate`/`rt/lowcmd`, P1/P7_body/P8, the waist and dual-arm IK, the lift column, Dex-1/BrainCo, the G1-D model and assets, PICO service | `src/elrobot_deploy/{runtime/drivers/dds,robot/assets,robot/g1d_model.py,runtime/ik/waist_*}` ... | never |
