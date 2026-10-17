@@ -110,7 +110,7 @@ Findings:
 ## 5. Next steps, in order
 
 ### A. On the Mac, no arm power yet
-1. `cd elrobot_deploy && uv sync --extra runtime && uv run pytest -q` (112 tests, ~30 s). The
+1. `cd elrobot_deploy && uv sync && uv run pytest -q` (112 tests, ~30 s). The
    suite was written on Linux; run it on the Mac once (macOS shared memory, the ARM memory
    fence).
 2. `uv run elrobot_deploy view`, open http://127.0.0.1:8080: the URDF, the home pose (green)
@@ -193,7 +193,7 @@ buttons on the phone.
 ## 7. How to run things (from `ElRobot/elrobot_deploy/`)
 
 ```bash
-uv sync --extra runtime                                   # deploy env (includes ../elrobot)
+uv sync                                                   # the whole env: IK, bus, cameras, dev tools
 uv run pytest -q                                          # deploy tests (no hardware)
 uv run elrobot_deploy config                              # print the resolved profile
 uv run elrobot_deploy view                                # the URDF + poses in the browser

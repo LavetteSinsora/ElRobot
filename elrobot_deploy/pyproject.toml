@@ -5,7 +5,9 @@
 # It depends on no learning framework or training stack: those are a policy's
 # dependencies, never the runtime's.
 #
-#   the runtime (this Mac):   `uv sync --extra runtime`: the IK stack and the servo bus.
+#   the runtime (this Mac):   plain `uv sync`: everything a session needs (the IK stack, the
+#       servo bus, the cameras) plus the dev tools. Add any new runtime dependency to the
+#       `runtime` group below so this stays the one command.
 #   the core alone:           plain `pip install elrobot_deploy` (numpy): the arena, the config,
 #       the executor maths. What a future policy venv would import.
 #
@@ -22,37 +24,34 @@ dependencies = [
 [project.scripts]
 elrobot_deploy = "elrobot_deploy.cli.main:main"
 
-[project.optional-dependencies]
-# Everything a session runs: P6's IK (mujoco, mink, a QP solver) and the bus process's servos.
+[dependency-groups]
+# Everything a session runs, in one group that `uv sync` installs by default (default-groups
+# below). A new runtime dependency goes here, with a comment saying who needs it.
 runtime = [
+    # P6's IK: mujoco, mink, a QP solver.
     "mujoco>=3.10",
     "mink",
     "qpsolvers[daqp]",
     # The ST3215 bus and calibration: the repo's bring-up package (../elrobot), used by the
     # bus process (runtime/drivers/st3215_driver.py).
     "elrobot",
-    # The cameras (P2): below.
-    "elrobot_deploy[camera]",
-]
-# The cameras (runtime/cameras/): OpenCV for the image maths and the dashboard's view;
-# AVFoundation through pyobjc for frames on a Mac (not OpenCV's macOS backend: sources.py says
-# why); pyusb + a bundled libusb for the UVC controls (exposure, gain) beside the stream.
-camera = [
+    # The cameras (runtime/cameras/): OpenCV for the image maths and the dashboard's view;
+    # AVFoundation through pyobjc for frames on a Mac (not OpenCV's macOS backend: sources.py
+    # says why); pyusb + a bundled libusb for the UVC controls (exposure, gain) beside the stream.
     "opencv-python-headless>=4.8",
     "pyobjc-framework-AVFoundation>=10; sys_platform == 'darwin'",
     "pyobjc-framework-libdispatch>=10; sys_platform == 'darwin'",
     "pyusb>=1.2",
     "libusb-package>=1.0.26",
 ]
-
-[dependency-groups]
-# `uv sync` installs this by default; `uv sync --no-dev` on a box that only runs.
 dev = [
     "pytest",
     "ruff",
 ]
 
 [tool.uv]
+# `uv sync` installs both groups: one command for a full environment.
+default-groups = ["runtime", "dev"]
 # The IK stack at the versions g1d_deploy ran on its robot. Newer releases move the QP's
 # answer; lift these deliberately, together, with the IK tests.
 constraint-dependencies = [

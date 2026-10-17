@@ -79,7 +79,7 @@ def _backend():
     import usb.backend.libusb1
     be = usb.backend.libusb1.get_backend()
     if be is None:
-        raise UvcError("no libusb: `uv sync --extra camera` installs it (libusb-package)")
+        raise UvcError("no libusb: `uv sync` installs it (libusb-package)")
     return be
 
 

@@ -272,7 +272,7 @@ uv run elrobot_deploy config --set ...        # print what a run would use
 ## Commands (from `ElRobot/elrobot_deploy/`)
 
 ```bash
-uv sync --extra runtime                          # once
+uv sync                                          # once: everything
 uv run pytest -q                                 # the tests (no hardware)
 uv run elrobot_deploy view                       # the URDF and the poses in the browser, no robot
 uv run elrobot_deploy phone-bench                # the grip, with the phone and no robot

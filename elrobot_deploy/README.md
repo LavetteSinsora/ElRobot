@@ -5,7 +5,7 @@ servos on one serial bus, driven from an iPhone (policies later). Ported from g1
 (`UPSTREAM.md`); the plan and its decisions are `PORTING_PLAN.md`.
 
 ```bash
-uv sync --extra runtime                  # once (includes ../elrobot, the bus and calibration)
+uv sync                                  # once: everything (IK, ../elrobot bus, cameras, dev tools)
 uv run pytest -q                         # no hardware needed
 
 uv run elrobot_deploy view               # the URDF and the home pose in the browser; no robot

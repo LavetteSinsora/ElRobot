@@ -75,7 +75,7 @@ def do_list() -> int:
                 for w, h, cc, fps in modes:
                     print(f"      {w}x{h} {cc} up to {fps:.0f} fps")
     except ImportError as exc:
-        print(f"  (AVFoundation unavailable: {exc}; `uv sync --extra camera`)")
+        print(f"  (AVFoundation unavailable: {exc}; run `uv sync`)")
     print("USB (what has UVC controls):")
     try:
         found = uvc.list_devices()

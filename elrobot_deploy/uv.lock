@@ -86,13 +86,10 @@ dependencies = [
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 
-[package.optional-dependencies]
-camera = [
-    { name = "libusb-package" },
-    { name = "opencv-python-headless" },
-    { name = "pyobjc-framework-avfoundation", marker = "sys_platform == 'darwin'" },
-    { name = "pyobjc-framework-libdispatch", marker = "sys_platform == 'darwin'" },
-    { name = "pyusb" },
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "ruff" },
 ]
 runtime = [
     { name = "elrobot" },
@@ -106,32 +103,24 @@ runtime = [
     { name = "qpsolvers", extra = ["daqp"] },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "ruff" },
-]
-
 [package.metadata]
-requires-dist = [
-    { name = "elrobot", marker = "extra == 'runtime'", editable = "../" },
-    { name = "elrobot-deploy", extras = ["camera"], marker = "extra == 'runtime'" },
-    { name = "libusb-package", marker = "extra == 'camera'", specifier = ">=1.0.26" },
-    { name = "mink", marker = "extra == 'runtime'" },
-    { name = "mujoco", marker = "extra == 'runtime'", specifier = ">=3.10" },
-    { name = "numpy", specifier = ">=1.22.4" },
-    { name = "opencv-python-headless", marker = "extra == 'camera'", specifier = ">=4.8" },
-    { name = "pyobjc-framework-avfoundation", marker = "sys_platform == 'darwin' and extra == 'camera'", specifier = ">=10" },
-    { name = "pyobjc-framework-libdispatch", marker = "sys_platform == 'darwin' and extra == 'camera'", specifier = ">=10" },
-    { name = "pyusb", marker = "extra == 'camera'", specifier = ">=1.2" },
-    { name = "qpsolvers", extras = ["daqp"], marker = "extra == 'runtime'" },
-]
-provides-extras = ["runtime", "camera"]
+requires-dist = [{ name = "numpy", specifier = ">=1.22.4" }]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "pytest" },
     { name = "ruff" },
+]
+runtime = [
+    { name = "elrobot", editable = "../" },
+    { name = "libusb-package", specifier = ">=1.0.26" },
+    { name = "mink" },
+    { name = "mujoco", specifier = ">=3.10" },
+    { name = "opencv-python-headless", specifier = ">=4.8" },
+    { name = "pyobjc-framework-avfoundation", marker = "sys_platform == 'darwin'", specifier = ">=10" },
+    { name = "pyobjc-framework-libdispatch", marker = "sys_platform == 'darwin'", specifier = ">=10" },
+    { name = "pyusb", specifier = ">=1.2" },
+    { name = "qpsolvers", extras = ["daqp"] },
 ]
 
 [[package]]
