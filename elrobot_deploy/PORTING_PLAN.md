@@ -8,27 +8,44 @@ plus a gripper, all ST3215 servos on one serial bus, iPhone teleoperation, a
 Paths below are relative to `src/g1d_deploy/` (now `src/elrobot_deploy/`) unless they start
 with `elrobot_deploy/` or `ElRobotRepo/`.
 
-**Status (2026-10-11):**
-- **Done: our URDF.** `ElRobotRepo/description/elrobot_ours/`, generated from upstream plus
-  calibration plus the printed camera mount. It has the TCP frame and no flange.
-- **Done: the package rename** (part of step 0) to `elrobot_deploy`, and the G1-D-only
-  dependencies are dropped. The rest of step 0, the prune, is not done yet.
-- **Done: the IK** (workstream B; workstream 1 originally planned only a provisional one).
-  `robot/elrobot_model.py` and `runtime/ik/tcp_qp.py`, a single-arm, TCP-only QP. It is not
-  wired into P6 yet.
-- **Done (2026-10-17): the executor** (workstream A), ahead of the schema work. The bus process
-  `runtime/processes/p7_bus.py` runs `runtime/execution/bus_servo.py` (P7's walk, the 15 Hz
-  filter with look-ahead, the slew clamp, plus the calibrated limits and the gripper squeeze
-  bound) at **250 Hz**, writing goals every tick and reading positions every tick (speed, load,
-  temperature in the same read every 5th). Drivers: `runtime/drivers/st3215_driver.py` (real
-  bus, via `elrobot`; acceleration 0, goal speed as a ceiling) and `SimDriver`. Until the
-  schema is single-arm it reads an 8-joint ring from `runtime/shared_memory/bus_arena.py`;
-  `BusServo` won't change when it moves to the real arena. Test it with
-  `python -m elrobot_deploy.cli.executor_test` (60 Hz sine targets with a 40 ms lead into the
-  ring, then a timing/lag/smoothness summary). Simulated runs are clean; **not yet run on the
-  arm**.
-- **Next:** run the executor test on the arm; then the rest of step 0 (prune), workstream 1
-  (single-arm schema), and workstream C (teleop).
+**Status (2026-10-17, second session):** workstreams 0, 1 and most of C are done; the system
+map of what exists now is `docs/architecture.md`.
+- **Done: prune (0) and the single-arm schema (1).** The g1d code with no ElRobot counterpart,
+  and the subsystems not ported yet (P5 / policy contract / chunk blending, P9, P10 and
+  inspection, P2 and the cameras, CHECK), moved unchanged to `legacy_g1d/`. One 8-joint target
+  row (the gripper in it), the bus state ring, an operator ring; `robot/profiles/elrobot.toml`
+  with limits from the URDF x `velocity_scale`; `SimDriver` as the simulated bus.
+- **Done: the executor as the launcher's bus process (A).** P7 on the real arena, started at
+  CHECK and kept for the whole session; `bus_arena.py` is gone. Per-joint P / D / friction /
+  torque limit are profile keys (`[executor]`), so the tuning in HANDOFF.md 5A is configuration.
+- **Done: the IK behind one interface (B)**, `runtime/ik/__init__.py`: `solve`, `fk`,
+  `set_nominal`; `tcp_qp` shipped, any `module:factory` pluggable.
+- **Done: C1 (app v2), C2 (phone source P11), C3 (P6), C4 (the launcher's teleop mode), C5
+  (tests, including the whole chain end to end over UDP on simulated servos)**, with the changes
+  listed below. Not yet run with the real phone or on the real arm (M2/M3).
+- **Next:** build the app; `phone-bench` with the real phone; `run --sim` driven by the real
+  phone (M2); then the real arm (M3). HANDOFF.md section 6 is the checklist.
+
+**What changed against the plan below, and why (decided 2026-10-17):**
+- **Open decision 1 is decided: ROOM frame, and the grip changed.** The phone is held with the
+  screen facing left, the back camera right and the **top pointing forward** (not up). Only
+  motion relative to the clutch press counts; "forward" is where the phone's top points
+  (horizontally) at the press, "up" is gravity. Rotations are applied in the same room axes,
+  about the TCP. (`runtime/teleop/intervention.py`, `RoomFrame`.)
+- **The operator ring carries motion, not a pose.** P11 writes the TCP's motion since the
+  press, in base axes; P6, which owns the model, freezes the TCP pose (`fk` of the command the
+  bus process holds) at the same counter change and composes. So the phone source needs no
+  model of the arm, and there is no flange anywhere (C2's "anchor on the TCP" is P6's).
+- **Ticks never rewind.** A reset does not restart the bus process (that would release torque),
+  so `k_exec` counts up across rollouts and P0's ramps anchor on `k_exec + 2`.
+- **Torque is released only after a completed exit ramp**; any failure, fault or a second
+  Ctrl-C ends the session with the arm held (g1d's damp has no safe ElRobot equivalent: torque
+  off drops the arm).
+- **One-thumb pad on the phone**: anywhere engages, the forward zone also grips (two separate
+  hold buttons cannot be held with one thumb).
+- **GUIDE_SLACK is 0.45 of a frame** (not exactly half: a stream at twice the grid rate sits on
+  that edge); the velocity clamp spans the deadline difference (C3), at least one grid period.
+- **The seqlock has real memory fences** on ARM (Apple Silicon), which g1d's (x86) did not need.
 
 ---
 

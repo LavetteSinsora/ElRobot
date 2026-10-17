@@ -1,0 +1,191 @@
+# elrobot_deploy: how it fits together
+
+The runtime that drives the ElRobot follower (one 7-DoF arm plus a gripper, 8 Feetech ST3215
+servos on one serial bus) from an iPhone. A port of g1d_deploy (`../UPSTREAM.md`), rebuilt for
+one arm; the decisions behind it are `../PORTING_PLAN.md`, the g1d code not carried over is
+`../legacy_g1d/`.
+
+## The chain
+
+```
+ iPhone (ARKit, ~60 Hz)                                         this Mac
+ ──────────────────────    UDP JSON     ┌────────────────────────────────────────────────────┐
+ pose, track, world_epoch ─────────────▶│ P11 phone source   clutch, room-frame motion,      │
+ engage / grip buttons    ◀── echo ─────│                    gripper, deadlines, guards      │
+                                         │        │ intervene ring: motion since the press   │
+                                         │        ▼                                           │
+                                         │ P6 target          anchor TCP, IK (one interface), │
+                                         │                    grid, velocity clamp, box       │
+                                         │        │ target ring: 8 joints + deadline per tick │
+                                         │        ▼                                           │
+                                         │ P7 bus process     segment walk, 15 Hz filter,     │
+                                         │  (owns the port)   clamps, squeeze bound, guards   │──▶ 8 × ST3215
+                                         │        │ state ring: measured q, command, load ... │◀── (250 Hz)
+                                         │ P0 launcher        sessions, homing/exit ramps     │
+                                         └────────────────────────────────────────────────────┘
+```
+
+Every arrow between processes is a region of one shared-memory **arena**, and every region has
+exactly one writing process. Nothing calls anything else.
+
+## The processes
+
+| | process | rate | writes | module |
+|---|---|---|---|---|
+| P0 | launcher | | `session`, ramps into the target ring, `release_torque` | `runtime/launcher/` |
+| P6 | target | per phone frame (60 Hz) | the target ring | `runtime/processes/p6_target.py` |
+| P7 | bus process | 250 Hz | `k_exec`, the state ring, `bus`, `fault` | `runtime/processes/p7_bus.py` |
+| P11 | phone source | per packet (60 Hz) | `intervene`, the intervention ring | `runtime/processes/p11_phone.py` |
+
+P7 replaces g1d's P1 (state), P7 (body) and P8 (hand): the bus is half-duplex, so one process
+owns the port, reads and writes. It runs for the whole session and is never restarted inside
+one (that would release torque), so ticks (`k`) count up across rollouts and never rewind.
+
+## A session
+
+```
+INIT  -> CHECK -> HOME -> READY <-> ACTIVE -> EXITING -> STOPPED
+                            ^          |
+                            └─ HOME ◀──┘ (RESET)
+```
+
+- **INIT**: create the arena.
+- **CHECK**: start the bus process; it connects, turns torque on holding the measured posture
+  and sets its `ready` latch once the first goal is on the wire. Then the phone source; P0
+  waits for the phone's first packet.
+- **HOME**: a cosine ramp from the held command to `[poses] home`, written into the target
+  ring and executed like any other ticks; then the measured posture is checked against home.
+- **READY**: a teleop launch goes straight on (only the clutch moves the arm); `--wait-start`
+  waits for a START request.
+- **ACTIVE**: P6 runs. The arm moves only while the operator holds the clutch.
+- **RESET** (a request): P6 stops, the arm ramps home, READY again.
+- **EXITING** (Ctrl-C or an EXIT request): P6 stops, the phone source hands back, the arm
+  ramps to `[poses] exit` (the rest pose). Then **STOPPED**: every child sees it and closes
+  itself; the bus process turns torque off **only if** the exit ramp completed (and
+  `release_at_exit`).
+
+**The arm is never dropped by software.** A failure, a bus fault or a second Ctrl-C (which skips
+the exit ramp) all end the session with torque left ON: the servos hold the last goal, P0
+says so, and the operator supports the arm and runs `uv run python -m elrobot.relax`.
+(One Ctrl-C under `uv run` reaches the process twice; two within 0.5 s count as one.)
+
+## Teleoperation
+
+**The clutch.** The arm follows the phone only while the pad on the phone is held, and only
+relative to where the phone was at the press. A release holds the arm where it is. Pressing
+again re-anchors both sides, which is how the operator moves further than their arm reaches or
+re-orients themselves. A button already down when a rollout starts (or after a guard fired)
+counts only after it has been seen up.
+
+**Room frame** (`runtime/teleop/intervention.py`, `RoomFrame`). The grip: screen facing left,
+back camera right, the top pointing forward. At each press the operator's heading is taken
+from where the phone's top points, horizontally (ARKit's world is gravity-aligned), and
+mapped onto the robot base's forward/left/up (`[teleop] base_forward`, `base_up`; base_link has
++y forward, +z up). Then the phone's displacement since the press moves the TCP the same way
+in the room, and its rotation since the press rotates the TCP about the same room axes, about
+the TCP itself. `[teleop] scale` scales translation only.
+
+**The anchor** is P6's: at each press it freezes the TCP pose of the command the bus process
+is holding (`fk(q_cmd)`), seeds the IK there, and hands that configuration to the IK as its
+nominal pose. The phone source never needs a model of the arm: its rows carry motion, not
+poses.
+
+**The gripper**: hold-to-close (the pad's forward zone). The jaw command closes at
+`gripper_rate` while held and opens at the same rate when released, integrated on the phone's
+clock. The command may lead the measured jaw toward closed by at most `squeeze_margin`, which
+therefore sets the grip force (P × margin on a position servo); the bounded value is stored
+(anti-windup) and the bus process applies the same bound every tick against the freshest read.
+While the clutch is up the jaw holds.
+
+**Guards** (each forces a release, which needs a fresh press): tracking not "normal"; the
+phone's `world_epoch` changed; one frame moved more than `max_step_m` / `max_step_deg`; no
+packet for `stale_s`; the phone pointing straight up or down at the press; the rollout ended.
+P6 clamps the TCP into the workspace box (widened to contain the anchor, so a press outside it
+never jumps).
+
+## Timing
+
+- **Deadlines** are the phone's capture time mapped onto this Mac's clock by `Pace`: pinned at
+  each press to `arrival + lead_s` (40 ms), then advancing with the phone's own clock, so the
+  motion replays at the pace it was made, whatever bursts WiFi delivers it in. A packet later
+  than the lead covers slides the map later (once, by just enough); the phone source reports,
+  per engagement, the latency spread `L_n - L_1` and how far the map slid. That is the number
+  to set `lead_s` from.
+- **P6** decimates rows onto a 60 Hz grid (`control_hz`) and clamps each target's joint speed
+  over the deadline difference to the previous one.
+- **P7** walks the target line at 250 Hz: the segment between the two targets around now, read
+  `2/w` ahead by a 15 Hz critically damped filter (so it smooths without lagging), then the
+  slew clamp, the joint limits and the gripper's squeeze bound, then one sync_write of 8 goals
+  and one sync_read. A change of the intervention counter abandons the segment in flight at
+  once; an empty ring holds the last command.
+
+## The arena (`runtime/shared_memory/`)
+
+| region | writer | what |
+|---|---|---|
+| `control` | one per word | `session` (P0), `k_exec` (P7), `request` (requester; P0 clears), `intervene` (P11), `bus` + `fault` (P7), `release_torque` (P0) |
+| `state` | P7 | one row per bus read: measured `q`, the command `q_cmd`, speed / load / temperature (every 5th), alarms |
+| `target` | P6, P0 | one row per tick: `k`, `deadline`, `intervene`, the 8 joints, the IK's input pose and residual |
+| `intervene` | P11 | one row per phone packet while engaged: the motion since the press, the jaw command, the deadline |
+
+`schema.py` is the vocabulary (bump `VERSION` when a record's meaning changes), `layout.py` the
+regions and their hash (every process refuses an arena built differently), `rings.py` every
+read and write. Records are written under per-slot seqlocks; reads retry until consistent. On
+Apple Silicon (ARM) the seqlock needs real memory barriers, which `primitives.fence()` supplies
+(`OSMemoryBarrier`); on x86 it is a no-op.
+
+The **intervention counter** (`control.intervene`) is how authority changes hands: odd while
+the operator drives, even otherwise. Every row is stamped with it, the bus process only
+executes rows of the current value, and any change abandons what was in flight. So a release
+needs no wipe and cannot be outrun by an older row.
+
+## The pluggable parts
+
+**The IK** (`runtime/ik/__init__.py`). P6 holds one object: `solve(pose7, seed_q7, budget) ->
+(q7, err, ok)`, `fk(q7) -> pose7`, and optionally `set_nominal(q7)`. `[ik] solver` names a
+shipped one (`tcp_qp`, the mink QP on our URDF) or any `module:factory` / `file.py:factory`;
+the other `[ik]` keys go to the factory. A new strategy is tried with
+`--set ik.solver=my_ik.py:build`, without touching P6.
+
+**The executor** (`runtime/execution/bus_servo.py`) and **the servo driver**
+(`runtime/drivers/st3215_driver.py`, `ServoDriver`: connect, write, read, read_full, release).
+Everything that tunes how the servos follow is in the profile's `[executor]`: filter, friction
+compensation per joint, P / D per servo (written at connect, restored at release), torque
+limits. `elrobot_deploy executor-test` is the bench for it (sine targets through the same ring
+and process, with a lag / dead zone / smoothness summary). `bus.driver = "sim"` swaps in
+`SimDriver` (first-order lags at the real bus's timing).
+
+## Configuration
+
+One TOML robot profile, `src/elrobot_deploy/robot/profiles/elrobot.toml` (every key commented
+there), resolved by `config_loading/config.py` into a frozen `Config` every process is handed.
+Joint limits are the URDF's (`description/elrobot_ours/elrobot.urdf`, the calibrated ranges);
+the velocity limit is the URDF's times `[limits] velocity_scale`. Override any key for one run:
+
+```bash
+uv run elrobot_deploy run --set teleop.lead_s=0.05 --set 'executor.friction=[0,0,0,0,1,1,1,0]'
+uv run elrobot_deploy config --set ...        # print what a run would use
+```
+
+## Commands (from `ElRobot/elrobot_deploy/`)
+
+```bash
+uv sync --extra runtime                          # once
+uv run pytest -q                                 # the tests (no hardware)
+uv run elrobot_deploy phone-bench                # the grip, with the phone and no robot
+uv run elrobot_deploy run --sim                  # the whole chain on simulated servos
+uv run elrobot_deploy fake-phone                 # ... driven by a synthetic phone instead
+uv run elrobot_deploy run --no-phone             # the real arm: home, hold, exit (bring-up)
+uv run elrobot_deploy run                        # the real arm, driven by the phone
+uv run elrobot_deploy executor-test --joints 6   # the executor's sine test
+```
+
+The bus process's tick log (every tick: the line, the command, the measurement, timing; the
+last ten minutes of a session) is written to `ElRobot/logs/sessions/<stamp>_bus.csv` at exit;
+`p7_bus.load_log` reads it back.
+
+## Not here yet
+
+Policies (P5, the policy contract, chunk blending), recording (P9), the dashboards (P10,
+inspection), cameras (P2) and the CHECK verifiers are g1d's, in `../legacy_g1d/`, to be ported
+when their milestone comes (`../PORTING_PLAN.md` section 4).

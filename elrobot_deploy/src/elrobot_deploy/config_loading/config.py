@@ -155,8 +155,8 @@ def profile_path(name: str | Path | None = None) -> Path:
     """A shipped profile's name (`elrobot`) or a path to one."""
     name = DEFAULT_PROFILE if name is None else name
     p = Path(name)
-    if p.suffix == ".toml" or p.exists():
-        if not p.exists():
+    if p.suffix == ".toml" or p.is_file():
+        if not p.is_file():
             raise ConfigError(f"no profile at {p}")
         return p.resolve()
     shipped = PROFILES / f"{name}.toml"

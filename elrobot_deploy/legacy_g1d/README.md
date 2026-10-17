@@ -20,7 +20,7 @@ subsystem by subsystem when its milestone comes:
 
 Files the rebuild rewrote in place (the arena schema and rings, P0, P6, the CLI, the intervention
 maths, the IK registry) also have their g1d version copied here, so a diff against the new one
-shows what changed. The docs under `docs/` describe g1d's runtime, not the current one; the
+shows what changed. The docs under `docs/` (and `README_g1d.md`) describe g1d's runtime, not the current one; the
 current one is `../docs/architecture.md`.
 
 The whole tree as it was before the move is commit `fc9c2cc`.

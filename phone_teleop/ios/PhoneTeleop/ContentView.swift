@@ -97,7 +97,7 @@ struct StatusBanner: View {
         }()
         VStack(alignment: .leading, spacing: 2) {
             Text(look.0).font(.headline).foregroundStyle(.white)
-            if !why.isEmpty && state != "engaged" {
+            if !why.isEmpty && state == "released" {
                 Text(why).font(.caption).foregroundStyle(.white)
             }
         }

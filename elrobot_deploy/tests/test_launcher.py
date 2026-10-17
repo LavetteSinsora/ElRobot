@@ -138,3 +138,11 @@ def test_ramps_respect_the_velocity_limit():
     v = np.abs(np.diff(np.vstack([q0, qs]), axis=0)).max() / 0.01
     assert v <= 2.0 * 0.5 * math.pi / 2 * 1.01
     assert np.array_equal(qs[-1], q1)
+
+
+def test_a_profile_name_is_not_mistaken_for_a_directory(tmp_path, monkeypatch):
+    """`elrobot` is both the shipped profile and the bring-up package's directory in the repo
+    root: run from there, the name must still mean the profile."""
+    (tmp_path / "elrobot").mkdir()
+    monkeypatch.chdir(tmp_path)
+    assert load("elrobot", sets=["bus.driver=sim"]).profile.endswith("elrobot.toml")
