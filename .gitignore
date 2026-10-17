@@ -11,3 +11,5 @@ xcuserdata/
 
 # Claude Code worktrees
 .claude/worktrees/
+# executor test logs (elrobot_deploy.cli.executor_test)
+logs/

@@ -32,9 +32,10 @@ runtime = [
     "qpsolvers[daqp]",
     "opencv-python",   # JPEG decode in runtime/drivers/cameras.py
     "pyyaml",
+    # The ST3215 bus and calibration: the repo's bring-up package (../elrobot), used by the
+    # bus process (runtime/drivers/st3215_driver.py).
+    "elrobot",
 ]
-# The ST3215 bus and calibration live in the repo's bring-up package (../elrobot). It has no
-# build config yet, so the bus process (deferred, PORTING_PLAN.md workstream A) will add it then.
 # In a policy's venv, to run inspection's policy replay there (it poses the
 # replayed actions on the model and decodes the recorded frames).
 replay = ["opencv-python-headless", "mujoco>=3.10"]
@@ -59,6 +60,9 @@ constraint-dependencies = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.uv.sources]
+elrobot = { path = "..", editable = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/elrobot_deploy"]

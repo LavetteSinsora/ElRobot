@@ -16,8 +16,19 @@ with `elrobot_deploy/` or `ElRobotRepo/`.
 - **Done: the IK** (workstream B; workstream 1 originally planned only a provisional one).
   `robot/elrobot_model.py` and `runtime/ik/tcp_qp.py`, a single-arm, TCP-only QP. It is not
   wired into P6 yet.
-- **Next:** the rest of step 0 (prune), workstream 1 (single-arm schema, simulated bus), then
-  workstream C (teleop).
+- **Done (2026-10-17): the executor** (workstream A), ahead of the schema work. The bus process
+  `runtime/processes/p7_bus.py` runs `runtime/execution/bus_servo.py` (P7's walk, the 15 Hz
+  filter with look-ahead, the slew clamp, plus the calibrated limits and the gripper squeeze
+  bound) at **250 Hz**, writing goals every tick and reading positions every tick (speed, load,
+  temperature in the same read every 5th). Drivers: `runtime/drivers/st3215_driver.py` (real
+  bus, via `elrobot`; acceleration 0, goal speed as a ceiling) and `SimDriver`. Until the
+  schema is single-arm it reads an 8-joint ring from `runtime/shared_memory/bus_arena.py`;
+  `BusServo` won't change when it moves to the real arena. Test it with
+  `python -m elrobot_deploy.cli.executor_test` (60 Hz sine targets with a 40 ms lead into the
+  ring, then a timing/lag/smoothness summary). Simulated runs are clean; **not yet run on the
+  arm**.
+- **Next:** run the executor test on the arm; then the rest of step 0 (prune), workstream 1
+  (single-arm schema), and workstream C (teleop).
 
 ---
 
