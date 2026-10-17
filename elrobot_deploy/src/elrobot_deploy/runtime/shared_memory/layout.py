@@ -1,14 +1,13 @@
-"""The arena: one mmap, statically divided, validated by a layout hash.
+"""The arena: one shared-memory segment, statically divided, validated by a layout hash.
 
-No allocator, no pointers (virtual addresses differ per process), no
-Python objects. Every process computes the layout from the same config and
-refuses to attach if the hash disagrees — which turns "P6 and P7 were built from
-different configs" from a wrong joint target into a startup error.
+No allocator, no pointers (virtual addresses differ per process), no Python objects. Every
+process computes the layout from the same `Sizes` and refuses to attach if the hash disagrees,
+which turns "P6 and the bus process were built from different configs" from a wrong joint
+target into a startup error.
 
-P0 creates it (`Arena.create`), every other process attaches (`Arena.attach`).
-Design: `docs/infra_logic/arena_layout_and_reads.md`, "The regions" and "Size,
-and `/dev/shm`". Adding or resizing a region changes the hash; changing what a
-region MEANS needs a `schema.VERSION` bump as well.
+P0 creates it (`Arena.create`), every other process attaches (`Arena.attach`). Adding or
+resizing a region changes the hash; changing what a region MEANS needs a `schema.VERSION` bump
+as well. The arena is small (well under 1 MB without cameras).
 """
 
 from __future__ import annotations
@@ -47,7 +46,6 @@ class Layout:
     regions: dict[str, Region]
     size: int
     hash: int
-    cameras: tuple[str, ...]
 
     def region(self, name: str) -> Region:
         return self.regions[name]
@@ -60,8 +58,25 @@ class Layout:
         return "\n".join(lines)
 
 
-def build(cfg, derived) -> Layout:
-    """Pure: config in, region table out. Called identically by every process."""
+@dataclass(frozen=True)
+class Sizes:
+    """How many slots each ring has. The only input to the layout, so every process that
+    builds it from the same `Sizes` gets the same hash."""
+
+    #: ~2 s of targets at 60 Hz. The bus process only looks a lead (~40 ms) ahead; P0's ramps
+    #: pace themselves to stay inside it (`ramps.write_ramp`).
+    n_target: int = 128
+    #: ~4 s of bus reads at 250 Hz.
+    n_state: int = 1024
+    #: ~4 s of phone samples at 60 Hz.
+    n_intervene: int = 256
+
+
+DEFAULT_SIZES = Sizes()
+
+
+def build(sizes: Sizes = DEFAULT_SIZES) -> Layout:
+    """Pure: sizes in, region table out. Called identically by every process."""
     regions: dict[str, Region] = {}
     offset = 0
 
@@ -74,46 +89,18 @@ def build(cfg, derived) -> Layout:
     add("header", schema.HEADER, 1)
     add("control", schema.CONTROL, 1)
 
-    add("state_seq", np.uint64, derived.state_slots)
-    add("state_rec", schema.STATE, derived.state_slots)
+    add("state_seq", np.uint64, sizes.n_state)
+    add("state_rec", schema.STATE, sizes.n_state)
 
-    add("chunk_seq", np.uint64, derived.chunk_slots)
-    add("chunk_rec", schema.chunk_dtype(cfg.H), derived.chunk_slots)
+    add("target_seq", np.uint64, sizes.n_target)
+    add("target_rec", schema.TARGET, sizes.n_target)
 
-    add("target_seq", np.uint64, derived.n_target)
-    add("target_rec", schema.TARGET, derived.n_target)
-
-    # The operator's stream. Allocated unconditionally, whether or not
-    # the run was launched with `--intervene`: the layout hash is what every
-    # process checks before it attaches, so it must not depend on a flag one
-    # process was given and another was not. An unwritten region costs address
-    # space and nothing else.
-    add("intervene_seq", np.uint64, derived.intervene_slots)
-    add("intervene_rec", schema.INTERVENE, derived.intervene_slots)
+    # The operator's stream. Allocated whether or not this launch runs the phone source: the
+    # layout hash every process checks must not depend on a flag one process was given and
+    # another was not. An unwritten region costs address space and nothing else.
+    add("intervene_seq", np.uint64, sizes.n_intervene)
+    add("intervene_rec", schema.INTERVENE, sizes.n_intervene)
     add("intervene_meta", schema.INTERVENE_META, 1)
-
-    # P7's publish log, read by P9 only.
-    add("command_seq", np.uint64, derived.command_slots)
-    add("command_rec", schema.COMMAND, derived.command_slots)
-
-    # One RING per camera VIEW, and the rings are NOT uniform:
-    # a fisheye wrist is 720x1280, each eye of the split head 480x640, and the
-    # depth of each is the history the policy declared for it. Three regions:
-    #
-    #   cam_<v>_head  (1,) uint64   frame_id of the newest PUBLISHED frame
-    #   cam_<v>_seq   (N,) uint64   per-slot sequence counter, odd = writing
-    #   cam_<v>_rec   (N,) record   schema.camera_dtype — metadata + pixels
-    #
-    # The read rules are `rings.CameraRing`'s and
-    # `docs/infra_logic/arena_layout_and_reads.md`'s ("Read rules").
-    views = cfg.views
-    for name in sorted(views):
-        v = views[name]
-        n = int(getattr(derived, "camera_slots", {}).get(name, v.slots))
-        add(f"cam_{name}_head", np.uint64, 1)
-        add(f"cam_{name}_seq", np.uint64, n)
-        add(f"cam_{name}_rec",
-            schema.camera_dtype(v.height, v.width, v.jpeg_capacity), n)
 
     digest = hashlib.blake2b(digest_size=8)
     for r in regions.values():
@@ -121,64 +108,11 @@ def build(cfg, derived) -> Layout:
                       f"{r.count}|{r.offset}".encode())
     layout_hash = int.from_bytes(digest.digest(), "little")
 
-    return Layout(regions=regions, size=offset, hash=layout_hash,
-                  cameras=tuple(sorted(views)))
+    return Layout(regions=regions, size=offset, hash=layout_hash)
 
 
 class LayoutMismatch(RuntimeError):
     """Attached to an arena built from a different config."""
-
-
-#: Left free in /dev/shm beyond the arena itself: other tenants of the same
-#: tmpfs (a DataLoader's worker queues, a previous run's leaked segment) must
-#: not be what turns into this run's SIGBUS.
-SHM_HEADROOM_BYTES = 64 << 20
-
-
-class ShmTooSmall(RuntimeError):
-    """/dev/shm cannot hold the arena. Raised before it is created."""
-
-
-def shm_free(path: str = "/dev/shm") -> tuple[int, int]:
-    """`(free, total)` bytes of the tmpfs at `path`."""
-    import os
-    st = os.statvfs(path)
-    return st.f_bavail * st.f_frsize, st.f_blocks * st.f_frsize
-
-
-def check_shm(layout: Layout, *, path: str = "/dev/shm", free=None) -> str:
-    """Refuse, with the numbers, an arena /dev/shm cannot hold.
-
-    **This has to be asked before the arena exists, and it has to be asked at
-    all.** `SharedMemory(create=True)` is an `ftruncate` on a tmpfs file, which
-    reserves nothing: pages are allocated when first written. So an arena
-    bigger than /dev/shm's free space is created without complaint, and the
-    process that first touches a page past the limit dies of SIGBUS — a camera
-    process some seconds into CHECK, or P9 on the frame that finally wraps a
-    4 s ring. Nothing grows after this point (the arena is never resized), so
-    this one comparison is the whole guarantee.
-
-    `free` is injectable for tests: a callable returning `(free, total)`.
-    Returns the line P0 prints when it passes.
-    """
-    avail, total = (free or (lambda: shm_free(path)))()
-    need = layout.size + SHM_HEADROOM_BYTES
-    cams = sorted(((r.name[len("cam_"):-len("_rec")], r)
-                   for r in layout.regions.values()
-                   if r.name.startswith("cam_") and r.name.endswith("_rec")),
-                  key=lambda nr: -nr[1].nbytes)
-    detail = ", ".join(f"{n} {r.nbytes / 1e6:.0f} MB ({r.count} slots)"
-                       for n, r in cams)
-    line = (f"arena {layout.size / 1e6:.1f} MB [{detail}]; {path} has "
-            f"{avail / 1e6:.0f} MB free of {total / 1e6:.0f} MB")
-    if avail < need:
-        raise ShmTooSmall(
-            f"{line}: not enough (need the arena plus "
-            f"{SHM_HEADROOM_BYTES >> 20} MB headroom = {need / 1e6:.0f} MB). "
-            f"Camera rings are sized from the policy's declared `history` "
-            f"(N = ceil(s x fps x 1.25) + 3 slots per camera): shorten it, "
-            f"or grow the tmpfs — `sudo mount -o remount,size=<N>G {path}`.")
-    return line
 
 
 class Arena:
@@ -194,7 +128,7 @@ class Arena:
     # --- lifecycle ---------------------------------------------------------
 
     @classmethod
-    def create(cls, name: str, layout: Layout) -> "Arena":
+    def create(cls, name: str, layout: Layout) -> Arena:
         shm = shared_memory.SharedMemory(name=name, create=True, size=layout.size)
         _CREATED.add(name)
         arena = cls(shm, layout, owner=True)
@@ -202,12 +136,19 @@ class Arena:
         return arena
 
     @classmethod
-    def attach(cls, name: str, layout: Layout) -> "Arena":
+    def attach(cls, name: str, layout: Layout, *, standalone: bool = False) -> Arena:
+        """Attach to an arena another process created.
+
+        Python registers every attach with a resource tracker, which unlinks the segment when
+        the tracker's processes are all gone. A child SPAWNED by the creator (every process P0
+        starts) shares the creator's tracker, so its registration is the creator's own and must
+        be left alone: unregistering it would make the creator's `unlink` fail. A process
+        started on its own (`standalone`, e.g. a tool attaching to a running session) has its
+        own tracker, which would unlink the arena under everyone when it exits, so it
+        unregisters.
+        """
         shm = shared_memory.SharedMemory(name=name, create=False)
-        # A child that attaches also registers with the resource tracker, which
-        # then unlinks the segment when THAT child exits and warns about a leak
-        # for every other one. The creator owns the lifetime; children do not.
-        if name not in _CREATED:
+        if standalone and name not in _CREATED:
             try:
                 resource_tracker.unregister(shm._name, "shared_memory")
             except Exception:

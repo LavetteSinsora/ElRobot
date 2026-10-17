@@ -1,14 +1,10 @@
-"""The segment walk P7 and P8 share: which target is in flight, and when to
-abandon it.
+"""The segment walk the executor runs: which target is in flight, and when to abandon it.
 
-Both servos do the same four things every iteration — notice a takeover, pick
-the next target once the current segment has expired, hold frozen when there is
-none, and otherwise say how far along the segment they are — so they share
-this one implementation. Do not fork it: homing, rollouts, interventions and
-the exit ramp are all executed by this walk, which is what makes them safe
-(`docs/infra_logic/500hz_execution.md`, "What is not pluggable, and why"). The
-parts that genuinely differ are outside this class: what is interpolated (17 joints or a
-`(2, 6)` command), what is clamped, and what is published.
+Every iteration it does four things: notice a takeover, pick the next target once the current
+segment has expired, hold frozen when there is none, and otherwise say how far along the
+segment it is. Homing, rollouts, interventions and the exit ramp are all executed by this one
+walk, which is what makes them safe. What is clamped and published is outside this class
+(`bus_servo.BusServo`).
 
 `Segment` therefore owns no wire and publishes nothing. It answers one question
 per iteration, `phase()`, and the servo acts on the answer.
@@ -40,13 +36,11 @@ class Phase(enum.Enum):
 
 
 class Segment:
-    """One servo's view of the target ring, walked one segment at a time.
+    """The executor's view of the target ring, walked one segment at a time.
 
-    `x_start` / `x_end` are whatever the ring's payload column holds for this
-    reader; the class never looks inside them. `cursor` says whether latching a
-    target publishes `control.k_exec` — P7 does, P8 deliberately does not,
-    because it sits in the same segment as P7 by construction and a second
-    cursor would be a second way to be wrong about the same fact.
+    `x_start` / `x_end` are the ring's payload (the 8 joints); the class never looks inside
+    them. `cursor` says whether latching a target publishes `control.k_exec` (the bus process
+    does; a test may not).
     """
 
     def __init__(self, ring, control, x0: np.ndarray, t0: float, *,

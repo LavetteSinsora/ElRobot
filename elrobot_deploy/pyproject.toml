@@ -5,19 +5,17 @@
 # It depends on no learning framework or training stack: those are a policy's
 # dependencies, never the runtime's.
 #
-# Two installs of the same package:
+#   the runtime (this Mac):   `uv sync --extra runtime`: the IK stack and the servo bus.
+#   the core alone:           plain `pip install elrobot_deploy` (numpy): the arena, the config,
+#       the executor maths. What a future policy venv would import.
 #
-#   the runtime (this Mac):   `uv sync --extra runtime` — IK, the servo bus, cameras, dashboards.
-#   a policy's own venv:      plain `pip install elrobot_deploy` — the core only (numpy): the
-#       arena, the policy API and P5, which the runtime launches under the policy's interpreter.
+# `legacy_g1d/` (the g1d code not ported yet) is outside `src/`: not packaged, linted or tested.
 [project]
 name = "elrobot_deploy"
 version = "0.1.0"
-description = "Deployment runtime for the ElRobot follower arm: teleop and policies in, servo goals out, everything recorded"
+description = "Deployment runtime for the ElRobot follower arm: iPhone teleop (and policies, later) in, servo goals out"
 requires-python = ">=3.11,<3.13"
 dependencies = [
-    # The core: what a policy's venv needs (tests/test_policy_interpreter.py
-    # enforces that P5's import graph stays numpy + stdlib + the core).
     "numpy>=1.22.4",
 ]
 
@@ -25,20 +23,15 @@ dependencies = [
 elrobot_deploy = "elrobot_deploy.cli.main:main"
 
 [project.optional-dependencies]
-# Everything this machine runs besides P5's policy.
+# Everything a session runs: P6's IK (mujoco, mink, a QP solver) and the bus process's servos.
 runtime = [
     "mujoco>=3.10",
     "mink",
     "qpsolvers[daqp]",
-    "opencv-python",   # JPEG decode in runtime/drivers/cameras.py
-    "pyyaml",
     # The ST3215 bus and calibration: the repo's bring-up package (../elrobot), used by the
     # bus process (runtime/drivers/st3215_driver.py).
     "elrobot",
 ]
-# In a policy's venv, to run inspection's policy replay there (it poses the
-# replayed actions on the model and decodes the recorded frames).
-replay = ["opencv-python-headless", "mujoco>=3.10"]
 
 [dependency-groups]
 # `uv sync` installs this by default; `uv sync --no-dev` on a box that only runs.
@@ -72,4 +65,7 @@ allow-direct-references = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["slow: loads a real checkpoint and compiles (tens of seconds)"]
+
+[tool.ruff]
+line-length = 100
+extend-exclude = ["legacy_g1d"]

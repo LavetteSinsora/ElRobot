@@ -4,7 +4,8 @@
     uv run python -m elrobot_deploy.cli.executor_test --joints 6 --dry-run      # plan only
     uv run python -m elrobot_deploy.cli.executor_test --joints 6                # the arm moves
 
-Two processes, the same split as teleop will use:
+Two processes, the same split as a teleop run (`elrobot_deploy run`), on the same arena, without
+the launcher:
 
   * **this process plays P6.** At `--target-hz` (60, the phone's rate) it writes one row per
     tick into the target ring: the joint angles of the planned trajectory at the capture
@@ -35,7 +36,6 @@ import queue
 import sys
 import time
 from dataclasses import dataclass
-from multiprocessing import resource_tracker
 from pathlib import Path
 
 import numpy as np
@@ -44,9 +44,7 @@ from elrobot_deploy.robot.elrobot_joints import N_JOINTS, JointLimits, urdf_limi
 from elrobot_deploy.runtime import timing as clock
 from elrobot_deploy.runtime.execution.bus_servo import ExecutorSettings
 from elrobot_deploy.runtime.processes import p7_bus
-from elrobot_deploy.runtime.shared_memory import schema
-from elrobot_deploy.runtime.shared_memory.bus_arena import bus_layout, open_bus_rings
-from elrobot_deploy.runtime.shared_memory.layout import Arena
+from elrobot_deploy.runtime.shared_memory import Arena, build, open_all, schema
 
 REPO = Path(__file__).resolve().parents[4]
 #: `elrobot/poses.py`'s rest, in degrees (copied so `--sim` needs no calibration files).
@@ -473,8 +471,8 @@ def main(argv=None) -> int:
     target_path = log_dir / f"{stamp}_{tag}_targets.csv"
 
     name = f"elx{os.getpid()}"
-    arena = Arena.create(name, bus_layout())
-    r = open_bus_rings(arena)
+    arena = Arena.create(name, build())
+    r = open_all(arena)
     control, ring = r["control"], r["targets"]
     control.session = schema.ACTIVE
     ctx = mp.get_context("spawn")
@@ -487,10 +485,6 @@ def main(argv=None) -> int:
     started = False                       # the executor turned torque on (and so must turn it off)
     try:
         kind, *rest = status.get(timeout=15)
-        # A spawned child shares this process's resource tracker, and `Arena.attach` unregisters
-        # the segment there (right for g1d's separately launched processes). Register it back,
-        # so this process's `unlink()` below is the one that balances it.
-        resource_tracker.register(arena.shm._name, "shared_memory")
         started = kind == "ready"
         if kind != "ready":
             print(f"stopped: {rest[0]}")

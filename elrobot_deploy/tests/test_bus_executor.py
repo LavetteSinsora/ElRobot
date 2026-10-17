@@ -10,7 +10,6 @@ import multiprocessing as mp
 import os
 import queue
 import sys
-from multiprocessing import resource_tracker
 from pathlib import Path
 
 import numpy as np
@@ -31,9 +30,7 @@ from elrobot_deploy.runtime.drivers.st3215_driver import (
 )
 from elrobot_deploy.runtime.execution.bus_servo import BusServo, ExecutorSettings
 from elrobot_deploy.runtime.processes import p7_bus
-from elrobot_deploy.runtime.shared_memory import schema
-from elrobot_deploy.runtime.shared_memory.bus_arena import bus_layout, open_bus_rings
-from elrobot_deploy.runtime.shared_memory.layout import Arena
+from elrobot_deploy.runtime.shared_memory import Arena, build, open_all, schema
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -45,8 +42,8 @@ LINEAR = ExecutorSettings(filter_hz=0.0)
 @pytest.fixture
 def rings():
     name = f"elxt{os.getpid()}{np.random.randint(1 << 30)}"
-    arena = Arena.create(name, bus_layout())
-    yield name, arena, open_bus_rings(arena)
+    arena = Arena.create(name, build())
+    yield name, arena, open_all(arena)
     arena.close()
     arena.unlink()
 
@@ -429,8 +426,8 @@ def test_st3215_driver_refuses_a_held_arm_and_aborts_a_runaway(fake_bus_mod):
 
 def test_bus_process_follows_the_ring_and_logs(tmp_path):
     name = f"elxp{os.getpid()}"
-    arena = Arena.create(name, bus_layout())
-    r = open_bus_rings(arena)
+    arena = Arena.create(name, build())
+    r = open_all(arena)
     r["control"].session = schema.ACTIVE
     ctx = mp.get_context("spawn")
     status = ctx.Queue()
@@ -443,7 +440,6 @@ def test_bus_process_follows_the_ring_and_logs(tmp_path):
     proc.start()
     try:
         kind, q0 = status.get(timeout=20)
-        resource_tracker.register(arena.shm._name, "shared_memory")
         assert kind == "ready" and np.allclose(q0, q_rest, atol=1e-3)
         target = q_rest.copy()
         target[5] += math.radians(5)

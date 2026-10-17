@@ -1,7 +1,7 @@
 """The ElRobot's per-tick IK: a TCP pose in, 7 arm joints out.
 
 A mink differential-IK QP on `robot/elrobot_model.py`'s model. It is g1d's `arm_qp`
-(`arm_qp.py` in this folder, kept for reference until the prune) reduced to one arm and one
+(`legacy_g1d/src/elrobot_deploy/runtime/ik/arm_qp.py`) reduced to one arm and one
 frame, with the same four properties the deploy loop relies on:
 
   * **an explicit seed on every solve.** The seed is the previous *published* target, never
@@ -55,7 +55,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from elrobot_deploy.robot.elrobot_model import TCP, ElRobotModel, pose_to_mat
+from elrobot_deploy.robot.elrobot_model import TCP, ElRobotModel, mat_to_pose, pose_to_mat
 from elrobot_deploy.runtime.timing import now
 
 
@@ -183,5 +183,20 @@ class TcpSolver:
     def q(self) -> np.ndarray:
         return self.config.q[self.robot.qadr].copy()
 
+    def fk(self, q7) -> np.ndarray:
+        """The TCP pose `[x y z qw qx qy qz]` at `q7`, base frame."""
+        return mat_to_pose(self.robot.fk(np.asarray(q7, np.float64)))
 
-__all__ = ["SeedSpeedLimit", "TcpSolver"]
+
+def factory(cfg, **options) -> TcpSolver:
+    """P6's factory (`runtime/ik/__init__.py`): the run's URDF, tick and speed cap; `options`
+    are the profile's other `[ik]` keys (`position_cost`, `orientation_cost`, `nominal_cost`,
+    `posture_cost`, `early_stop`, `max_iters`, `nominal_q` in degrees)."""
+    options = dict(options)
+    if options.get("nominal_q") is not None:
+        options["nominal_q"] = np.radians(np.asarray(options["nominal_q"], np.float64))
+    return TcpSolver(ElRobotModel(cfg.urdf), dt=cfg.dt,
+                     qdot_max=np.asarray(cfg.qdot_max[:7], np.float64), **options)
+
+
+__all__ = ["SeedSpeedLimit", "TcpSolver", "factory"]

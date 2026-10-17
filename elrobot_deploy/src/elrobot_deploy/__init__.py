@@ -1,41 +1,14 @@
-"""elrobot_deploy — a deployment runtime for the Unitree G1-D.
+"""elrobot_deploy: the deployment runtime for the ElRobot follower arm (one 7-DoF arm and a
+gripper on one ST3215 servo bus), driven from an iPhone now and by policies later.
 
-    cli/              the `elrobot_deploy` command: run, check, inspect
-    policy_contract/  what a policy author codes against (Policy, actions,
-                      Observation, Reader, loading a class, checkpoints)
-    config_loading/   reads deploy.toml, robot files and machine.toml and
-                      resolves them into the settings every process reads
-    robot/            what the robot is: profiles/*.toml, assets/ (URDF,
-                      meshes), end effectors, kinematics, the MuJoCo model
-    runtime/          everything that runs and controls the robot: launcher/
-                      (P0), processes/ (P1-P11), shared_memory/, ik/,
-                      execution/, drivers/, teleop/, timing, cpu_pinning
-    rollout_record_utils/
-                      code for the record format, not records: builds the
-                      manifest P9 writes and reads a record back
-    dashboards/       the live dashboard (P10), rollout inspection, and the
-                      web code they share
+    cli/              the `elrobot_deploy` command: run, config, executor-test
+    config_loading/   the robot profile -> one frozen `Config` every process is handed
+    robot/            what the robot is: profiles/*.toml, the joints and limits (from our URDF),
+                      the MuJoCo model, numpy pose algebra
+    runtime/          everything that runs: launcher/ (P0), processes/ (P6, P7 bus, P11 phone),
+                      shared_memory/ (the arena), ik/, execution/ (the executor), drivers/
+                      (the servo bus), teleop/ (the phone maths), timing
 
-Processes P0-P11 share one shared-memory arena (`runtime/shared_memory/`),
-where every field has exactly one writing process. A policy's own interpreter
-imports only `policy_contract` and the numpy-only core it needs.
-
-The map of the whole system, and of the documentation, is `docs/overview.md`.
+The map of the whole system: `docs/architecture.md`. The g1d code not ported yet (policies,
+recording, dashboards, cameras) is in `../legacy_g1d/`.
 """
-
-#: The policy surface, re-exported so a policy can write `elrobot_deploy.Policy`.
-#: Lazy, because P7 imports this package and must not pay for — or be able to
-#: reach — anything beyond what it names: the 500 Hz loop imports no policy
-#: code and no IK (`tests/test_p7_body.py` asserts its import set).
-_POLICY_NAMES = ("Policy", "EefActions", "JointActions", "Observation",
-                 "Reader", "RobotSpec")
-
-
-def __getattr__(name):
-    if name in _POLICY_NAMES:
-        from elrobot_deploy import policy_contract as policy
-        return getattr(policy, name)
-    raise AttributeError(f"module 'elrobot_deploy' has no attribute {name!r}")
-
-
-__all__ = [*_POLICY_NAMES]

@@ -19,6 +19,7 @@ The servo settings while streaming, and why:
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Protocol
 
 import numpy as np
@@ -68,7 +69,8 @@ class St3215Driver:
     """The real bus. `bus` and `cals` are injectable for tests (the repo's fake serial bus,
     `ElRobotRepo/tests/fake_bus.py`)."""
 
-    def __init__(self, *, port: str | None = None, bus=None, cals=None, qdot_max=None,
+    def __init__(self, *, port: str | None = None, bus=None, cals=None, calibration=None,
+                 qdot_max=None,
                  goal_speed_factor: float = 1.5, acceleration: int = 0,
                  torque_limit: dict[int, int] | None = None, p_coef: dict[int, int] | None = None,
                  d_coef: dict[int, int] | None = None,
@@ -80,7 +82,9 @@ class St3215Driver:
 
         self.R = R
         self.bus = bus if bus is not None else Bus(port)
-        self.cals = cals if cals is not None else load()
+        if cals is None:
+            cals = load() if calibration is None else load(Path(calibration))
+        self.cals = cals
         self.ids = list(SERVO_IDS)
         if sorted(self.cals) != self.ids:
             raise DriverError(f"calibration has joints {sorted(self.cals)}, expected {self.ids}")

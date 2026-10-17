@@ -1,0 +1,76 @@
+# The ElRobot follower: one 7-DoF arm + gripper, 8 Feetech ST3215 servos on one serial bus.
+#
+# The robot profile `elrobot_deploy run` loads by default (`--profile NAME|PATH`). Every key can
+# be overridden for one run with `--set section.key=value`. What each section means and who reads
+# it: docs/architecture.md, "Configuration". Joint vectors are in servo order, base to gripper
+# (index i = servo ID i+1); angles are degrees in the URDF's convention.
+
+[robot]
+# Relative paths are relative to the repository root (ElRobot/).
+urdf = "description/elrobot_ours/elrobot.urdf"     # geometry, and the joint limits (calibrated)
+calibration = "calibration/calibration.json"       # servo reading <-> URDF angle
+
+[bus]
+driver = "st3215"       # st3215 (the real bus) | sim (first-order lags, no hardware)
+port = ""               # "" = find the Waveshare adapter by its USB id
+hz = 250.0              # goal writes (and position reads) per second
+slow_every = 5          # speed / load / temperature with every Nth read
+
+[limits]
+velocity_scale = 0.5    # x the URDF's <limit velocity> (4.71 rad/s, about no-load speed)
+
+[executor]
+# How the bus process turns the 60 Hz target line into 250 Hz goals (runtime/execution/
+# bus_servo.py). The per-joint lists are the servo tuning (HANDOFF.md section 5A); an empty list
+# leaves that setting at the servo's own value (P, D) or off (friction).
+filter_hz = 15.0        # critically damped command filter; 0 = the straight line
+filter_lead = true      # read the line 2/w ahead so the filter adds no lag
+squeeze_margin = 5.0    # deg: how far the jaw command may lead the measured jaw toward closed
+friction_v = 2.0        # deg/s over which friction compensation fades in
+p_coef = []             # e.g. [32, 32, 32, 32, 16, 16, 16, 16]; written at connect, restored at release
+d_coef = []             # e.g. [32, 32, 32, 32, 32, 32, 32, 32]
+friction = []           # deg the goal leads in the direction of motion, e.g. [0, 0, 0, 0, 1, 1, 1, 0]
+torque_limit = [500, 500, 500, 500, 400, 400, 400, 300]   # 0.1 % of stall torque (hardware cap)
+goal_speed_factor = 1.5 # the servo's own speed ceiling, x the executor's velocity limit
+acceleration = 0        # the servo's own ramp: 0 = off (the executor shapes the motion)
+
+[poses]
+# `home` is where every rollout starts: the TCP 25 cm out, 10 cm up, pitched 45 deg down.
+# `exit` is where the session ends, and must be a pose the arm can be released in (the rest
+# pose lies on the shoulder stop). Check both against the real arm before the first run.
+# The gripper's open end is 3 deg (its calibrated range starts there).
+home = [0, -30, 0, 35, 0, 40, 0, 3]
+exit = [0, -90, 0, 90, 0, 0, 0, 3]
+min_s = 2.0             # shortest ramp, s
+velocity_margin = 0.5   # ramps peak at this fraction of the velocity limit
+home_tol = 5.0          # deg: how far any joint may be from home once homing ends
+release_at_exit = true  # torque off once the arm is at `exit` (else it stays held)
+
+[ik]
+# The IK P6 runs (runtime/ik/__init__.py lists the solvers). Everything else in this table is
+# passed to the solver's factory as keyword arguments.
+solver = "tcp_qp"
+position_cost = 1.0
+orientation_cost = 0.3
+nominal_cost = 0.001
+
+[teleop]
+control_hz = 60.0       # the target grid: one IK solve per phone frame (ARKit's rate)
+lead_s = 0.040          # phone capture -> due on the arm; covers the WiFi jitter
+port = 5005             # UDP, where the phone sends
+stale_s = 0.25          # no packet for this long while engaged: release (the arm holds)
+scale = 1.0             # phone translation -> TCP translation
+gripper_rate = 120.0    # deg/s the jaw target closes / opens while the button is held / released
+max_step_m = 0.05       # one frame moving the phone more than this: tracking glitch, release
+max_step_deg = 30.0     # same, for rotation
+# How the phone is held (the user's grip, 2026-10-17): screen facing LEFT, back camera RIGHT,
+# the top (Dynamic Island) pointing FORWARD. In ARKit's camera axes that is forward = -X,
+# left = +Z, up = +Y. Only forward is needed: up is gravity (ARKit's world +Y).
+phone_forward = "-x"
+# The robot's base axes (base_link: z up, the arm reaches along +y at the zero pose).
+base_forward = [0.0, 1.0, 0.0]
+base_up = [0.0, 0.0, 1.0]
+# The TCP is clamped into this box (base frame, metres). The base sits at the origin, on the
+# table (z = 0).
+workspace_min = [-0.30, 0.08, 0.02]
+workspace_max = [0.30, 0.40, 0.35]

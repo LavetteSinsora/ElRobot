@@ -1,4 +1,3 @@
-"""PICO takeover: the pure arithmetic of an intervention (`intervention`, used
-by P5, P6 and P11) and the XRoboToolkit PC service it needs (`pico_service`).
-For the operator: `docs/deploying_a_policy/running_and_live_dashboard.md`,
-"`--intervene`: PICO takeover"."""
+"""Teleoperation from the iPhone: the pure arithmetic (`intervention`: the clutch, the
+room-frame mapping, the gripper, the clock) and the phone's packet format (`phone`). The
+process that runs them is `runtime/processes/p11_phone.py`."""

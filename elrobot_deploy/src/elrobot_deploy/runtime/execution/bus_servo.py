@@ -58,7 +58,9 @@ class ExecutorSettings:
     velocity_scale: float = 0.5       # x the URDF's 4.71 rad/s (about the ST3215's no-load speed)
     squeeze_margin: float = math.radians(5.0)   # gripper rad; a first guess, to calibrate on force
     slow_every: int = 5               # speed / load / temperature every Nth tick (50 Hz at 250)
-    friction: float = 0.0             # rad the goal leads in the direction of motion; 0 = off
+    #: rad the goal leads in the direction of motion: one value for every arm joint, or (8,)
+    #: per joint (the gripper's is ignored: the squeeze bound owns the jaw). 0 = off.
+    friction: float | np.ndarray = 0.0
     friction_v: float = math.radians(2.0)   # rad/s over which that lead fades in (tanh scale)
 
     def shaping(self, q0: np.ndarray) -> Shaping:
@@ -92,8 +94,11 @@ class BusServo:
         #: Which branch the last published command came from: "hold" or "inside".
         self.phase = "hold"
         self._zero = np.zeros_like(self.q_cmd_last)
-        self._arm = np.ones_like(self.q_cmd_last)      # friction compensation: not the gripper
-        self._arm[GRIPPER] = 0.0
+        # Friction compensation, per joint, never on the gripper.
+        self._friction = np.broadcast_to(np.asarray(settings.friction, np.float64),
+                                         self.q_cmd_last.shape).copy()
+        self._friction[GRIPPER] = 0.0
+        self._friction_on = bool(np.any(self._friction > 0.0))
 
     stalled = property(lambda self: self.seg.stalled)
 
@@ -120,8 +125,8 @@ class BusServo:
             h = min(max(t_now - self.t_last, 0.0), self.h_max)
             q, v, _ = self.shaping.smoother.step(reference, h)
         self.t_last = t_now
-        if self.settings.friction > 0.0:
-            q = q + self._arm * self.settings.friction * np.tanh(v / self.settings.friction_v)
+        if self._friction_on:
+            q = q + self._friction * np.tanh(v / self.settings.friction_v)
 
         q = np.clip(q, self.q_cmd_last - self.slew, self.q_cmd_last + self.slew)
         if q_meas is not None:

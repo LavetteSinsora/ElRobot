@@ -1,26 +1,54 @@
 """The seqlock: how one writer and any number of readers share a record.
-Used by every ring in `rings.py`; the reader's side of the rule is in
-`docs/infra_logic/arena_layout_and_reads.md`, "Read rules: why a read can come
-back empty".
+Used by every ring in `rings.py`.
 
-Chosen so that **no reader can ever delay a writer**. P7 has 2 ms and cannot
-block on a lock held by a preempted reader, which is what disqualifies a mutex
-everywhere in this system.
+Chosen so that **no reader can ever delay a writer**. The bus process has 4 ms per tick and
+cannot block on a lock held by a preempted reader, which is what disqualifies a mutex here.
 
-The camera rings (`rings.CameraRing`) follow the same odd/even counter
-discipline without this class: their write window spans a blocking decode, so
-it cannot be a `with` block.
-
-Memory ordering rests on x86 store ordering plus the fact that every numpy
-operation is an opaque C call, which acts as a compiler barrier. This is **not
-sound on ARM** — a port needs explicit barriers.
+Memory ordering. On x86 the stores of one core are seen by others in program order, and every
+numpy operation is an opaque C call (a compiler barrier), so the counter discipline alone is
+sound. **On ARM (Apple Silicon) it is not**: a weakly ordered core may make the payload visible
+before the odd counter, or the reader may load the payload before the counter it checks. So
+`fence()` sits between the counter and the payload on both sides. It is a real hardware barrier
+where one is needed (`OSMemoryBarrier` on macOS, about a microsecond through ctypes) and a no-op
+on x86, where the hardware already orders these accesses.
 """
 
 from __future__ import annotations
 
+import platform
+import sys
 from contextlib import contextmanager
 
 import numpy as np
+
+
+def _make_fence():
+    """A full memory barrier callable from Python, or a no-op where none is needed."""
+    if platform.machine().lower() in ("x86_64", "amd64", "i386", "i686"):
+        return lambda: None
+    if sys.platform == "darwin":
+        import ctypes
+        try:
+            barrier = ctypes.CDLL("/usr/lib/libSystem.B.dylib").OSMemoryBarrier
+            barrier.restype = None
+            barrier.argtypes = []
+            return barrier
+        except (OSError, AttributeError):
+            pass
+    # Elsewhere (Linux on ARM, not a target today): a lock round-trip. Its acquire and release
+    # stop most reorderings across it but are not formally a full barrier; a port to such a
+    # box should call a real one (e.g. through a tiny C extension) here.
+    import threading
+    lock = threading.Lock()
+
+    def fence():
+        lock.acquire()
+        lock.release()
+    return fence
+
+
+#: Full memory barrier: no load or store moves across it, on this core, as seen by others.
+fence = _make_fence()
 
 
 class Seqlock:
@@ -34,7 +62,7 @@ class Seqlock:
     The writer is wait-free: two increments and no branches. The reader retries.
     """
 
-    __slots__ = ("seq", "rec")
+    __slots__ = ("rec", "seq")
 
     def __init__(self, seq: np.ndarray, rec: np.ndarray):
         if seq.dtype != np.uint64:
@@ -48,9 +76,11 @@ class Seqlock:
     def write(self, i: int):
         """Yield slot `i` for mutation, odd during, even after."""
         self.seq[i] += 1                      # -> odd: a write is in progress
+        fence()                               # ... visible before any of the payload
         try:
             yield self.rec[i]
         finally:
+            fence()                           # the payload visible before ...
             self.seq[i] += 1                  # -> even: consistent again
 
     def read_into(self, i: int, out: np.ndarray) -> None:
@@ -68,7 +98,9 @@ class Seqlock:
             s0 = int(seq[i])
             if s0 & 1:
                 continue
+            fence()                           # no payload load before the counter's
             out[()] = rec[i]
+            fence()                           # every payload load before the re-check
             if int(seq[i]) == s0:
                 return
 

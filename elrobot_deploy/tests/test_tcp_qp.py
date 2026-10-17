@@ -7,9 +7,14 @@ import pytest
 
 pytest.importorskip("mink")
 
-from elrobot_deploy.robot.elrobot_model import (ARM_JOINTS, DEFAULT_URDF, ElRobotModel,  # noqa: E402
-                                                mat_to_pose, pose_to_mat)
-from elrobot_deploy.runtime.ik.tcp_qp import TcpSolver  # noqa: E402
+from elrobot_deploy.robot.elrobot_model import (
+    ARM_JOINTS,
+    DEFAULT_URDF,
+    ElRobotModel,
+    mat_to_pose,
+    pose_to_mat,
+)
+from elrobot_deploy.runtime.ik.tcp_qp import TcpSolver
 
 REPO = DEFAULT_URDF.parents[2]
 

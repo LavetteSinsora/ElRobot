@@ -1,4 +1,4 @@
-"""`processes.segment.Segment` — the walk P7 and P8 share.
+"""`execution.servo_segment.Segment`: the walk the bus process runs.
 
 The servo tests prove each loop's behaviour end to end; these pin the walk
 itself, once, and the one thing that distinguishes the two users of it.
@@ -8,16 +8,16 @@ from __future__ import annotations
 
 import numpy as np
 
-from elrobot_deploy.runtime.shared_memory import schema
 from elrobot_deploy.runtime.execution.servo_segment import Phase, Segment
+from elrobot_deploy.runtime.shared_memory import schema
 
-BODY = schema.BODY_DOF
+BODY = schema.N_JOINTS
 T0 = 100.0
 
 
 def _seg(rings, cursor=True, x0=None):
     x0 = np.zeros(BODY) if x0 is None else x0
-    return Segment(rings["body"], rings["control"], x0, T0, cursor=cursor)
+    return Segment(rings["targets"], rings["control"], x0, T0, cursor=cursor)
 
 
 def test_it_opens_stalled_and_holds_on_an_empty_ring(rings):
@@ -42,7 +42,7 @@ def test_only_the_cursor_owner_publishes_k_exec(rings):
     rings["control"].k_exec = 0
     quiet = _seg(rings, cursor=False)
     assert quiet.phase(T0 + 0.1, np.zeros(BODY)) is Phase.ADVANCED
-    assert rings["control"].k_exec == 0, "P8 publishes no cursor"
+    assert rings["control"].k_exec == 0, "a walk without the cursor publishes none"
     loud = _seg(rings, cursor=True)
     assert loud.phase(T0 + 0.1, np.zeros(BODY)) is Phase.ADVANCED
     assert rings["control"].k_exec == 3

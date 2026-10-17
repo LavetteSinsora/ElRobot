@@ -1,22 +1,24 @@
-"""P7 for the ElRobot: the bus process. Interpolates the target ring and streams goal positions.
+"""P7, the bus process. Interpolates the target ring and streams goal positions.
 
 It replaces g1d's P1 (state), P7 (body) and P8 (hand), because all 8 servos share one
-half-duplex wire that only one process may own (PORTING_PLAN.md workstream A). Every tick, at
+half-duplex wire that only one process may own (PORTING_PLAN.md workstream A). P0 starts it at
+CHECK and it runs, holding the port, until the session reaches STOPPED; it is never restarted
+inside a session (that would mean releasing torque), so `k_exec` never rewinds. Every tick, at
 `settings.hz` (250 Hz agreed 2026-10-17):
 
   1. `BusServo.step`: walk the target line to now, shape it, clamp it        (pure, ~50 us)
   2. sync_write the 8 goal positions                                          (~0.3 ms on the wire)
   3. sync_read the 8 present positions; every `slow_every`th tick the same read also covers
      speed, load and temperature                                              (~1.4 / 1.75 ms)
-  4. one row into the bus state ring (what P6, the phone source and P9 read), and one into
-     the in-memory log, written to CSV when the process ends.
+  4. one row into the state ring (what P0, P6 and the phone source read), and one into the
+     in-memory log, written to CSV when the process ends.
 
 Write before read: the command goes out on the tick boundary, and the squeeze bound uses a
 measurement one tick (4 ms) old, which is fresh for a jaw.
 
-**The guards are not P7's.** g1d's P7 has none by design: P0 decides when to damp. There is no
-P0 for this robot yet, so the loop below checks three things, outside `BusServo.step`, and on
-any of them stops following the ring and holds:
+**The guards.** The loop checks three things, outside `BusServo.step`, and on any of them stops
+following the ring and holds (`control.bus = BUS_HOLDING`, the reason in `control.fault`; P0
+then ends the session, and the exit ramp is not executed: the bus holds where it is):
 
   * a joint more than `LAG_RAD` behind its command for `LAG_S` (blocked, or overloaded);
   * a joint more than `RUNAWAY_RAD` off its command at all: it is not obeying the goal (the
@@ -24,9 +26,11 @@ any of them stops following the ring and holds:
   * `BUS_FAILS` position reads in a row failing: the arm can't be seen, so it holds the last
     command.
 
-The parent learns of it through `status` (a multiprocessing queue): `("ready", q0)`,
-`("fault", message)`, `("done", log_path)`. Torque goes off only when the session reaches
-STOPPED, i.e. when the person running it says so: never on a fault, which would drop the arm.
+The parent learns of it through the arena (`control.bus`, `control.fault`), the `ready` latch P0
+waits on, and optionally `status` (a multiprocessing queue, for `cli/executor_test.py`):
+`("ready", q0)`, `("fault", message)`, `("done", log_path)`. Torque goes off only when the
+session reaches STOPPED, i.e. when the person running it says so (and only if `release`): never
+on a fault, which would drop the arm.
 """
 
 from __future__ import annotations
@@ -41,9 +45,7 @@ from elrobot_deploy.robot.elrobot_joints import N_JOINTS, JointLimits
 from elrobot_deploy.runtime import timing as clock
 from elrobot_deploy.runtime.drivers.st3215_driver import BUS_ERRORS, make_driver
 from elrobot_deploy.runtime.execution.bus_servo import BusServo, ExecutorSettings
-from elrobot_deploy.runtime.shared_memory import schema
-from elrobot_deploy.runtime.shared_memory.bus_arena import bus_layout, open_bus_rings
-from elrobot_deploy.runtime.shared_memory.layout import Arena
+from elrobot_deploy.runtime.shared_memory import Arena, build, open_all, schema
 
 LAG_RAD = np.radians(8.0)
 LAG_S = 0.5
@@ -61,16 +63,24 @@ LOG = np.dtype([
 
 
 class TickLog:
-    """Every tick, kept in memory (writing a file at 250 Hz would put disk latency in the loop)."""
+    """Every tick, kept in memory (writing a file at 250 Hz would put disk latency in the loop).
+
+    `max_s`: keep only the newest this many seconds (whole one-minute chunks are dropped), so a
+    long teleop session neither grows without bound nor takes minutes to save. None = keep all.
+    """
 
     CHUNK = 250 * 60
 
-    def __init__(self):
+    def __init__(self, max_s: float | None = None, hz: float = 250.0):
         self.chunks = [np.zeros(self.CHUNK, LOG)]
-        self.n = 0
+        self.n = 0                       # rows in `chunks`
+        self.max_chunks = None if max_s is None else max(2, int(np.ceil(max_s * hz / self.CHUNK)) + 1)
 
     def row(self) -> np.ndarray:
         if self.n == self.CHUNK * len(self.chunks):
+            if self.max_chunks is not None and len(self.chunks) >= self.max_chunks:
+                self.chunks.pop(0)
+                self.n -= self.CHUNK
             self.chunks.append(np.zeros(self.CHUNK, LOG))
         r = self.chunks[-1][self.n % self.CHUNK]
         self.n += 1
@@ -145,18 +155,37 @@ class Guard:
         return None
 
 
+def run_config(shm_name: str, cfg, *, ready=None, log_path: str | None = None) -> None:
+    """The process as P0 starts it: everything from the run's `Config`. The tick log keeps the
+    session's last ten minutes."""
+    run(shm_name, driver=cfg.bus.driver, driver_kw=cfg.driver_kw(), settings=cfg.executor,
+        limits=cfg.limits, ready=ready, log_path=log_path, release=None, log_max_s=600.0)
+
+
 def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettings,
-        limits: JointLimits, status=None, log_path: str | None = None) -> None:
-    """The process. Runs until `control.session` reaches STOPPED."""
+        limits: JointLimits, status=None, ready=None, log_path: str | None = None,
+        release: bool | None = True, log_max_s: float | None = None) -> None:
+    """The process. Runs until `control.session` reaches STOPPED.
+
+    `ready` (P0's latch) is set once the first goal is on the wire. `release`: turn torque off
+    at STOPPED (False: the servos keep holding the last goal after the process ends; None: ask
+    the arena, `control.release_torque`, which P0 sets only after a completed exit ramp)."""
     # Ctrl-C belongs to the person at the terminal, who wants the arm HELD, not dropped: the
     # parent catches it and stops writing targets; this loop keeps holding until STOPPED.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-    say = (lambda *m: status.put(m)) if status is not None else (lambda *m: None)
-
-    arena = Arena.attach(shm_name, bus_layout())
-    r = open_bus_rings(arena)
+    arena = Arena.attach(shm_name, build())
+    r = open_all(arena)
     control, ring, state = r["control"], r["targets"], r["state"]
-    log = TickLog()
+
+    def say(kind, *m):
+        if kind == "fault" and m:
+            control.set_fault(str(m[0]))
+            if control.bus == schema.BUS_RUNNING:
+                control.bus = schema.BUS_HOLDING
+        if status is not None:
+            status.put((kind, *m))
+
+    log = TickLog(log_max_s, settings.hz)
     drv, connected = None, False
     try:
         try:
@@ -177,6 +206,7 @@ def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettin
                          q0=q0, t0=t)
         q_meas, q_prev = q0, q0.copy()
         guard, fault, hold = Guard(), None, None
+        control.bus = schema.BUS_RUNNING
         say("ready", q0.tolist())
 
         pacer = clock.Pacer(settings.hz)
@@ -206,6 +236,8 @@ def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettin
             except BUS_ERRORS:
                 meas = None              # counted by the guard
             t_end = clock.now()
+            if tick == 0 and ready is not None:
+                ready.set()              # the first goal is on the wire: P0 may write targets
             if meas is not None:
                 q_meas = meas
                 state.write(t=0.5 * (t_r + t_end), q=meas, q_cmd=q, t_slow=t_end if slow else
@@ -238,7 +270,11 @@ def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettin
             t = pacer.wait()
     finally:
         if drv is not None:
-            steps = [("turning torque off", drv.release)] if connected else []
+            if release is None:
+                release = control.release_torque
+            steps = [("turning torque off", drv.release)] if connected and release else []
+            if connected and not release:
+                say("held", "torque left ON: the servos hold the last goal")
             for what, call in [*steps, ("closing the port", drv.close)]:
                 try:
                     call()
@@ -247,8 +283,9 @@ def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettin
         path = None
         if log_path and log.n:
             path = str(log.save(Path(log_path)))
+        control.bus = schema.BUS_DONE
         say("done", path)
         arena.close()
 
 
-__all__ = ["LOG", "Guard", "TickLog", "load_log", "run", "save_log"]
+__all__ = ["LOG", "Guard", "TickLog", "load_log", "run", "run_config", "save_log"]

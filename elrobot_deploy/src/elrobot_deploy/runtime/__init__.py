@@ -1,18 +1,14 @@
 """Everything that runs and controls the robot.
 
     launcher/         P0: start every process, CHECK, home, hand over, exit
-    processes/        P1-P11, one module each, spawned by P0 by module path
+    processes/        P6 (target), P7 (the bus), P11 (the phone), one module each
     shared_memory/    the arena every process reads and writes
-    ik/               pose targets -> joint targets (P6): the four shipped solvers
-    execution/        joint targets -> the 500 Hz motor commands: chunk blending,
-                      the servo reference filter, segment interpolation
-    drivers/          the hardware: DDS topics, cameras, the robot's board
-    teleop/           PICO takeover: the maths and the PC service
+    ik/               TCP poses -> joint targets (P6), behind one interface
+    execution/        joint targets -> 250 Hz servo goals: the segment walk, the filter, clamps
+    drivers/          the servo bus (real and simulated)
+    teleop/           the phone: packet format and the arithmetic of driving from it
     timing.py         the monotonic clock and pacing
-    cpu_pinning.py    which process runs on which core
 
-Deliberately empty of imports: P5 runs under the policy's own interpreter and
-imports `shared_memory`, `timing` and `processes.p5_policy` from here.
-
-The processes and one chunk's path through them: `docs/overview.md`.
+Deliberately empty of imports: P0 spawns each process by module path, and the bus process
+must not pull in the IK stack.
 """

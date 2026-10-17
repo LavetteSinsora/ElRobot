@@ -1,6 +1,4 @@
-"""Starting and stopping P0's children: each process by module path, under
-this interpreter or (P5) the policy's own (`[policy] python`, through
-`runtime/processes/policy_host.py` and `config_loading/json_transport.py`)."""
+"""Starting and stopping P0's children, each process by module path, spawned (never forked)."""
 
 from __future__ import annotations
 
@@ -13,14 +11,13 @@ from elrobot_deploy.runtime import timing as _clock
 def _child(dotted: str, args: tuple, kwargs: dict) -> None:
     """The spawn entry point for every child process.
 
-    The process module is imported *here*, in the child, so P0 never pulls DDS,
-    CUDA or mujoco into its own address space. Processes are spawned and never
-    forked, because a forked CUDA or DDS context is unusable.
+    The process module is imported *here*, in the child, so P0 never pulls mujoco or the
+    serial port into its own address space. Spawned, not forked: a forked process inherits
+    whatever the parent had open.
 
-    SIGINT is ignored: Ctrl-C reaches the whole process group, and a P7 that
-    died on the first one could not execute the exit ramp that the first one is
-    supposed to start. The operator's interrupt is P0's alone; a child ends when
-    P0 stops it.
+    SIGINT is ignored: Ctrl-C reaches the whole process group, and a bus process that died on
+    the first one could not execute the exit ramp the first one is supposed to start. The
+    operator's interrupt is P0's alone; a child ends when P0 stops it.
     """
     import importlib
 
@@ -29,59 +26,9 @@ def _child(dotted: str, args: tuple, kwargs: dict) -> None:
     getattr(importlib.import_module(module), func)(*args, **kwargs)
 
 
-class _InterpreterChild:
-    """A child running under another interpreter (`processes.interp`), with
-    the three methods `_Children` asks of a `multiprocessing.Process`."""
-
-    def __init__(self, proc):
-        self._proc = proc
-
-    @property
-    def pid(self) -> int:
-        return self._proc.pid
-
-    def is_alive(self) -> bool:
-        return self._proc.poll() is None
-
-    def terminate(self) -> None:
-        if self._proc.poll() is None:
-            self._proc.terminate()
-
-    def join(self, timeout: float | None = None) -> None:
-        import subprocess
-        try:
-            self._proc.wait(timeout)
-        except subprocess.TimeoutExpired:
-            pass
-
-
-def _spawn_interpreter(python: str, name: str, dotted: str, args: tuple,
-                       kwargs: dict) -> _InterpreterChild:
-    """`dotted(*args, **kwargs)` in a fresh `python`, the call as `codec` JSON
-    on its stdin — never a pickle, because that interpreter's numpy may be
-    another major version (`processes.interp`). Every argument must be
-    `codec`-encodable: the arena name, `DeployConfig`, `Hardware`."""
-    import subprocess
-
-    from elrobot_deploy.config_loading import json_transport as codec
-    payload = codec.dumps({"dotted": dotted, "args": tuple(args),
-                           "kwargs": dict(kwargs)})
-    proc = subprocess.Popen([python, "-m", "elrobot_deploy.runtime.processes.policy_host"],
-                            stdin=subprocess.PIPE, text=True)
-    try:
-        proc.stdin.write(payload)
-    finally:
-        proc.stdin.close()
-    return _InterpreterChild(proc)
-
-
 def _spawn_process(name: str, dotted: str, args: tuple, kwargs: dict):
-    """Spawn a child. `interpreter` in `kwargs` (popped) runs it under THAT
-    Python instead (`_spawn_interpreter`) — P5 under `[policy] python`."""
-    kwargs = dict(kwargs)
-    python = kwargs.pop("interpreter", None)
-    if python:
-        return _spawn_interpreter(python, name, dotted, args, kwargs)
+    """Spawn a child running `dotted(*args, **kwargs)`. (g1d also ran P5 under a policy's own
+    interpreter here; that path is in `legacy_g1d/`.)"""
     proc = mp.get_context("spawn").Process(
         target=_child, args=(dotted, args, kwargs), name=name, daemon=False)
     proc.start()
@@ -91,11 +38,8 @@ def _spawn_process(name: str, dotted: str, args: tuple, kwargs: dict):
 def _spawn_event():
     """The `ready` latch a gated child sets once it is on the wire.
 
-    NOT in the arena, deliberately. The arena describes the robot — `session`,
-    `k_exec`, `warm` — and is read at 500 Hz by processes that must never branch
-    on a startup detail; this is a one-shot lifecycle fact read exactly once, by
-    P0, before the robot has moved. Giving it a slot would cost a `schema.py`
-    entry and a layout-hash bump to express something an `Event` already is.
+    NOT in the arena, deliberately: this is a one-shot lifecycle fact read exactly once, by P0,
+    before the robot has moved, and an `Event` already is one.
 
     An `Event` rather than a pipe or a queue because the fact is a LATCH, not a
     stream: `set()` is idempotent, `wait()` is re-entrant, and no reader can
@@ -113,12 +57,9 @@ class _Children:
     and the alternative is a restart policy the system does not
     have.
 
-    `reset` stops P6, P7 and P8 and starts them again, and that is not a
-    retraction of the paragraph above. Supervision is a process restarted
-    BECAUSE it failed, which requires noticing that it did and deciding what a
-    failure means; reset restarts three named processes because the operator
-    asked for a new rollout, on a path where all three were healthy. Nothing
-    here watches anything, and a child that dies on its own is still invisible.
+    P0 asks `alive()` where a wait would otherwise never end (a bus process that died before
+    it was ready, a P6 that died mid-rollout). That is a fact, not supervision: nothing is
+    restarted.
     """
 
     def __init__(self, spawn, event=None):
@@ -145,11 +86,8 @@ class _Children:
 
         The one exception to "nothing here notices that a child has died", and
         it is not supervision: nothing is restarted and no policy is applied.
-        It exists because P0 now *waits* on P5, and `_wait` has no
-        timeout by decision — so the only thing that can distinguish "still
-        loading a checkpoint" from "died on a bad one" is whether the process
-        is there. Asking is a fact; a timeout would be a guess about how long a
-        checkpoint takes to load.
+        P0's waits have no timeout by decision, so the only thing that can distinguish "still
+        starting" from "died" is whether the process is there.
         """
         handle = self.handles.get(name)
         if handle is None:
@@ -177,9 +115,8 @@ class _Children:
 
         Not `stop`: `terminate` is SIGTERM, whose default disposition kills the
         interpreter outright, so no `finally` in the child runs. A process that
-        has buffered work to write — P9 holds up to `FLUSH_BYTES` per stream and
-        writes `manifest.json` from its own `finally` — must be given the
-        chance to notice the session word and close itself.
+        has work to finish (the bus process turns torque off and writes its log from its own
+        `finally`) must be given the chance to notice the session word and close itself.
 
         A child that left cleanly is dropped from `handles`, so the `stop_all`
         that follows signals only the ones that did not. Sending SIGTERM to a
