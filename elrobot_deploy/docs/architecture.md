@@ -77,7 +77,18 @@ INIT -> CHECK -(Home)-> HOME -> READY -(Start)-> ACTIVE -> EXITING -> STOPPED
 **The dashboard and Enter only REQUEST** (`control.request`): HOME, START, RESET, EXIT. P0 takes
 a request only when it is the one it waits for (`control.wait`), so a stray click does nothing.
 
-**The arm is never dropped by software.** A failure, a bus fault or a second Ctrl-C (which skips
+**The guards** (`runtime/execution/guard.py`, thresholds in the profile's `[safety]`):
+a **runaway** is a joint more than 25 deg off its command AND moving away from it (its error grew
+10 deg within 0.3 s, the joint moving that way), or more than 60 deg off whatever it does (not
+the gripper); a lagging joint moves toward its command and never counts. Its torque goes off
+at once. **Blocked** is a joint more than 15 deg behind and not moving (less than 3 deg) for
+1.5 s; not the gripper, which an object holds off its command. Either one **recovers**: the bus
+process keeps following the ring (`BUS_RECOVERING`), P0 ramps the arm home, then to the exit
+pose, then torque goes off. **Unreadable** (5 failed reads in a row): the bus process cannot
+see the arm, so it HOLDS and the session ends with torque on; as does a second fault during a
+recovery.
+
+**The arm is never dropped by software.** A failure, a hold or a second Ctrl-C (which skips
 the exit ramp) all end the session with torque left ON: the servos hold the last goal, P0
 says so, and the operator supports the arm and runs `uv run python -m elrobot.relax`.
 (One Ctrl-C under `uv run` reaches the process twice; two within 0.5 s count as one.)
@@ -109,8 +120,9 @@ joint (measured, commanded, error, temperature, load) and the hardware check. It
 
 ## Teleoperation
 
-**The clutch.** The arm follows the phone only while the pad on the phone is held, and only
-relative to where the phone was at the press. A release holds the arm where it is. Pressing
+**The clutch.** The arm follows the phone only while ENGAGE is on (a toggle in the app: tap to
+start, tap to stop; the app switches it off whenever the Mac releases the arm), and only
+relative to where the phone was when it was switched on. A release holds the arm where it is. Pressing
 again re-anchors both sides, which is how the operator moves further than their arm reaches or
 re-orients themselves. A button already down when a rollout starts (or after a guard fired)
 counts only after it has been seen up.

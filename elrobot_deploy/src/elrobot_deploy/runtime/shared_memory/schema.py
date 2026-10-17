@@ -74,12 +74,14 @@ WAIT_NAMES = {WAIT_NONE: "NONE", WAIT_HOME: "HOME", WAIT_START: "START", WAIT_PH
 # Written by the bus process only. P0 reads it: a HOLDING bus has stopped following the
 # target ring (a guard fired; `fault` says which) and holds its last command, so the run must
 # end. DONE is written in the bus process's `finally`, after torque went off (or failed to).
+# RECOVERING: a guard fired (`fault` says which) but the loop still follows the ring, so P0 can
+# ramp the arm home and to rest before torque goes off.
 # DRY is RUNNING with torque off: the bus process reads the arm and computes every command, but
 # writes none (`--dry-run`).
-BUS_STARTING, BUS_RUNNING, BUS_HOLDING, BUS_DONE, BUS_DRY = range(5)
+BUS_STARTING, BUS_RUNNING, BUS_HOLDING, BUS_DONE, BUS_DRY, BUS_RECOVERING = range(6)
 
 BUS_NAMES = {BUS_STARTING: "STARTING", BUS_RUNNING: "RUNNING", BUS_HOLDING: "HOLDING",
-             BUS_DONE: "DONE", BUS_DRY: "DRY"}
+             BUS_DONE: "DONE", BUS_DRY: "DRY", BUS_RECOVERING: "RECOVERING"}
 
 # --- records --------------------------------------------------------------------------------
 
@@ -212,6 +214,7 @@ __all__ = [
     "ACTIVE",
     "ARM_DOF",
     "BUS_DONE",
+    "BUS_RECOVERING",
     "BUS_HOLDING",
     "BUS_NAMES",
     "BUS_RUNNING",

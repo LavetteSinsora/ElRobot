@@ -56,6 +56,7 @@ class ExecutorSettings:
     filter_hz: float = 15.0           # critically damped cutoff; 0 = publish the line unshaped
     filter_lead: bool = True          # read the line 2/w ahead, so the filter adds no lag
     velocity_scale: float = 0.5       # x the URDF's 4.71 rad/s (about the ST3215's no-load speed)
+    gripper_velocity_scale: float = 1.0   # the gripper's own: a light jaw may run at full speed
     squeeze_margin: float = math.radians(5.0)   # gripper rad; a first guess, to calibrate on force
     slow_every: int = 5               # speed / load / temperature every Nth tick (50 Hz at 250)
     #: rad the goal leads in the direction of motion: one value for every arm joint, or (8,)
@@ -81,7 +82,9 @@ class BusServo:
         self.settings = settings
         self.shaping = settings.shaping(np.asarray(q0, dtype=np.float64))
 
-        self.qdot_max = limits.velocity * float(settings.velocity_scale)
+        scale = np.full(len(limits.velocity), float(settings.velocity_scale))
+        scale[GRIPPER] = float(settings.gripper_velocity_scale)
+        self.qdot_max = limits.velocity * scale
         self.slew = self.qdot_max / float(settings.hz)
         self.h_max = 4.0 / float(settings.hz)
 

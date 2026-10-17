@@ -108,7 +108,8 @@ class St3215Driver:
         self.hi = np.array([max(x.min_reading, x.max_reading) for x in c])
         self.rad_per_step = RAD_PER_STEP
         qdot = np.full(N_JOINTS, 2.4) if qdot_max is None else np.asarray(qdot_max)
-        self.goal_speed = {j: max(1, round(goal_speed_factor * v / RAD_PER_STEP))
+        # 3400 steps/s is the register's documented top (above the servo's own no-load speed).
+        self.goal_speed = {j: min(3400, max(1, round(goal_speed_factor * v / RAD_PER_STEP)))
                            for j, v in zip(self.ids, qdot)}
         # Explicit caps (steps/s) per servo ID, replacing the ceiling: the servo moves its own
         # setpoint toward each goal at most this fast, so a cap near the commanded speed turns

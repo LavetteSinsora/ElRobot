@@ -17,7 +17,7 @@ uv run elrobot_deploy run                # the real arm
 
 A session: the hardware check, then the arm held where it is while the dashboard
 (http://127.0.0.1:8080) shows the home pose; **Home**, then **Start** (dashboard buttons or Enter
-in the terminal); then hold the pad on the phone to drive. Ctrl-C (or Exit) ramps to rest.
+in the terminal); then tap ENGAGE on the phone to drive (tap again to hold). Ctrl-C (or Exit) ramps to rest.
 
 How it works (processes, the arena, the session, the teleop mapping, timing, safety, what is
 pluggable): **`docs/architecture.md`**. The robot profile, with every setting commented:

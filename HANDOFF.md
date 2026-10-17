@@ -18,7 +18,7 @@ bus, Waveshare adapter at 1 Mbps, controlled from the Mac).
 
 The session as it runs now: `run` -> the hardware check (a table on the terminal and the
 dashboard) -> waiting for the phone to stream (>= 30 Hz for 1 s, tracking normal) -> the arm held where it was found, the home pose shown as a green ghost at
-`http://127.0.0.1:8080` -> **Home** (button or Enter) -> homing -> **Start** -> hold the pad on
+`http://127.0.0.1:8080` -> **Home** (button or Enter) -> homing -> **Start** -> tap ENGAGE on
 the phone to drive -> Reset / Exit (button) or Ctrl-C. `--dry-run` does all of it on the real
 arm with torque OFF (only the blue ghost moves).
 
@@ -41,8 +41,8 @@ arm with torque OFF (only the blue ghost moves).
   - `legacy_g1d/`: g1d's code not ported (policies, recording, inspection, cameras),
     unchanged, as reference (README there).
   - `PORTING_PLAN.md`: the plan; its status block lists what changed against it and why.
-- `phone_teleop/`: the iOS app (v2: world_epoch, the Mac's state banner + haptics, a one-thumb
-  pad) and its README (how to hold it and drive, packet format, build steps).
+- `phone_teleop/`: the iOS app (v2: world_epoch, the Mac's state banner + haptics, ENGAGE
+  toggle + GRIP hold) and its README (how to hold it and drive, packet format, build steps).
 - Logs: `ElRobot/logs/executor/` (executor-test), `ElRobot/logs/sessions/` (each run's bus
   tick log, the last 10 minutes). Git-ignored.
 
@@ -119,7 +119,7 @@ Findings:
    the simulated arm 3 cm left/up.
 4. **Build the app** (`phone_teleop/README.md`). The Swift changes were written without a
    compiler: expect to fix small errors in Xcode. Then `uv run elrobot_deploy phone-bench`: hold
-   the phone as described, hold the pad, push forward -> `fwd` grows; left -> `left` grows; up
+   the phone as described, tap ENGAGE, push forward -> `fwd` grows; left -> `left` grows; up
    -> `up` grows; tip the top down -> `rot about left` positive.
 5. `uv run elrobot_deploy run --sim` driven by the real phone (M2). Read P11's per-engagement
    latency line (`L_n - L_1` p99, "the deadline map slid"): is the 40 ms lead enough on your WiFi?
@@ -195,6 +195,11 @@ uv run pytest -q                                          # root repo tests
   fault, a second Ctrl-C: by design the arm stays held): the bus process refuses to start
   ("torque is already on"); support the arm and run `elrobot.relax`. The bus process never turns
   off torque it didn't turn on.
+- Bus guard stops (session 2 on the arm): the old rules (20 deg off at any instant; 8 deg
+  behind for 0.5 s) tripped on a lagging joint 5 and on the gripper opening during homing.
+  Replaced by `[safety]` (`runtime/execution/guard.py`): runaway = far off AND moving away;
+  blocked = far behind AND not moving for 1.5 s (never the gripper); both recover home -> rest
+  -> torque off. Tune with `--set safety.<key>=...`.
 - One Ctrl-C under `uv run` reaches the process twice; two within 0.5 s count as one. A real
   second Ctrl-C (later) skips the exit ramp and leaves the arm held.
 - The clutch only counts if pressed after the rollout starts (and after any forced release):

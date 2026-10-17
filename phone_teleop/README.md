@@ -11,22 +11,23 @@ the arm is doing, which the app shows (and buzzes on).
 Hold the phone in your right hand with the **screen facing left**, the back camera facing
 right, and the **top (Dynamic Island) pointing forward**, your thumb on the screen.
 
-- **Put your thumb anywhere on the pad to ENGAGE.** While it is down, the arm's gripper tip
-  copies the phone's motion **relative to where the phone was when you pressed**: move the phone
-  forward and the arm moves forward; left, left; up, up. Tilting the phone's top down pitches
-  the gripper down; turning it left turns the gripper left.
-- **Slide your thumb into the forward (top) zone of the pad to GRIP.** The jaw closes while
-  your thumb is there and opens when it leaves.
-- **Lift your thumb to release.** The arm holds where it is (and so does the jaw). Re-grip
-  anywhere and continue: that is how you move further than your arm reaches, or re-orient
-  yourself.
+- **Tap ENGAGE** to start: the arm's gripper tip copies the phone's motion **relative to where
+  the phone was when you tapped**: move the phone forward and the arm moves forward; left,
+  left; up, up. Tilting the phone's top down pitches the gripper down; turning it left turns
+  the gripper left. **Tap ENGAGE again** to stop: the arm holds where it is. Re-engage
+  anywhere and continue: that is how you move further than your arm reaches, or re-orient.
+- **Hold GRIP** to close the jaw (about 0.7 s fully); **let go** and it opens again at the
+  same speed. While disengaged the jaw holds.
+- The app switches ENGAGE off by itself whenever the Mac releases the arm (and buzzes), so it
+  never shows on while the arm is not following. Careful: while engaged, a dropped phone drags
+  the arm until the jump guard catches it; disengage before putting the phone down.
 
 Only the heading of the phone at the press matters ("forward" is where its top points,
 horizontally); you need not hold it level. ARKit tracks with the back camera, so whatever is
 to your right should be textured and static (not the moving arm).
 
-**The Mac releases the arm on its own** (the banner turns red and the phone buzzes; lift your
-thumb and press again) when: tracking is not "normal", the world origin changes (Reset world
+**The Mac releases the arm on its own** (the banner turns red, the phone buzzes, ENGAGE goes off;
+tap it again to continue) when: tracking is not "normal", the world origin changes (Reset world
 origin, relocalization), the phone jumps more than 5 cm or 30 degrees in one frame, no packet
 arrives for 250 ms, or the phone's top points straight up or down at the press.
 
@@ -75,13 +76,13 @@ uv run elrobot_deploy run                # 3. the real arm
 ```
 
 `run` checks the hardware, then waits: open the dashboard (http://127.0.0.1:8080), press
-**Home** (the arm moves to the green ghost), then **Start**; then hold the pad on the phone.
+**Home** (the arm moves to the green ghost), then **Start**; then tap ENGAGE on the phone.
 
 Enter the Mac's IP in the app and tap Connect. If macOS asks whether Python may accept incoming
 connections, allow it. The phone and the Mac must be on the same Wi-Fi network; a guest network
 with client isolation blocks the traffic.
 
-In `phone-bench`, hold the phone as above, hold the pad and push the phone forward: `fwd` must
+In `phone-bench`, hold the phone as above, tap ENGAGE and push the phone forward: `fwd` must
 grow (left: `left` grows; up: `up` grows; tip the top down: `rot about left` goes positive).
 
 `receiver/receiver.py` is a dependency-free link test (it only echoes).

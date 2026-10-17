@@ -16,15 +16,13 @@ inside a session (that would mean releasing torque), so `k_exec` never rewinds. 
 Write before read: the command goes out on the tick boundary, and the squeeze bound uses a
 measurement one tick (4 ms) old, which is fresh for a jaw.
 
-**The guards.** The loop checks three things, outside `BusServo.step`, and on any of them stops
-following the ring and holds (`control.bus = BUS_HOLDING`, the reason in `control.fault`; P0
-then ends the session, and the exit ramp is not executed: the bus holds where it is):
-
-  * a joint more than `LAG_RAD` behind its command for `LAG_S` (blocked, or overloaded);
-  * a joint more than `RUNAWAY_RAD` off its command at all: it is not obeying the goal (the
-    multi-turn offset runaway), so its torque goes off and the others hold;
-  * `BUS_FAILS` position reads in a row failing: the arm can't be seen, so it holds the last
-    command.
+**The guards** (`execution/guard.py`, thresholds in the profile's `[safety]`): a joint
+running away (far off its command and moving further away: its torque goes off at once), a
+joint blocked (far behind for a long time), the arm unreadable (reads failing). On a runaway or
+a blocked joint, with `recover` (P0's sessions), the loop keeps following the ring and says
+`BUS_RECOVERING`: P0 then ramps the arm home and to rest, and torque goes off there. On
+unreadable reads, or a second fault during a recovery, or without `recover`, it stops following
+the ring and HOLDS (`BUS_HOLDING`): the session ends with torque on.
 
 The parent learns of it through the arena (`control.bus`, `control.fault`), the `ready` latch P0
 waits on, and optionally `status` (a multiprocessing queue, for `cli/executor_test.py`):
@@ -46,12 +44,8 @@ from elrobot_deploy.robot.elrobot_joints import N_JOINTS, JointLimits
 from elrobot_deploy.runtime import timing as clock
 from elrobot_deploy.runtime.drivers.st3215_driver import BUS_ERRORS, DriverError, make_driver
 from elrobot_deploy.runtime.execution.bus_servo import BusServo, ExecutorSettings
+from elrobot_deploy.runtime.execution.guard import Guard, GuardSettings
 from elrobot_deploy.runtime.shared_memory import Arena, build, open_all, schema
-
-LAG_RAD = np.radians(8.0)
-LAG_S = 0.5
-RUNAWAY_RAD = np.radians(20.0)
-BUS_FAILS = 5
 
 PHASES = {"hold": 0, "inside": 1, "fault": 2}
 
@@ -124,51 +118,19 @@ def load_log(path: Path) -> np.ndarray:
     return out
 
 
-class Guard:
-    """The three checks above. `check()` returns a fault message, or None."""
-
-    def __init__(self):
-        self.lag_since = np.full(N_JOINTS, np.nan)
-        self.read_fails = 0
-        self.runaway: list[int] = []
-
-    def check(self, t: float, cmd_prev: np.ndarray, meas: np.ndarray | None) -> str | None:
-        if meas is None:
-            self.read_fails += 1
-            if self.read_fails >= BUS_FAILS:
-                return f"{self.read_fails} position reads in a row failed: holding the last command"
-            return None
-        self.read_fails = 0
-        err = np.abs(meas - cmd_prev)
-        wild = np.flatnonzero(err > RUNAWAY_RAD)
-        if wild.size:
-            self.runaway = [int(i) for i in wild]
-            return (f"joints {[int(i) + 1 for i in wild]} are "
-                    f"{np.degrees(err[wild]).round(0).tolist()} deg off their command (not "
-                    "obeying the goal): their torque is off, the others hold")
-        late = err > LAG_RAD
-        self.lag_since[~late] = np.nan
-        self.lag_since[late & np.isnan(self.lag_since)] = t
-        stuck = np.flatnonzero(late & (t - self.lag_since > LAG_S))
-        if stuck.size:
-            return (f"joints {[int(i) + 1 for i in stuck]} are more than {np.degrees(LAG_RAD):.0f} deg "
-                    f"behind their command for {LAG_S} s (blocked?): holding where they are")
-        return None
-
-
 def run_config(shm_name: str, cfg, *, ready=None, log_path: str | None = None,
                dry_run: bool = False) -> None:
     """The process as P0 starts it: everything from the run's `Config`. The tick log keeps the
     session's last ten minutes."""
     run(shm_name, driver=cfg.bus.driver, driver_kw=cfg.driver_kw(), settings=cfg.executor,
         limits=cfg.limits, ready=ready, log_path=log_path, release=None, log_max_s=600.0,
-        dry_run=dry_run, check=True)
+        dry_run=dry_run, check=True, guard=cfg.guard)
 
 
 def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettings,
         limits: JointLimits, status=None, ready=None, log_path: str | None = None,
         release: bool | None = True, log_max_s: float | None = None, dry_run: bool = False,
-        check: bool = False) -> None:
+        check: bool = False, guard: GuardSettings | None = None) -> None:
     """The process. Runs until `control.session` reaches STOPPED.
 
     `check`: run the driver's hardware check first, publish it (`control.report`) and refuse
@@ -179,7 +141,9 @@ def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettin
 
     `ready` (P0's latch) is set once the first goal is on the wire. `release`: turn torque off
     at STOPPED (False: the servos keep holding the last goal after the process ends; None: ask
-    the arena, `control.release_torque`, which P0 sets only after a completed exit ramp)."""
+    the arena, `control.release_torque`, which P0 sets only after a completed exit ramp).
+    `guard`: the thresholds and whether a fault recovers (None: hold on any fault, the
+    executor test's behaviour)."""
     # Ctrl-C belongs to the person at the terminal, who wants the arm HELD, not dropped: the
     # parent catches it and stops writing targets; this loop keeps holding until STOPPED.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -190,7 +154,7 @@ def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettin
     def say(kind, *m):
         if kind == "fault" and m:
             control.set_fault(str(m[0]))
-            if control.bus in (schema.BUS_RUNNING, schema.BUS_DRY):
+            if control.bus in (schema.BUS_RUNNING, schema.BUS_DRY, schema.BUS_RECOVERING):
                 control.bus = schema.BUS_HOLDING
         if status is not None:
             status.put((kind, *m))
@@ -222,7 +186,8 @@ def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettin
         servo = BusServo(ring=ring, control=control, limits=limits, settings=settings,
                          q0=q0, t0=t)
         q_meas, q_prev = q0, q0.copy()
-        guard, fault, hold = Guard(), None, None
+        guard_settings = guard if guard is not None else GuardSettings(recover=False)
+        guard, fault, hold = Guard(guard_settings), None, None
         control.bus = schema.BUS_DRY if dry_run else schema.BUS_RUNNING
         say("ready", q0.tolist())
 
@@ -262,16 +227,25 @@ def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettin
                             np.nan, speed=speed, load=load, temp=temp, alarm=drv.alarms())
 
             if fault is None and (not dry_run or meas is None):     # dry: only lost reads
-                msg = guard.check(t, q_prev, meas)
-                if msg is not None:
-                    fault = msg
-                    hold = q_prev.copy() if meas is None else q_meas.copy()
-                    if guard.runaway:
+                f = guard.check(t, q_prev, meas)
+                if f is not None:
+                    if f.kind == "runaway":
+                        guard.ignore.update(f.joints)
                         try:
-                            drv.release(guard.runaway)
+                            drv.release(f.joints)
                         except BUS_ERRORS:
                             pass
-                    say("fault", fault)
+                    if f.kind != "read" and guard_settings.recover and not guard.recovering:
+                        # Keep following the ring: P0 brings the arm home, then to rest.
+                        guard.recovering = True
+                        control.set_fault(f.message)
+                        control.bus = schema.BUS_RECOVERING
+                        if status is not None:
+                            status.put(("recovering", f.message))
+                    else:
+                        fault = f.message
+                        hold = q_prev.copy() if meas is None else q_meas.copy()
+                        say("fault", fault)
             q_prev = np.asarray(q, dtype=np.float64).copy()
 
             row = log.row()
@@ -306,4 +280,4 @@ def run(shm_name: str, *, driver: str, driver_kw: dict, settings: ExecutorSettin
         arena.close()
 
 
-__all__ = ["LOG", "Guard", "TickLog", "load_log", "run", "run_config", "save_log"]
+__all__ = ["LOG", "Guard", "GuardSettings", "TickLog", "load_log", "run", "run_config", "save_log"]

@@ -11,7 +11,8 @@ It is pickled into every child process at spawn, so it holds plain values and nu
 
 Joint limits are not configured here: they are the URDF's (`<limit lower/upper>`, the
 calibrated safe ranges written by `description/elrobot_ours/make_description.py`), and the
-velocity limit is the URDF's `<limit velocity>` times `limits.velocity_scale`.
+velocity limit is the URDF's `<limit velocity>` times `limits.velocity_scale` (the gripper's times
+`limits.gripper_velocity_scale`).
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ import numpy as np
 from elrobot_deploy.config_loading.errors import ConfigError
 from elrobot_deploy.robot.elrobot_joints import N_JOINTS, JointLimits, urdf_limits
 from elrobot_deploy.runtime.execution.bus_servo import ExecutorSettings
+from elrobot_deploy.runtime.execution.guard import GuardSettings
 
 #: The repository root (ElRobot/): relative paths in a profile are relative to it.
 REPO = Path(__file__).resolve().parents[4]
@@ -78,7 +80,7 @@ class TeleopConfig:
     port: int = 5005
     stale_s: float = 0.25
     scale: float = 1.0
-    gripper_rate: float = math.radians(120.0)           # rad/s
+    gripper_rate: float = math.radians(200.0)           # rad/s
     max_step_m: float = 0.05
     max_step: float = math.radians(30.0)                # rad
     phone_forward: tuple = (-1.0, 0.0, 0.0)             # device axis, ARKit camera frame
@@ -108,13 +110,16 @@ class Config:
     ik: IKConfig
     teleop: TeleopConfig
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
+    guard: GuardSettings = field(default_factory=GuardSettings)
     #: Every key that a `--set` changed, -> its value as given. For the run's printout.
     overrides: dict = field(default_factory=dict)
 
     @property
     def qdot_max(self) -> np.ndarray:
         """(8,) rad/s: the velocity limit everything after the IK is held to."""
-        return self.limits.velocity * self.velocity_scale
+        scale = np.full(N_JOINTS, self.velocity_scale)
+        scale[N_JOINTS - 1] = self.executor.gripper_velocity_scale
+        return self.limits.velocity * scale
 
     @property
     def dt(self) -> float:
@@ -261,6 +266,10 @@ def load(profile: str | Path | None = None, *, sets=()) -> Config:
     velocity_scale = float(sec("limits").get("velocity_scale", 0.5))
     if not 0 < velocity_scale <= 1:
         raise ConfigError(f"[limits] velocity_scale {velocity_scale}: must be in (0, 1]")
+    gripper_velocity_scale = float(sec("limits").get("gripper_velocity_scale", 1.0))
+    if not 0 < gripper_velocity_scale <= 1:
+        raise ConfigError(f"[limits] gripper_velocity_scale {gripper_velocity_scale}: must be "
+                          f"in (0, 1]")
 
     e = sec("executor")
     friction = _per_joint(e.get("friction"), "[executor] friction")
@@ -270,6 +279,7 @@ def load(profile: str | Path | None = None, *, sets=()) -> Config:
     executor = ExecutorSettings(
         hz=bus.hz, filter_hz=float(e.get("filter_hz", 15.0)),
         filter_lead=bool(e.get("filter_lead", True)), velocity_scale=velocity_scale,
+        gripper_velocity_scale=gripper_velocity_scale,
         squeeze_margin=math.radians(float(e.get("squeeze_margin", 5.0))),
         slow_every=bus.slow_every, friction=friction,
         friction_v=math.radians(float(e.get("friction_v", 2.0))))
@@ -309,7 +319,7 @@ def load(profile: str | Path | None = None, *, sets=()) -> Config:
         control_hz=float(t.get("control_hz", d.control_hz)),
         lead_s=float(t.get("lead_s", d.lead_s)), port=int(t.get("port", d.port)),
         stale_s=float(t.get("stale_s", d.stale_s)), scale=float(t.get("scale", d.scale)),
-        gripper_rate=math.radians(float(t.get("gripper_rate", 120.0))),
+        gripper_rate=math.radians(float(t.get("gripper_rate", 200.0))),
         max_step_m=float(t.get("max_step_m", d.max_step_m)),
         max_step=math.radians(float(t.get("max_step_deg", 30.0))),
         phone_forward=_axis(t.get("phone_forward", "-x"), "[teleop] phone_forward"),
@@ -324,13 +334,21 @@ def load(profile: str | Path | None = None, *, sets=()) -> Config:
     if not 0 < teleop.lead_s < 0.5:
         raise ConfigError(f"[teleop] lead_s {teleop.lead_s}: must be in (0, 0.5) s")
 
+    g, gd = sec("safety"), GuardSettings()
+    guard = GuardSettings(**{k: type(getattr(gd, k))(g[k]) for k in gd.__dataclass_fields__
+                             if k in g})
+    unknown = set(g) - set(gd.__dataclass_fields__)
+    if unknown:
+        raise ConfigError(f"[safety]: unknown keys {sorted(unknown)}")
+
     db = sec("dashboard")
     dashboard = DashboardConfig(host=str(db.get("host", "127.0.0.1")),
                                 port=int(db.get("port", 8080)))
 
     return Config(profile=str(path), urdf=urdf, calibration=calibration, limits=limits,
                   velocity_scale=velocity_scale, bus=bus, executor=executor, gains=gains,
-                  poses=poses, ik=ik, teleop=teleop, dashboard=dashboard, overrides=overrides)
+                  poses=poses, ik=ik, teleop=teleop, dashboard=dashboard, guard=guard,
+                  overrides=overrides)
 
 
 __all__ = [

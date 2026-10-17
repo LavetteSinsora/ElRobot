@@ -18,6 +18,7 @@ slow_every = 5          # speed / load / temperature with every Nth read
 
 [limits]
 velocity_scale = 0.5    # x the URDF's <limit velocity> (4.71 rad/s, about no-load speed)
+gripper_velocity_scale = 1.0   # the gripper's own (its full stroke at 270 deg/s is ~0.5 s)
 
 [executor]
 # How the bus process turns the 60 Hz target line into 250 Hz goals (runtime/execution/
@@ -60,7 +61,8 @@ lead_s = 0.040          # phone capture -> due on the arm; covers the WiFi jitte
 port = 5005             # UDP, where the phone sends
 stale_s = 0.25          # no packet for this long while engaged: release (the arm holds)
 scale = 1.0             # phone translation -> TCP translation
-gripper_rate = 120.0    # deg/s the jaw target closes / opens while the button is held / released
+gripper_rate = 200.0    # deg/s the jaw closes while GRIP is held, opens once it is released:
+                        # the 137 deg stroke in ~0.7 s (the servo tops out near 270 deg/s)
 max_step_m = 0.05       # one frame moving the phone more than this: tracking glitch, release
 max_step_deg = 30.0     # same, for rotation
 # How the phone is held (the user's grip, 2026-10-17): screen facing LEFT, back camera RIGHT,
@@ -74,6 +76,23 @@ base_up = [0.0, 0.0, 1.0]
 # table (z = 0).
 workspace_min = [-0.30, 0.08, 0.02]
 workspace_max = [0.30, 0.40, 0.35]
+
+[safety]
+# The bus process's guards (runtime/execution/guard.py). A RUNAWAY is a joint far off its
+# command AND moving away from it (a lagging joint moves toward it, so it never counts); its
+# torque goes off at once. BLOCKED is a joint far behind and not moving for a long time (not the
+# gripper).
+# Either one, with `recover`, brings the arm home, then to the exit pose, then torque off.
+# Lost position reads (the arm cannot be seen) always just hold, torque on.
+runaway_deg = 25.0      # off by more than this ...
+runaway_grow_deg = 10.0 # ... and the error grew this much, the joint moving that way ...
+runaway_window_s = 0.3  # ... within this window
+gross_deg = 60.0        # off by more than this: a runaway, whatever it is doing
+lag_deg = 15.0          # BLOCKED: behind by more than this ...
+lag_s = 1.5             # ... for this long, without a break ...
+stuck_deg = 3.0         # ... and moving less than this in that time (a moving joint is not blocked)
+read_fails = 5
+recover = true
 
 [dashboard]
 # The live dashboard (`elrobot_deploy run` starts it; `elrobot_deploy view` without the robot).

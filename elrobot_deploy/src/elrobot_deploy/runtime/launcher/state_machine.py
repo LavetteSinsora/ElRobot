@@ -72,6 +72,11 @@ class BusFault(RuntimeError):
     """The bus process stopped following the ring (a guard fired) or died."""
 
 
+class BusRecovering(BusFault):
+    """A guard fired but the bus process still follows the ring: bring the arm home, then to
+    rest, then let torque go off."""
+
+
 class Launcher:
     """The session sequence. `spawn`, `event` and `clock` are injectable for tests."""
 
@@ -102,6 +107,7 @@ class Launcher:
         self.rings = None
         self._interrupts = 0
         self._skip_ramp = False
+        self._recovering = False
         self._failure: BaseException | None = None
         self.stamp = time.strftime("%Y%m%d_%H%M%S")
 
@@ -185,6 +191,12 @@ class Launcher:
     def _check_bus(self) -> None:
         """Raise if the bus process has stopped following the ring."""
         control = self.rings["control"]
+        if control.bus == schema.BUS_RECOVERING:
+            if self._recovering or control.session == schema.EXITING:
+                # Already on the way to rest (the exit ramp keeps going): torque off there.
+                self._recovering = True
+                return
+            raise BusRecovering(f"the bus process is RECOVERING: {control.fault()[1]}")
         if control.bus in (schema.BUS_HOLDING, schema.BUS_DONE, schema.BUS_STARTING) or \
                 not self.children.alive("p7_bus"):
             raise BusFault(f"the bus process is {schema.BUS_NAMES.get(control.bus, '?')}: "
@@ -375,14 +387,14 @@ class Launcher:
             return
         self._await_request(schema.WAIT_START, schema.REQ_START,
                             f"READY: the arm holds at home. Press {self._how()} to START "
-                            f"(then hold the clutch on the phone to drive); Ctrl-C to exit.")
+                            f"(then tap ENGAGE on the phone to drive); Ctrl-C to exit.")
 
     def active(self) -> None:
         """Spawn P6 and hand the arm over. Returns on RESET; EXIT leaves by raising."""
         self._set(schema.ACTIVE)
         self.children.start("p6_target", "elrobot_deploy.runtime.processes.p6_target.run",
                             (self.name, self.cfg))
-        self.log("[P0] ACTIVE: hold the clutch on the phone to drive the arm. "
+        self.log("[P0] ACTIVE: tap ENGAGE on the phone to drive the arm. "
                  "Ctrl-C to exit (twice to stop where it is).")
         while True:
             request = self._take_request()
@@ -423,6 +435,8 @@ class Launcher:
             if not self._skip_ramp:
                 self._check_bus()
                 self._await_even()
+                if self._recovering:
+                    self._ramp_to(self.cfg.poses.home, "recovery: back to the home pose")
                 self._ramp_to(self.cfg.poses.exit, "exit ramp")
                 ramped = True
         except _SkipRamp:
@@ -493,6 +507,11 @@ class Launcher:
                 self.reset()
         except _ExitNow:
             pass
+        except BusRecovering as exc:
+            # The guard's response: home, then rest, then torque off (in `exit`).
+            self._recovering = True
+            self._failure = exc
+            self.log(f"[P0] FAULT: {exc}. Recovering: home, then the exit pose, then torque off.")
         except _SkipRamp:
             self._skip_ramp = True
         except BaseException as exc:                        # noqa: BLE001

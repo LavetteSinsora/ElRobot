@@ -2,15 +2,15 @@ import SwiftUI
 import UIKit
 
 /// The grip (see ../README.md): screen facing LEFT, back camera RIGHT, the top (Dynamic
-/// Island) pointing FORWARD, held in the right hand with the thumb on the screen. So the
-/// screen's top is "forward" and its bottom is nearest the hand.
+/// Island) pointing FORWARD, held in the right hand with the thumb on the screen.
 ///
-/// One thumb drives everything, on one pad: touch anywhere on it to ENGAGE (the arm follows
-/// the phone while the thumb is down), and slide the thumb into the forward zone to also GRIP
-/// (the jaw closes while it is there, and opens when it leaves). Lifting the thumb releases
-/// the arm, which holds where it is; the jaw holds too.
+/// ENGAGE is a toggle: tap once and the arm follows the phone, tap again and it holds where it
+/// is. The app turns it off by itself whenever the Mac releases the arm (a guard fired, the
+/// rollout ended), so it never shows "on" while the arm is not following.
+/// GRIP is held: the jaw closes while your finger is on it and opens again when you let go.
 struct ContentView: View {
     @StateObject private var streamer = PoseStreamer()
+    @State private var engaged = false
     @AppStorage("host") private var host = "192.168.1.100"
     @AppStorage("port") private var port = 5005
 
@@ -51,7 +51,9 @@ struct ContentView: View {
 
             Button("Reset world origin") { streamer.startAR() }
 
-            ClutchPad { engage, grip in streamer.setButtons(engage: engage, grip: grip) }
+            EngageToggle(on: $engaged)
+                .frame(height: 150)
+            GripPad { streamer.setButtons(grip: $0) }
                 .frame(maxHeight: .infinity)
         }
         .padding()
@@ -62,6 +64,15 @@ struct ContentView: View {
         }
         .onChange(of: streamer.macState) { state in
             Haptics.on(state)
+            // The Mac let go (a guard, the end of the rollout) or is not driving yet: the
+            // toggle follows, so a new tap is a deliberate new engagement.
+            if engaged && (state == "released" || state == "inactive") {
+                engaged = false
+            }
+        }
+        .onChange(of: engaged) { on in
+            streamer.setButtons(engage: on)
+            UIImpactFeedbackGenerator(style: on ? .heavy : .light).impactOccurred()
         }
     }
 }
@@ -89,8 +100,8 @@ struct StatusBanner: View {
         let look: (String, Color) = {
             switch state {
             case "engaged": return ("ENGAGED: the arm follows the phone", .green)
-            case "idle": return ("READY: put your thumb on the pad to drive", .blue)
-            case "released": return ("RELEASED: lift your thumb, then press again", .red)
+            case "idle": return ("READY: tap ENGAGE to drive", .blue)
+            case "released": return ("RELEASED by the Mac: tap ENGAGE to drive again", .red)
             case "inactive": return ("WAITING: the arm is not ready yet", .gray)
             default: return ("NO REPLY from the Mac", .gray)
             }
@@ -107,71 +118,63 @@ struct StatusBanner: View {
     }
 }
 
-/// The one-thumb pad: any touch engages; a touch in the forward (top) zone also grips.
-struct ClutchPad: View {
-    let onChange: (Bool, Bool) -> Void
-    @State private var engaged = false
-    @State private var gripping = false
-
-    /// The forward fraction of the pad that also grips.
-    static let gripFraction: CGFloat = 0.4
+/// ENGAGE: tap to start following the phone, tap again to stop (the arm then holds).
+struct EngageToggle: View {
+    @Binding var on: Bool
 
     var body: some View {
-        GeometryReader { geo in
+        Button { on.toggle() } label: {
             ZStack {
-                VStack(spacing: 0) {
-                    ZStack {
-                        Rectangle().fill(gripping ? Color.orange : Color.orange.opacity(0.2))
-                        Text("GRIP\nslide the thumb here")
-                            .multilineTextAlignment(.center)
-                            .font(.title2.bold())
-                            .foregroundStyle(gripping ? Color.white : Color.orange)
-                    }
-                    .frame(height: geo.size.height * Self.gripFraction)
-                    ZStack {
-                        Rectangle().fill(engaged ? Color.green : Color.green.opacity(0.2))
-                        Text("ENGAGE\nhold to drive")
-                            .multilineTextAlignment(.center)
-                            .font(.title.bold())
-                            .foregroundStyle(engaged ? Color.white : Color.green)
-                    }
+                RoundedRectangle(cornerRadius: 24).fill(on ? Color.green : Color.green.opacity(0.2))
+                VStack(spacing: 4) {
+                    Text(on ? "ENGAGED" : "ENGAGE").font(.largeTitle.bold())
+                    Text(on ? "tap to stop (the arm holds)" : "tap: the arm follows the phone")
+                        .font(.subheadline)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 24))
-                TouchZones(gripFraction: Self.gripFraction) { e, g in
-                    engaged = e
-                    gripping = g
-                    onChange(e, g)
-                }
+                .foregroundStyle(on ? Color.white : Color.green)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// GRIP: hold to close the jaw; let go and it opens again.
+struct GripPad: View {
+    let onChange: (Bool) -> Void
+    @State private var pressed = false
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 24).fill(pressed ? Color.orange : Color.orange.opacity(0.2))
+            VStack(spacing: 4) {
+                Text("GRIP").font(.largeTitle.bold())
+                Text("hold to close, let go to open").font(.subheadline)
+            }
+            .foregroundStyle(pressed ? Color.white : Color.orange)
+            HoldArea { p in
+                pressed = p
+                onChange(p)
             }
         }
     }
 }
 
-/// Reports (engage, grip) whenever either changes: engage while any finger is down, grip while
-/// any finger is in the top `gripFraction` of the view. Backed by a UIView for multi-touch and
-/// for touches that slide between the zones.
-struct TouchZones: UIViewRepresentable {
-    let gripFraction: CGFloat
-    let onChange: (Bool, Bool) -> Void
+/// Reports true while any finger is on it, false when the last one lifts (a UIView, so it also
+/// works while another finger is elsewhere on the screen).
+struct HoldArea: UIViewRepresentable {
+    let onChange: (Bool) -> Void
 
     func makeUIView(context: Context) -> PadView {
         let v = PadView()
-        v.gripFraction = gripFraction
         v.onChange = onChange
         return v
     }
 
-    func updateUIView(_ v: PadView, context: Context) {
-        v.gripFraction = gripFraction
-        v.onChange = onChange
-    }
+    func updateUIView(_ v: PadView, context: Context) { v.onChange = onChange }
 
     final class PadView: UIView {
-        var gripFraction: CGFloat = 0.4
-        var onChange: ((Bool, Bool) -> Void)?
+        var onChange: ((Bool) -> Void)?
         private var touchesDown = Set<UITouch>()
-        private var lastEngage = false
-        private var lastGrip = false
 
         override init(frame: CGRect) {
             super.init(frame: frame)
@@ -181,28 +184,17 @@ struct TouchZones: UIViewRepresentable {
         required init?(coder: NSCoder) { fatalError("init(coder:) not used") }
 
         override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+            let wasIdle = touchesDown.isEmpty
             touchesDown.formUnion(touches)
-            report()
+            if wasIdle { onChange?(true) }
         }
-        override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) { report() }
-        override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-            touchesDown.subtract(touches)
-            report()
-        }
-        override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-            touchesDown.subtract(touches)
-            report()
-        }
+        override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { release(touches) }
+        override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { release(touches) }
 
-        private func report() {
-            let engage = !touchesDown.isEmpty
-            let limit = bounds.height * gripFraction
-            let grip = touchesDown.contains { $0.location(in: self).y < limit }
-            if engage != lastEngage || grip != lastGrip {
-                lastEngage = engage
-                lastGrip = grip
-                onChange?(engage, grip)
-            }
+        private func release(_ touches: Set<UITouch>) {
+            let wasDown = !touchesDown.isEmpty
+            touchesDown.subtract(touches)
+            if wasDown && touchesDown.isEmpty { onChange?(false) }
         }
     }
 }

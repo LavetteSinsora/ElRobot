@@ -271,3 +271,32 @@ def test_exit_while_waiting_for_the_phone(fast):
     threading.Thread(target=operator, daemon=True).start()
     assert p0.run() == 0, "\n".join(p0.lines)
     assert not any("HOME" == line.split()[-1] for line in p0.lines if line.startswith("[P0]"))
+
+
+def test_a_recoverable_fault_goes_home_then_rest_then_torque_off(fast):
+    """The bus process reports RECOVERING (a runaway or blocked joint) mid-rollout: P0 ramps
+    home, then to the exit pose, and only then lets torque go off."""
+    p0 = Recorder(fast)
+    seen = {"home_after_fault": False}
+
+    def fault_when_active():
+        while p0.rings is None or p0.rings["control"].session != schema.ACTIVE:
+            time.sleep(0.01)
+        # Standing in for the bus process's guard (it is the only writer of these words).
+        p0.rings["control"].set_fault("joints [5] are [40.0] deg off their command (test)")
+        p0.rings["control"].bus = schema.BUS_RECOVERING
+        while p0.rings["control"].session != schema.EXITING:
+            time.sleep(0.01)
+        while p0.rings["control"].session == schema.EXITING:
+            q = p0.rings["state"].latest()["q"]
+            if np.allclose(q, fast.poses.home, atol=np.radians(2)):
+                seen["home_after_fault"] = True
+            time.sleep(0.01)
+
+    threading.Thread(target=fault_when_active, daemon=True).start()
+    assert p0.run() == 1, "a fault is still a failed session"
+    release, last = p0.final
+    assert seen["home_after_fault"], "it went home first"
+    assert release, "then torque off"
+    assert np.allclose(last["q"], fast.poses.exit, atol=np.radians(1.0)), "at the exit pose"
+    assert any("Recovering" in line for line in p0.lines)

@@ -169,6 +169,7 @@ function banner() {
   if (!s.live) return ['wait', 'Preview: no robot connected.',
     'Green ghost: home, orange: exit. Drag the sliders to pose the solid arm.'];
   if (s.bus === 'HOLDING') return ['bad', `Bus fault: the arm is HELD where it is.`, s.fault];
+  if (s.bus === 'RECOVERING') return ['bad', 'Fault: going home, then to rest, then torque off.', s.fault];
   if (s.session === 'STOPPED') return ['', 'Session ended.', s.dry_run ? 'Dry run: torque was never on.'
     : 'If the exit ramp completed, torque is off; otherwise the arm is still held (see the terminal).'];
   if (s.session === 'EXITING') return ['wait', 'Exiting: returning to the exit pose…', ''];
@@ -179,11 +180,11 @@ function banner() {
   if (s.wait === 'HOME') return ['wait', 'The arm is held where it was found.',
     'The green ghost is the home pose. Check the path is clear, then press Home.'];
   if (s.session === 'HOME') return ['wait', 'Homing…', 'The arm ramps to the home pose.'];
-  if (s.wait === 'START') return ['wait', 'Homed: the arm holds.', 'Press Start, then hold the pad on the phone to drive.'];
+  if (s.wait === 'START') return ['wait', 'Homed: the arm holds.', 'Press Start, then tap ENGAGE on the phone to drive.'];
   if (s.session === 'ACTIVE') {
     if (s.phone && s.phone.engaged) return ['go', 'Driving: the arm follows the phone.',
-      'Lift your thumb to hold. Slide it forward to grip.'];
-    return ['go', 'Active: hold the pad on the phone to drive.', s.phone && !s.phone.fresh
+      'Tap ENGAGE again to hold. Hold GRIP to close the jaw.'];
+    return ['go', 'Active: tap ENGAGE on the phone to drive.', s.phone && !s.phone.fresh
       ? 'The phone is not streaming.' : 'The arm holds until you press.'];
   }
   if (s.session === 'CHECK' || s.session === 'INIT') return ['wait', 'Checking the hardware…',

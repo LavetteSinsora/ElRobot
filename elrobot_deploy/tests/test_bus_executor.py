@@ -129,7 +129,8 @@ def test_slew_clamp_bounds_every_tick(rings):
     s = servo(r)
     step(s, 0.0)
     q = step(s, 0.004)
-    assert np.allclose(q, 4.71 * 0.5 / 250.0)
+    arm = 4.71 * 0.5 / 250.0                                       # velocity_scale 0.5
+    assert np.allclose(q[:7], arm) and np.isclose(q[7], 4.71 / 250.0)   # the gripper: its own
 
 
 def test_limits_clip_the_command(rings):
@@ -233,20 +234,71 @@ def test_sine_plan_through_ring_servo_and_sim_driver_with_a_fake_clock(rings):
 # --- the guard ---------------------------------------------------------------------------
 
 
-def test_guard_lag_runaway_and_bus_failures():
-    g = p7_bus.Guard()
-    cmd = np.zeros(8)
-    late = np.zeros(8)
-    late[2] = np.radians(10)
-    assert g.check(0.0, cmd, late) is None                 # behind, but not for long yet
-    assert "joints [3]" in g.check(0.6, cmd, late)
-    g = p7_bus.Guard()
-    wild = np.zeros(8)
-    wild[4] = np.radians(30)
-    assert "not obeying" in g.check(0.0, cmd, wild) and g.runaway == [4]
-    g = p7_bus.Guard()
-    msgs = [g.check(0.0, cmd, None) for _ in range(p7_bus.BUS_FAILS)]
-    assert msgs[-1] is not None and all(m is None for m in msgs[:-1])
+def _run_guard(g, cmds, meas, hz=250.0):
+    """Feed (cmd, meas) pairs at `hz`; return the first fault and its time."""
+    for i, (c, m) in enumerate(zip(cmds, meas)):
+        f = g.check(i / hz, c, m)
+        if f is not None:
+            return f, i / hz
+    return None, None
+
+
+def test_a_joint_lagging_a_fast_command_is_not_a_runaway():
+    """Joint 5 sweeping at 135 deg/s, the servo 200 ms behind (27 deg): the case that tripped
+    the old distance-only rule on the real arm."""
+    from elrobot_deploy.runtime.execution.guard import Guard
+    t = np.arange(0, 2.0, 1 / 250)
+    cmd = np.zeros((len(t), 8))
+    cmd[:, 4] = np.radians(135) * t
+    meas = cmd.copy()
+    meas[:, 4] = np.radians(135) * np.maximum(t - 0.2, 0)
+    f, _ = _run_guard(Guard(), cmd, meas)
+    assert f is None
+
+
+def test_a_gripper_held_off_by_an_object_or_lagging_is_not_a_fault():
+    from elrobot_deploy.runtime.execution.guard import Guard
+    t = np.arange(0, 3.0, 1 / 250)
+    cmd = np.zeros((len(t), 8))
+    cmd[:, 7] = np.minimum(np.radians(200) * t, np.radians(130))     # closing fast ...
+    meas = cmd.copy()
+    meas[:, 7] = np.minimum(cmd[:, 7], np.radians(40))              # ... onto an object
+    f, _ = _run_guard(Guard(), cmd, meas)
+    assert f is None
+
+
+def test_a_joint_driving_away_from_its_command_is_a_runaway():
+    from elrobot_deploy.runtime.execution.guard import Guard
+    t = np.arange(0, 1.0, 1 / 250)
+    cmd = np.zeros((len(t), 8))
+    meas = cmd.copy()
+    meas[:, 2] = np.radians(100) * t                    # the command holds, the joint drives off
+    f, at = _run_guard(Guard(), cmd, meas)
+    assert f.kind == "runaway" and f.joints == [2] and at < 0.6
+
+
+def test_a_gross_error_is_a_runaway_whatever_the_motion():
+    from elrobot_deploy.runtime.execution.guard import Guard
+    meas = np.zeros(8)
+    meas[3] = np.radians(70)
+    f = Guard().check(0.0, np.zeros(8), meas)
+    assert f.kind == "runaway" and f.joints == [3]
+
+
+def test_a_blocked_joint_and_lost_reads():
+    from elrobot_deploy.runtime.execution.guard import Guard, GuardSettings
+    g = Guard()
+    cmd, late = np.zeros(8), np.zeros(8)
+    late[2] = np.radians(20)
+    assert g.check(0.0, cmd, late) is None
+    assert g.check(1.0, cmd, late) is None               # behind, but not for 1.5 s yet
+    f = g.check(1.6, cmd, late)
+    assert f.kind == "blocked" and f.joints == [2]
+    g.recovering = True
+    assert Guard(GuardSettings()).check(0.0, cmd, late) is None
+    g = Guard()
+    faults = [g.check(0.0, cmd, None) for _ in range(GuardSettings().read_fails)]
+    assert faults[-1].kind == "read" and all(f is None for f in faults[:-1])
 
 
 # --- the real driver, on the fake serial bus ---------------------------------------------
