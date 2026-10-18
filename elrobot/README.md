@@ -14,13 +14,21 @@ New code, written from scratch. It doesn't depend on `servo_setup/`.
 | `kinematics.py` | URDF parser and forward kinematics |
 
 The upstream URDF and meshes are in `../description/elrobot_upstream/`; see `SOURCE.md` there.
+Ours (`../description/elrobot_ours/`, generated from upstream's plus calibration) is the one
+every pose is written in.
 
 ## Conventions
 
-- Joint angles follow the **upstream URDF**. At q = 0 the upper arm is vertical and the
-  wrist and gripper are horizontal along +y; z is up.
+- Joint angles follow the **upstream URDF** (ours keeps them). At q = 0 the upper arm is
+  vertical and the wrist and gripper are horizontal, pointing forward; z is up.
+- Base frame: ours is REP-103, **x forward** (where the arm reaches at q = 0), **y left, z up**.
+  Upstream's `base_link` has the arm along **+y** (x to the robot's right); ours renames it
+  `base_body` and turns it under a new `base_link`. `kinematics` prints ours by default.
+- Joint **limits** for `calibration` and `find_range` come from the upstream URDF (`Robot()`'s
+  default): the middle of its ranges sets zero readings, its width caps a search. Our URDF's
+  limits are the calibrated safe ranges built from those, so they can't be used here.
 - The folded rest pose is the calibration reference and the home pose. It is *not* zero;
-  by the estimate in `tests/test_kinematics.py` it is about shoulder −90°, elbow +90°.
+  it is shoulder −90°, elbow 0, wrist pitch +90° (`poses.py`).
 - Servo offset (EEPROM): chosen so the middle of each joint's travel reads 2048, which keeps
   the 4095→0 wrap outside the joint's travel.
 - Conversion (calibration file, coming next): `q = sign × (reported − 2048) × 2π/4096 + c`.
@@ -34,7 +42,7 @@ uv run python -m elrobot.find_range --joint 8                # MOVES joint 8; me
 uv run python -m elrobot.find_range --joint 8 --write-offset # ...and centres its range on 2048 if the checks pass
 uv run python -m elrobot.relax                               # torque off everywhere + undo an unfinished run
 uv run python -m elrobot.precentre 4                         # joint 4 rests near 4095->0: move that point away
-uv run python -m elrobot.kinematics --deg 0 -90 90 0 0 0 0 0
+uv run python -m elrobot.kinematics --deg 0 -90 0 90 0 0 0 0   # the rest pose, our base frame (mm)
 uv run pytest                              # simulated-bus and kinematics tests
 ```
 

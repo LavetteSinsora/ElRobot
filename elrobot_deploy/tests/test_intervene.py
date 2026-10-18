@@ -41,7 +41,8 @@ GRIP = np.c_[[0, 0, 1], [0, 1, 0], [-1, 0, 0]].astype(float)
 
 
 def room(**kw):
-    kw = {"phone_forward": (-1, 0, 0), "base_forward": (0, 1, 0), "base_up": (0, 0, 1)} | kw
+    """The shipped profile's axes: base_link is REP-103 (x forward, y left, z up)."""
+    kw = {"phone_forward": (-1, 0, 0), "base_forward": (1, 0, 0), "base_up": (0, 0, 1)} | kw
     return RoomFrame(kw.pop("phone_forward"), kw.pop("base_forward"), kw.pop("base_up"), **kw)
 
 
@@ -53,8 +54,8 @@ def test_the_grip_matrix_is_a_rotation():
 
 
 @pytest.mark.parametrize("move, expect", [
-    ((0, 0, -0.1), (0, 0.1, 0)),       # forward in the room -> base +y (forward)
-    ((-0.1, 0, 0), (-0.1, 0, 0)),      # left -> base -x (left)
+    ((0, 0, -0.1), (0.1, 0, 0)),       # forward in the room -> base +x (forward)
+    ((-0.1, 0, 0), (0, 0.1, 0)),       # left -> base +y (left)
     ((0, 0.1, 0), (0, 0, 0.1)),        # up -> base +z
 ])
 def test_moving_the_phone_moves_the_tcp_the_same_way(move, expect):
@@ -72,7 +73,7 @@ def test_forward_is_wherever_the_operator_faces_at_the_press():
     rf = room()
     rf.freeze(pose(turn @ GRIP, [0, 0, 0]))
     ahead = turn @ np.array([0, 0, -0.1])
-    assert np.allclose(rf.delta(pose(turn @ GRIP, ahead))[:3], [0, 0.1, 0], atol=1e-12)
+    assert np.allclose(rf.delta(pose(turn @ GRIP, ahead))[:3], [0.1, 0, 0], atol=1e-12)
     assert np.allclose(rf.axes(pose(turn @ GRIP, ahead)), [0.1, 0, 0], atol=1e-12)
 
 
@@ -80,7 +81,7 @@ def test_the_heading_ignores_how_the_phone_is_tilted_at_the_press():
     tilted = rot([1, 0, 0], -30) @ GRIP          # top pitched 30 deg down, still facing ahead
     rf = room()
     rf.freeze(pose(tilted, [0, 0, 0]))
-    assert np.allclose(rf.delta(pose(tilted, [0, 0, -0.1]))[:3], [0, 0.1, 0], atol=1e-12)
+    assert np.allclose(rf.delta(pose(tilted, [0, 0, -0.1]))[:3], [0.1, 0, 0], atol=1e-12)
 
 
 def test_a_phone_pointing_straight_up_has_no_heading():
@@ -94,11 +95,12 @@ def test_rotations_are_room_frame():
     rf = room()
     rf.freeze(pose(GRIP, [0, 0, 0]))
     # Tilting the top down (about the operator's left axis, world -X... i.e. right-hand about
-    # +X by -20 deg) pitches the TCP about the base's left axis (-x) the same way.
+    # +X by -20 deg) pitches the TCP about the base's left axis (+y) the same way: right-hand
+    # about +y by +20 deg.
     d = rf.delta(pose(rot([1, 0, 0], -20) @ GRIP, [0, 0, 0]))
     R = mat_from_quat(d[3:])
-    assert np.allclose(R, rot([1, 0, 0], -20), atol=1e-9)
-    assert np.allclose(R @ [0, 1, 0], [0, math.cos(math.radians(20)),
+    assert np.allclose(R, rot([0, 1, 0], 20), atol=1e-9)
+    assert np.allclose(R @ [1, 0, 0], [math.cos(math.radians(20)), 0,
                                        -math.sin(math.radians(20))], atol=1e-9), \
         "forward tips down"
     # Turning left (about up) yaws the TCP left about base +z.
@@ -110,8 +112,18 @@ def test_scale_applies_to_translation_only():
     rf = room(scale=0.5)
     rf.freeze(pose(GRIP, [0, 0, 0]))
     d = rf.delta(pose(rot([0, 1, 0], 30) @ GRIP, [0, 0, -0.2]))
-    assert np.allclose(d[:3], [0, 0.1, 0], atol=1e-12)
+    assert np.allclose(d[:3], [0.1, 0, 0], atol=1e-12)
     assert quat_angle(d[3:]) == pytest.approx(math.radians(30))
+
+
+def test_a_base_with_other_axes_needs_only_base_forward_and_base_up():
+    """A description whose base_link has +y forward (upstream's, before our rebase) would set
+    `base_forward = [0, 1, 0]`: forward in the room then lands on its +y, left on its -x."""
+    rf = room(base_forward=(0, 1, 0))
+    rf.freeze(pose(GRIP, [0, 0, 0]))
+    assert np.allclose(rf.delta(pose(GRIP, [0, 0, -0.1]))[:3], [0, 0.1, 0], atol=1e-12)
+    assert np.allclose(rf.delta(pose(GRIP, [-0.1, 0, 0]))[:3], [-0.1, 0, 0], atol=1e-12)
+    assert np.allclose(rf.axes(pose(GRIP, [0, 0, -0.1])), [0.1, 0, 0], atol=1e-12)
 
 
 def test_apply_delta_moves_and_rotates_about_the_tcp():

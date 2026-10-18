@@ -24,11 +24,12 @@ def short_pose(d: dict) -> str:
             f"{d['gripper_mm']:3.0f} mm")
 
 
-def now_section(row: dict, cameras) -> str:
-    """`row`: one tick of the in-memory timeline (`harness.Ingest.ticks`)."""
+def now_section(row: dict, cameras, image: str = "observation_now.jpg") -> str:
+    """`row`: one tick of the in-memory timeline (`harness.Ingest.ticks`); `image`: strip A's
+    path as Astra opens it (relative to the workspace)."""
     return "\n".join([
         f"# Current observation (tick {row['tick']}, t={row['t']:.2f} s)",
-        f"[image observation_now.jpg: {' | '.join(cameras)}]",
+        f"[image {image}: {' | '.join(cameras)}]",
         "",
         f"Virtual TCP, base frame:  {pose_line(row['meas_xyz'], row['meas_rpy'], row['meas_gripper_mm'])}",
         "",
@@ -37,14 +38,16 @@ def now_section(row: dict, cameras) -> str:
     ])
 
 
-def result_section(out: dict, cameras, step_dir: str) -> str:
-    """`out`: an action's `execution_outcome.json`."""
+def result_section(out: dict, cameras, step_dir: str, *,
+                   image: str = "observation_history.jpg",
+                   timeline: str = "timeline.sqlite") -> str:
+    """`out`: an action's `execution_outcome.json`; the paths as Astra opens them."""
     a = out["action"]
     cols = ", ".join(str(t) for t in out["history_ticks"])
     lines = [
         (f"# Action {a} result (tick {out['tick_start']} → {out['tick_end']}, "
          f"{out['duration_s']:.1f} s)"),
-        f"[image observation_history.jpg: rows {', '.join(cameras)}; columns tick {cols}]",
+        f"[image {image}: rows {', '.join(cameras)}; columns tick {cols}]",
         "",
     ]
     if out.get("interrupted"):
@@ -64,7 +67,7 @@ def result_section(out: dict, cameras, step_dir: str) -> str:
         "",
         "For more detail:",
         f"  this action's full result:  {step_dir}/execution_outcome.json",
-        (f"  per-tick data:              sqlite3 timeline.sqlite \"SELECT tick, t, meas_z_m, "
+        (f"  per-tick data:              sqlite3 {timeline} \"SELECT tick, t, meas_z_m, "
          f"cmd_z_m FROM timeline WHERE action_id = {a}\""),
     ]
     return "\n".join(lines)

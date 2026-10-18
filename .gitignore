@@ -13,3 +13,5 @@ xcuserdata/
 .claude/worktrees/
 # executor test logs (elrobot_deploy.cli.executor_test)
 logs/
+# the Astra workspace (generated AGENTS.md, codex_config.toml, every episode)
+/astra/

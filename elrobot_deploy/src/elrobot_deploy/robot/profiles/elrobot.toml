@@ -78,8 +78,8 @@ phone_forward = "-x"
 # y left, z up).
 base_forward = [1.0, 0.0, 0.0]
 base_up = [0.0, 0.0, 1.0]
-# workspace_min = [-0.30, 0.08, 0.02]   # optional: clamp the TCP into this box (base frame, m;
-# workspace_max = [0.30, 0.40, 0.35]    # the base's bottom is z = 0). Off: no box at all.
+# workspace_min = [0.08, -0.30, 0.02]   # optional: clamp the TCP into this box (base frame, m;
+# workspace_max = [0.40, 0.30, 0.35]    # the base's bottom is z = 0). Off: no box at all.
 
 [safety]
 # The bus process's guards (runtime/execution/guard.py). A RUNAWAY is a joint far off its
@@ -111,8 +111,8 @@ jpeg_quality = 90       # a fisheye is recorded as its lens square, a normal cam
 
 [astra]
 # The harness an agent (GPT-6 Astra, through Codex and MCP) drives the arm with:
-# `elrobot_deploy astra --task "..."`. What it is and how a session looks: docs/astra.md.
-sessions_dir = "logs/astra"     # one folder per session, relative to ElRobot/
+# `elrobot_deploy astra`, then Codex opened on the workspace. What it is: docs/astra.md.
+workspace = "astra"             # relative to ElRobot/: AGENTS.md, episodes/ (not versioned)
 cameras = ["exo", "wrist"]      # left to right in every image; a camera not running is skipped
 anchor_camera = "wrist"         # its frames are the ticks (30 Hz); else the first one running
 gripper_open_mm = 55.0          # the jaws' inner gap at the open end (3 deg), ruler, 2026-10-17

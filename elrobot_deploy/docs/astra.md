@@ -1,27 +1,34 @@
 # The Astra harness: an agent drives the ElRobot
 
 GPT-6 Astra, running Codex-style (shell, files, view an image by path, MCP tools), drives the
-arm through three MCP tools, on top of `elrobot_deploy`. A port of g1d's exp_011 design
+arm through four MCP tools, on top of `elrobot_deploy`. A port of g1d's exp_011 design
 (`ego2g1_v2/experiments/exp_011_astra_manipulation_bench/SPEC.md`, 2026-09-28); section 9 lists
 what changed for this arm and why. Built 2026-10-17; run in simulation end to end, **not yet
 with Astra or on the real arm**.
 
 ```bash
-# terminal 1 (from ElRobot/elrobot_deploy/): the session. Home and Start as usual
-uv run elrobot_deploy astra --task "put the red cube in the cup"
+# once: paste ElRobot/astra/codex_config.toml (written by the first launch) into
+# ~/.codex/config.toml: the `elrobot` MCP server (the Codex app and CLI share that file)
+
+# the robot (from ElRobot/elrobot_deploy/): check, then press Home; it waits at READY
+uv run elrobot_deploy astra
 #   --sim --fake-cameras   the whole thing without hardware
 #   --dry-run              the real arm read, torque off (only the dashboard's ghost moves)
-# terminal 2, once terminal 1 says READY: Astra
-logs/astra/current/start_codex.sh          # ASTRA_MODEL=<model> to pick the model
+
+# Codex (the app, or `codex -C ElRobot/astra`) opened on the workspace ElRobot/astra/:
+# it reads AGENTS.md by itself. Give it the task; Astra calls `start(task)`, works, `finish`es.
+# The arm goes home; the next task is the next episode, as many as you like.
 ```
 
 ## 1. What it is
 
-1. **Tools**: `send_action`, `inspect_observation`, `finish` (sections 5-7).
-2. **A session folder** with everything Astra may want to look at, readable with `ls`, `cat`,
-   `jq`, `sqlite3` and the image viewer (sections 3-4).
-3. **A bootstrap doc**, the session's `README.md` (`src/elrobot_deploy/astra/session_readme.md`
-   filled in): frames, units, the tools, the folder.
+1. **Tools**: `start`, `send_action`, `inspect_observation`, `finish` (sections 5-7).
+2. **A workspace** (`[astra] workspace`, `ElRobot/astra/`, not versioned) that Codex is
+   opened on, with one folder per episode: everything Astra may want to look at, readable
+   with `ls`, `cat`, `jq`, `sqlite3` and the image viewer (sections 3-4).
+3. **`AGENTS.md`** at the workspace root (`src/elrobot_deploy/astra/agents_template.md`
+   filled in from the profile at every launch), which Codex loads by itself before the first
+   message: the robot, how an episode goes, frames, units, the tools, the folder.
 4. **Wiring into elrobot_deploy**: the Astra source (P12), the recorder (P9), the harness
    process, the MCP server (section 8).
 
@@ -29,43 +36,45 @@ logs/astra/current/start_codex.sh          # ASTRA_MODEL=<model> to pick the mod
 
 | quantity | convention |
 |---|---|
-| time index | **`tick`**: the anchor camera's (`[astra] anchor_camera`, the wrist) frame index, 30 Hz, from the session start, **through holds**. Deploy's `k` is never shown. |
+| time index | **`tick`**: the anchor camera's (`[astra] anchor_camera`, the wrist) frame index, 30 Hz, from the episode's start, **through holds**. Deploy's `k` is never shown. |
 | time | `t`: seconds since tick 0. One `t` per tick: every camera and the state as if taken then. |
 | base frame | **x forward, y left, z up** (REP-103): the URDF's `base_link` itself (rebased 2026-10-18, `description/elrobot_ours/make_description.py` step 0). `astra/frames.py`'s `TaskFrame` is then the identity; it stays so another description needs only `[teleop] base_forward / base_up`. |
 | pose | the **virtual TCP** (the URDF's `tcp` link), base frame; metres (3 decimals); roll / pitch / yaw degrees, `R = Rz(yaw)·Ry(pitch)·Rx(roll)`. No quaternions. |
 | TCP axes | **x out of the jaws**, **y the jaw-opening direction**, z = x × y: the URDF's `tcp` frame as it is (checked by FK: at the zero pose its axes are the base axes, rpy ≈ 0; at home pitch = +45.5°, TCP at [0.246, 0.000, 0.096] m). |
 | gripper | **opening in mm**, in and out: 55 mm at the open end (3°, ruler, 2026-10-17) to 0 at the closed end of the calibrated range (139.8°), linear (`GripperMap`). Astra never sees servo angles. |
-| cameras | `exo` (an iPhone on a stand, Continuity Camera, 1280×720) and `wrist` (the HX200S fisheye), in that order left to right. Either may be absent; the README then says so. |
+| cameras | `exo` (an iPhone on a stand, Continuity Camera, 1280×720) and `wrist` (the HX200S fisheye), in that order left to right. Either may be absent; `start`'s reply then says so. |
 | fisheye views | the circle of the recorded lens square, outside it black, no undistortion. |
 
 Lag and sag are not mentioned to Astra (decided 2026-10-17): the result table shows commanded
 next to measured, and that is enough.
 
-## 3. Session folder
-
-`[astra] sessions_dir` (default `ElRobot/logs/astra/`), one folder per session, `current`
-pointing at the newest:
+## 3. The workspace and its episodes
 
 ```
-logs/astra/2026-10-17_143200_put_the_red_cube_in_the_cup/
-  README.md            the bootstrap doc
-  session.json         task, robot, limits, home TCP pose, clock (tick 0), cameras, sockets,
-                       Astra's finish verdict + an empty human_outcome
-  opening_prompt.md    the opening message (task + "Current observation")
-  start_codex.sh       Codex on this session (section 8.4)
-  record -> ../../records/<session id>     P9's raw record of the rollout
-  frames/<cam>/tNNN/tickNNNNNN.jpg         every tick's frame of every camera (P9's JPEG bytes)
-  timeline.sqlite      one row per tick (section 4)
-  actions.jsonl        one line per action: folder, tick range, waypoints, interrupted
-  actions/NNNN/        decision step N:
-    observation_now.jpg       strip A Astra decided action N from
-    observation_history.jpg   sheet H2 of action N-1's motion (absent in 0001)
-    observation.txt           the exact text Astra had (action N-1's reply / the opening)
-    action.json               what Astra sent for action N
-    execution_outcome.json    how action N went (section 5.2)
-    inspections/NNN.jpg       inspect_observation images made while deciding N
-    rejected.jsonl            refused send_action calls made while deciding N
+ElRobot/astra/                       [astra] workspace; Codex's working directory
+  AGENTS.md                          rewritten at every launch from the profile
+  codex_config.toml                  the [mcp_servers.elrobot] table to paste, once
+  episodes/current -> <newest>
+  episodes/2026-10-18_143200_put_the_red_cube_in_the_cup/
+    episode.json        task, robot, limits, home TCP pose, clock (tick 0), cameras, the
+                        record, Astra's finish verdict + an empty human_outcome
+    record -> ../../../logs/records/<stamp>     P9's raw record of the rollout
+    frames/<cam>/tNNN/tickNNNNNN.jpg            every tick's frame of every camera (P9's bytes)
+    timeline.sqlite     one row per tick (section 4)
+    actions.jsonl       one line per action: folder, tick range, waypoints, interrupted
+    actions/NNNN/       decision step N:
+      observation_now.jpg       strip A Astra decided action N from
+      observation_history.jpg   sheet H2 of action N-1's motion (absent in 0001)
+      observation.txt           the exact text Astra had (action N-1's reply / `start`'s)
+      action.json               what Astra sent for action N
+      execution_outcome.json    how action N went (section 5.2)
+      inspections/NNN.jpg       inspect_observation images made while deciding N
+      rejected.jsonl            refused send_action calls made while deciding N
 ```
+
+Paths in replies are relative to the workspace (`episodes/<id>/actions/0003/...`), so Astra
+opens them as given; every image a tool returns is also named in the text, for a client that
+does not pass MCP images on.
 
 Folder N = decision step N (the rule from g1d): what was seen when deciding, what was sent,
 how it executed. The images that show action N's motion are what Astra sees before deciding
@@ -121,14 +130,14 @@ harness commits every 0.25 s.
 
 ```
 # Current observation (tick 216, t=7.20 s)
-[image observation_now.jpg: exo | wrist]
+[image episodes/2026-10-18_143200_touch_the_table/actions/0002/observation_now.jpg: exo | wrist]
 
 Virtual TCP, base frame:  position [ 0.253,  0.020,  0.061] m   rotation (roll, pitch, yaw) [  20.5,   41.6,   27.6]°   gripper opening 10 mm
 
 Your next action's waypoints are offsets from the arm's last commanded pose, in its TCP frame.
 
 # Action 1 result (tick 136 → 213, 2.6 s)
-[image observation_history.jpg: rows exo, wrist; columns tick 136, 162, 187]
+[image episodes/2026-10-18_143200_touch_the_table/actions/0002/observation_history.jpg: rows exo, wrist; columns tick 136, 162, 187]
 
  wp  deadline tick   commanded                                     measured at deadline
   1  154             [0.267, 0.000, 0.075] m  [2, 46, 0]°   40 mm  [0.267, 0.000, 0.075] m  [2, 46, 1]°   40 mm
@@ -137,8 +146,8 @@ Your next action's waypoints are offsets from the arm's last commanded pose, in 
 Largest IK residual: 0.1 mm / 0.0° at tick 144.
 
 For more detail:
-  this action's full result:  actions/0001/execution_outcome.json
-  per-tick data:              sqlite3 timeline.sqlite "SELECT tick, t, meas_z_m, cmd_z_m FROM timeline WHERE action_id = 1"
+  this action's full result:  episodes/2026-10-18_143200_touch_the_table/actions/0001/execution_outcome.json
+  per-tick data:              sqlite3 episodes/2026-10-18_143200_touch_the_table/timeline.sqlite "SELECT tick, t, meas_z_m, cmd_z_m FROM timeline WHERE action_id = 1"
 ```
 
 (A real reply from a simulated session.) The tick range runs from the first sample to the
@@ -160,16 +169,24 @@ planned duration.
 of ≤ 4 columns. `cams` narrows the rows. Saved in the current step's `inspections/`. A raw
 frame needs no tool: `frames/<cam>/tNNN/tickNNNNNN.jpg`.
 
-## 7. Start and `finish`
+## 7. `start` and `finish`: episodes
 
-- **Start (no tool)**: `elrobot_deploy astra` runs the usual CHECK / Home / Start gates
-  (dashboard buttons or Enter; `--auto-home --auto-start` skip them). At ACTIVE the harness
-  waits for 6 ticks, writes `actions/0001` (strip A + "Current observation"),
-  `opening_prompt.md` and `start_codex.sh`, and prints `READY`.
-- **`finish(success, summary, lessons?)`**: the verdict goes into `session.json` (`finish`:
-  the three fields, tick, `t`, number of actions, `human_outcome: null` for you); the harness
-  requests RESET, the arm goes home. **One session = one rollout**: after it P0 waits only for
-  Exit (dashboard or Ctrl-C), which ramps to rest and releases torque.
+- **The launch**: `elrobot_deploy astra` writes the workspace's `AGENTS.md` and
+  `codex_config.toml`, runs CHECK, and waits for **Home** (the dashboard's button or Enter; the
+  one step where the arm moves on the person's say-so). Then the arm holds at home, P0 at READY.
+- **`start(task)`** (decided 2026-10-18: Astra begins episodes itself, the person starts the
+  runtime): the harness requests START (no motion: it only hands the arm over), finds P9's
+  record of the new rollout, opens `episodes/<stamp>_<task>/`, waits for 6 ticks, writes
+  `actions/0001` (strip A + "Current observation") and replies with the episode's folder, the
+  cameras running and the opening observation. Refused while an episode runs. Called while the
+  arm is still homing after the last episode, it waits for READY (up to 30 s). If the person
+  pressed Start themselves, `start` adopts that rollout.
+- **`finish(success, summary, lessons?)`**: the verdict goes into `episode.json` (`finish`: the
+  three fields, tick, `t`, number of actions, `human_outcome: null` for you); the harness
+  requests RESET, the arm goes home, P0 waits at READY for the next `start`. Any number of
+  episodes per launch; Ctrl-C (or Exit) ends the launch: exit ramp to rest, torque off.
+- A rollout that ends any other way (Reset or Exit pressed, a guard) ends its episode: the
+  robot tools say so, and `start` begins a new one.
 
 ## 8. Wiring
 
@@ -202,7 +219,7 @@ ACTIVE or the bus stops following. No workspace box (decided 2026-10-17).
 ### 8.2 P9, the recorder
 
 `runtime/processes/p9_record.py`, ported from g1d: one record per ACTIVE period under
-`[record] dir` (`logs/records/`; an Astra session's is named after the session): `state.bin`
+`[record] dir` (`logs/records/<stamp>/`; an episode links to its own): `state.bin`
 (every bus read), `targets.bin`, `intervene.bin`, `session.bin`, per camera `<cam>.jpg.bin` +
 `<cam>.idx.bin`, `manifest.json` (dtypes, config, code revision). New against g1d: it encodes
 the JPEGs (a fisheye as its lens square), and flushes every 0.1 s so the harness can tail it.
@@ -216,23 +233,27 @@ it is written).
 Codex / Astra
   | stdio (MCP)
 MCP server       astra/mcp_server.py: a child of Codex, stateless, stdlib only
-  | Unix socket  /tmp/elrobot-astra-<stamp>/harness.sock   (paths: session.json)
-harness          astra/harness.py, a child of P0: the tools, the folder, the images, the timeline;
-  |              tails P9's record; writes only control.request (RESET at finish)
-  | Unix socket  /tmp/elrobot-astra-<stamp>/player.sock
+  | Unix socket  /tmp/elrobot-astra/harness.sock   (fixed: the MCP server needs no argument)
+harness          astra/harness.py, a child of P0, for the whole launch: the tools, the episodes,
+  |              images, timelines; tails P9's records; writes only control.request
+  |              (START at `start`, RESET at `finish`)
+  | Unix socket  /tmp/elrobot-astra/player.sock
 P12              the Astra source -> intervention ring -> P6 (IK) -> P7 (bus) -> the arm
 ```
 
-Sockets live under `/tmp` because macOS caps a socket path at 104 bytes and the session folder
-(under this repo) is far longer.
+Sockets live under `/tmp` because macOS caps a socket path at 104 bytes and the workspace
+(under this repo) is far longer. One launch at a time on a machine (they share the sockets).
 
 ### 8.4 Codex
 
-`start_codex.sh` wires the MCP server in with `-c mcp_servers.elrobot.*` overrides (no edit of
-`~/.codex/config.toml`), sets `tool_timeout_sec = 900` (one `send_action` blocks for the whole
-motion; Codex's default is 60 s), runs in the session folder, and passes the opening prompt
-and `--image actions/0001/observation_now.jpg`. **Not yet run: Codex is not installed on this
-Mac.** If its flags differ, the server command is in the script.
+Registered once: the `[mcp_servers.elrobot]` table in `~/.codex/config.toml` (the launch
+writes it to `ElRobot/astra/codex_config.toml`: the venv's python, `-m
+elrobot_deploy.astra.mcp_server`, `tool_timeout_sec = 900` because one `send_action` blocks for
+the whole motion and Codex's default is 60 s). The Codex app and the CLI read the same file.
+Then Codex is opened on the workspace; `AGENTS.md` there is in Astra's context before the first
+message. **Not yet run: Codex is not installed on this Mac; the first runs will be in the Codex
+app.** Whether it passes MCP image results to the model is to be seen: every reply also names
+its images' paths.
 
 ## 9. What changed from the G1-D design
 
@@ -255,7 +276,8 @@ Mac.** If its flags differ, the server command is in the script.
 
 - **First runs**: `astra --sim --fake-cameras` with Codex; then `--dry-run`; then the arm, slow
   (`--set limits.velocity_scale=0.3`; the joint check follows it).
-- **Codex flags** (section 8.4) and its tool-call timeout, on a Mac with Codex.
+- **The Codex app**: the MCP table (section 8.4), its tool-call timeout, whether MCP images
+  reach the model.
 - **The exo iPhone** streams through AVFoundation as a Continuity Camera (listed on this Mac,
   2026-10-17, model iPhone15,3, 1280×720 @ 30); not yet streamed in a session. USB bandwidth is
   not an issue for it (WiFi), but the wrist camera and the servo adapter share a USB 2 hub.

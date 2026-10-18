@@ -27,7 +27,7 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from .kinematics import Robot
+from .kinematics import UPSTREAM_URDF, Robot
 from .probe import JOINTS
 from .st3215 import registers as R
 
@@ -113,7 +113,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--show", action="store_true", help="read the arm and print URDF angles")
     args = ap.parse_args(argv)
-    robot = Robot()
+    # Upstream's limits, on purpose: the zero readings come from the middle of its ranges, and
+    # our description's limits are built from this file (make_description.py step 1).
+    robot = Robot(UPSTREAM_URDF)
     if not args.show:
         cals = build(json.loads((CAL_DIR / "hand_ranges.json").read_text())["joints"], robot)
         save(cals)

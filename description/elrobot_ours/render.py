@@ -64,7 +64,7 @@ def main(argv=None) -> int:
     fig = plt.figure(figsize=(13, 6.5))
     # base_link is REP-103 (x forward, y left): the same three views as before step 0 of
     # make_description.py, each turned with the frame.
-    views = [(20, -150, "front-left"), (10, -90, "from the side (the robot's right, -y)"),
+    views = [(20, -150, "from behind-right"), (10, -90, "from the side (the robot's right, -y)"),
              (80, -180, "from above")]
     pts_all = []
     meshes = []

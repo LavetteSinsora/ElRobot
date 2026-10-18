@@ -289,8 +289,8 @@ uv run elrobot_deploy executor-test --joints 6   # the executor's sine test
 uv run elrobot_deploy camera list                # the cameras; also: camera probe, camera test
 #   run flags for cameras: --no-cameras, --fake-cameras, --set cameras.wrist.exposure="camera"
 uv run elrobot_deploy run --record               # ... and record every rollout (P9)
-uv run elrobot_deploy astra --task "..."         # Astra drives (docs/astra.md); --sim --fake-cameras
-logs/astra/current/start_codex.sh                # (from ElRobot/) Codex on that session, once READY
+uv run elrobot_deploy astra                      # Astra drives (docs/astra.md); --sim --fake-cameras
+#   then Codex opened on ElRobot/astra/ (AGENTS.md); Astra's `start(task)` begins each episode
 ```
 
 The bus process's tick log (every tick: the line, the command, the measurement, timing; the
@@ -306,13 +306,14 @@ carrying each stream's dtype, the resolved profile and the code's revision. It f
 0.1 s, so a record can be read while it is written (`elrobot_deploy.record`: `load`, `Tail`).
 `run --record` turns it on; an `astra` session always records.
 
-**The Astra harness** (`elrobot_deploy astra --task "..."`, the whole design in
-**`astra.md`**) lets an agent (GPT-6 Astra through Codex and MCP) drive the arm: P12 takes
+**The Astra harness** (`elrobot_deploy astra`, the whole design in **`astra.md`**) lets an agent (GPT-6 Astra through Codex and MCP) drive the arm: P12 takes
 the phone source's place on the intervention ring (one action = one engagement: timed
 waypoints streamed like phone rows, then a release, so the arm holds while the agent thinks),
-and the harness process turns P9's record into the session folder Astra reads (frames per
-tick, `timeline.sqlite`, rendered strips, one folder per decision) and serves the three tools
-to the MCP server Codex runs.
+and the harness process serves the four tools (`start`, `send_action`, `inspect_observation`,
+`finish`) to the MCP server Codex runs, and turns P9's record of each episode into the folder
+Astra reads (frames per tick, `timeline.sqlite`, rendered strips, one folder per decision).
+Codex is opened on the workspace (`ElRobot/astra/`, with a generated `AGENTS.md`); `start`
+requests START and `finish` RESET, so one launch serves any number of episodes.
 
 ## Not here yet
 

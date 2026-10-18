@@ -4,8 +4,20 @@ Each joint contributes  T = Translate(origin.xyz) * Rot(origin.rpy) * Motion(axi
 where Motion is a rotation about `axis` (revolute) or a translation along it (prismatic).
 A link's pose in the base frame is the product of these along the path from the root.
 
+Two URDFs, two uses:
+  OURS_URDF      description/elrobot_ours: our geometry (TCP, camera) in a REP-103 base_link,
+                 x forward (where the arm reaches at the zero pose), y left, z up, and the
+                 calibrated safe ranges as limits. Every pose this repo writes is in this frame;
+                 the command line below prints it.
+  UPSTREAM_URDF  description/elrobot_upstream: upstream's file, base_link with the arm along +y
+                 (x to the robot's right). `Robot()` still defaults to it because calibration.py
+                 and find_range.py read upstream's joint LIMITS from it (the middle of a range,
+                 the width a search may cover). Ours cannot replace it there: its limits are
+                 derived from calibration. Joint angles are the same in both files.
+
     uv run python -m elrobot.kinematics                       # joint positions at q = 0
-    uv run python -m elrobot.kinematics --deg 0 -90 90 0 0 0 0 0
+    uv run python -m elrobot.kinematics --deg 0 -90 0 90 0 0 0 0   # the rest pose
+    uv run python -m elrobot.kinematics --urdf description/elrobot_upstream/elrobot_follower.urdf
 """
 
 import argparse
@@ -16,6 +28,7 @@ from pathlib import Path
 import numpy as np
 
 UPSTREAM_URDF = Path(__file__).resolve().parent.parent / "description/elrobot_upstream/elrobot_follower.urdf"
+OURS_URDF = Path(__file__).resolve().parent.parent / "description/elrobot_ours/elrobot.urdf"
 ARM_JOINTS = [f"rev_motor_0{i}" for i in range(1, 9)]
 
 
@@ -104,16 +117,23 @@ class Robot:
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--deg", type=float, nargs=8, metavar="Q", help="joint angles 1-8 in degrees")
-    ap.add_argument("--urdf", type=Path, default=UPSTREAM_URDF)
+    ap.add_argument("--urdf", type=Path, default=OURS_URDF,
+                    help="default: ours (x forward, y left, z up; limits = the calibrated safe ranges)")
     args = ap.parse_args(argv)
 
     robot = Robot(args.urdf)
     q = dict(zip(ARM_JOINTS, np.radians(args.deg))) if args.deg else {}
-    print(f"{'joint':<14} {'q deg':>7}  {'x':>7} {'y':>7} {'z':>7}  (mm, base frame: z up, arm reaches +y)")
+    # which way this file's base frame has the arm reaching at q = 0 (ours +x, upstream's +y)
+    p = robot.joint_frame({}, ARM_JOINTS[-1])[:2, 3]
+    k = int(np.argmax(np.abs(p)))
+    reach = f"{'+' if p[k] > 0 else '-'}{'xy'[k]}"
+    print(f"{'joint':<14} {'q deg':>7}  {'x':>7} {'y':>7} {'z':>7}  "
+          f"(mm, {args.urdf.parent.name} base frame: z up, arm reaches {reach} at q = 0)")
     for name in ARM_JOINTS:
         x, y, z = robot.joint_frame(q, name)[:3, 3] * 1000
         j = robot.joints[name]
-        flag = "" if j.lower <= q.get(name, 0) <= j.upper else "  OUTSIDE LIMITS"
+        flag = "" if j.lower <= q.get(name, 0) <= j.upper else \
+            f"  OUTSIDE LIMITS {np.degrees(j.lower):.1f} .. {np.degrees(j.upper):.1f}"
         print(f"{name:<14} {np.degrees(q.get(name, 0)):>7.1f}  {x:>7.1f} {y:>7.1f} {z:>7.1f}{flag}")
 
 

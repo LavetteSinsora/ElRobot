@@ -29,7 +29,7 @@ def wp(xyz, rpy=(0, 0, 0), g=40.0):
 
 def plan_of(waypoints, ref=None, speed="normal", stretch=None, lim=None):
     lim = lim or Limits()
-    ref = ref or Reference(np.array([0.0, 0.25, 0.1]), np.eye(3), 55.0)
+    ref = ref or Reference(np.array([0.25, 0.0, 0.1]), np.eye(3), 55.0)
     wps, sp, errors = parse_action({"waypoints": waypoints, "speed": speed}, lim)
     assert errors == []
     return build(ref, wps, lim, DT, speed=sp, stretch=stretch)
@@ -56,12 +56,15 @@ def test_rotation_vectors_round_trip_up_to_180_degrees():
         assert mat_from_rotvec(rotvec_from_mat(R)) == pytest.approx(R, abs=1e-6)
 
 
-def test_the_task_frame_is_base_link_turned_so_x_is_forward():
-    tf = TaskFrame(base_forward=(0, 1, 0), base_up=(0, 0, 1))        # base_link: +y forward
+def test_the_task_frame_is_the_identity_for_our_urdf_and_turns_another():
+    # Ours: base_link is REP-103 already (x forward, y left), so nothing is turned.
+    assert TaskFrame.from_config(load()).M == pytest.approx(np.eye(3))
+    # A description whose base has +y forward (upstream's) needs only base_forward / base_up.
+    tf = TaskFrame(base_forward=(0, 1, 0), base_up=(0, 0, 1))
     xyz, _ = tf.to_task([0.0, 0.3, 0.1, 1, 0, 0, 0])
     assert xyz == pytest.approx([0.3, 0.0, 0.1])                     # 30 cm forward, 10 up
     left = tf.to_task([-0.2, 0.0, 0.0, 1, 0, 0, 0])[0]
-    assert left == pytest.approx([0.0, 0.2, 0.0])                    # base_link -x is left
+    assert left == pytest.approx([0.0, 0.2, 0.0])                    # that base's -x is left
     pose = tf.to_base([0.1, 0.2, 0.3], mat_from_rpy([0, 45, 10]))
     back = tf.describe(pose)
     assert back[0] == pytest.approx([0.1, 0.2, 0.3])
@@ -79,7 +82,7 @@ def test_the_gripper_map_is_linear_open_at_the_lower_limit():
 
 def test_fk_at_zero_and_home_reads_as_the_readme_says():
     pytest.importorskip("mujoco")
-    from elrobot_deploy.astra.session import home_tcp
+    from elrobot_deploy.astra.workspace import home_tcp
     from elrobot_deploy.robot.elrobot_model import ElRobotModel, mat_to_pose
     cfg = load()
     tf = TaskFrame.from_config(cfg)

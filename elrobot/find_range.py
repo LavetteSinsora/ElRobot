@@ -48,7 +48,7 @@ from pathlib import Path
 
 import serial
 
-from .kinematics import Robot
+from .kinematics import UPSTREAM_URDF, Robot
 from .probe import JOINTS
 from .st3215 import registers as R
 from .st3215.bus import Bus, BusError
@@ -469,7 +469,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     j = args.joint
-    joint = Robot().joints[f"rev_motor_0{j}"]
+    joint = Robot(UPSTREAM_URDF).joints[f"rev_motor_0{j}"]     # upstream's full width, not ours
     width = joint.upper - joint.lower
     hold = [h for h in (args.hold if args.hold is not None else JOINTS) if h != j]
     p = PROFILES[j]

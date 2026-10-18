@@ -88,8 +88,9 @@ class Launcher:
                  spawn=None, event=None, log=print, log_dir: str | Path | None = None,
                  record: bool = False, astra=None):
         self.cfg = cfg
-        #: An Astra session (`astra.session.AstraLaunch`): the harness and the Astra source
-        #: (P12) instead of the phone source, and always a recording.
+        #: An Astra launch (`astra.workspace.AstraLaunch`): the harness and the Astra source
+        #: (P12) instead of the phone source, and always a recording. Astra's `start` tool
+        #: requests START; `finish` requests RESET; any number of episodes per launch.
         self.astra = astra
         #: Start the phone source (P11). Without it (and without Astra) nothing ever drives the
         #: arm: a launch that only homes and exits (a bring-up check).
@@ -121,8 +122,6 @@ class Launcher:
         self._failure: BaseException | None = None
         self._cameras_lost: set[str] = set()
         self._harness_lost = False
-        #: Rollouts started so far (an Astra session is one: its episode).
-        self._rollouts = 0
         self.stamp = time.strftime("%Y%m%d_%H%M%S")
 
     # --- helpers -------------------------------------------------------------------------
@@ -280,10 +279,9 @@ class Launcher:
                                 (self.name, self.cfg), gated=True, camera=cam.name)
         if self.record:
             # It writes nothing before the first ACTIVE (and nothing at all if the run never
-            # starts); an Astra session's record is named after the session.
+            # starts). The Astra harness finds each episode's record by its manifest.
             self.children.start("p9_record", "elrobot_deploy.runtime.processes.p9_record.run",
-                                (self.name, self.cfg), out_dir=str(self.cfg.record.dir),
-                                record_name=None if self.astra is None else self.astra.session_id)
+                                (self.name, self.cfg), out_dir=str(self.cfg.record.dir))
             self.log(f"[P0] recording every rollout to {self.cfg.record.dir}")
         if self.astra is not None:
             self.children.start("astra_harness", "elrobot_deploy.astra.harness.run",
@@ -473,25 +471,19 @@ class Launcher:
 
     def ready(self) -> None:
         self._set(schema.READY)
-        if self.astra is not None and self._rollouts:
-            # One Astra session is one episode: the harness has finished it (or it was reset).
-            # Only Exit is left; the arm holds at home meanwhile.
-            self._await_request(schema.WAIT_NONE, schema.REQ_EXIT,
-                                "the Astra episode is over and the arm is home. Press EXIT on "
-                                "the dashboard or Ctrl-C to end the session (exit ramp, torque "
-                                "off).")
-            raise _ExitNow
         if self.auto_start:
             return
-        drive = ("then start Astra: the harness prints how" if self.astra is not None
-                 else "then tap ENGAGE on the phone to drive")
+        if self.astra is not None:
+            self._await_request(schema.WAIT_START, schema.REQ_START,
+                                f"READY: the arm holds at home. Astra's `start` begins an "
+                                f"episode (Codex on {self.astra.workspace}); Ctrl-C to exit.")
+            return
         self._await_request(schema.WAIT_START, schema.REQ_START,
                             f"READY: the arm holds at home. Press {self._how()} to START "
-                            f"({drive}); Ctrl-C to exit.")
+                            f"(then tap ENGAGE on the phone to drive); Ctrl-C to exit.")
 
     def active(self) -> None:
         """Spawn P6 and hand the arm over. Returns on RESET; EXIT leaves by raising."""
-        self._rollouts += 1
         self._set(schema.ACTIVE)
         self.children.start("p6_target", "elrobot_deploy.runtime.processes.p6_target.run",
                             (self.name, self.cfg))

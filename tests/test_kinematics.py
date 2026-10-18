@@ -1,12 +1,16 @@
+"""elrobot/kinematics.py. The geometry tests use the UPSTREAM URDF (`Robot()`'s default, which
+the calibration tools read limits from): its base_link has the arm along +y, x to the robot's
+right. Our description's base_link (x forward) is tested in test_description.py."""
+
 import numpy as np
 import pytest
 
-from elrobot.kinematics import Robot
+from elrobot.kinematics import UPSTREAM_URDF, Robot, main
 
 
 @pytest.fixture(scope="module")
 def robot():
-    return Robot()
+    return Robot(UPSTREAM_URDF)
 
 
 def pos_mm(robot, q_deg, joint):
@@ -46,3 +50,16 @@ def test_mimic_jaws_follow_gripper(robot):
     T0 = robot.fk({}, "Gripper_Jaw_01_v1_1")
     T1 = robot.fk(q, "Gripper_Jaw_01_v1_1")
     assert np.linalg.norm(T1[:3, 3] - T0[:3, 3]) == pytest.approx(0.0115, abs=1e-6)
+
+
+def test_the_default_robot_is_upstreams():
+    """calibration.py and find_range.py depend on upstream's limits; keep the default."""
+    assert Robot().joints["rev_motor_08"].upper == Robot(UPSTREAM_URDF).joints["rev_motor_08"].upper
+
+
+def test_the_command_line_prints_our_description_x_forward(capsys):
+    main([])
+    out = capsys.readouterr().out
+    assert "elrobot_ours" in out and "arm reaches +x" in out
+    x, y, z = (float(v) for v in out.splitlines()[-1].split()[2:5])    # rev_motor_08
+    assert x > 300 and abs(y) < 10 and abs(z - 218.5) < 1

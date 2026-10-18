@@ -17,7 +17,7 @@ WP = {"waypoints": [{"xyz": [0.02, 0, 0], "rpy": [0, 0, 0], "gripper_mm": 30}]}
 
 def fk(q7):
     T = np.eye(4)
-    T[:3, 3] = [0.0, 0.25, 0.1]
+    T[:3, 3] = [0.25, 0.0, 0.1]                       # 25 cm forward, 10 cm up
     return T
 
 
@@ -41,9 +41,9 @@ def test_it_refuses_outside_a_rollout_and_on_a_stopped_bus(source, rings):
 
 def test_the_first_reference_is_the_held_command_and_the_plan_starts_there(source):
     plan, _ = source.plan(WP)
-    assert plan.p[0] == pytest.approx([0.0, 0.25, 0.1])
+    assert plan.p[0] == pytest.approx([0.25, 0.0, 0.1])
     assert plan.ref.gripper_mm == pytest.approx(55.0)            # the open end
-    assert plan.p[-1] == pytest.approx([0.02, 0.25, 0.1])        # TCP x = base x here (fk)
+    assert plan.p[-1] == pytest.approx([0.27, 0.0, 0.1])         # TCP x = base x here (fk)
     with pytest.raises(ValueError, match="gripper_mm"):
         source.plan({"waypoints": [{"xyz": [0, 0, 0], "rpy": [0, 0, 0], "gripper_mm": 70}]})
 

@@ -1,10 +1,12 @@
-"""The MCP server Codex starts for an Astra session: three tools, forwarded to the harness.
+"""The MCP server Codex starts for the ElRobot: four tools, forwarded to the harness.
 
-    python -m elrobot_deploy.astra.mcp_server --session <session folder>
+    python -m elrobot_deploy.astra.mcp_server [--socket PATH]
 
-(`start_codex.sh` in the session folder passes exactly this to Codex.) Stateless: each tool
-call is one request on the harness's socket (`session.json` names it) and one answer, whose
-images (paths in the session folder) go back as MCP image content. MCP over stdio is
+Registered once in ~/.codex/config.toml (the workspace's `codex_config.toml` is the table to
+paste). Stateless: each tool call is one request on the harness's socket (always
+`/tmp/elrobot-astra/harness.sock`, `astra.workspace.SOCKET_DIR`, so it needs no argument) and
+one answer, whose images (files in the workspace) go back as MCP image content; their paths are
+in the text too. MCP over stdio is
 newline-delimited JSON-RPC 2.0; nothing but protocol messages is ever written to stdout (logs
 go to stderr). Stdlib only, so it starts in well under a second.
 """
@@ -37,7 +39,23 @@ _WAYPOINT = {
     "additionalProperties": False,
 }
 
+#: `astra.workspace.SOCKET_DIR` / harness.sock (not imported: this module stays stdlib only).
+DEFAULT_SOCKET = "/tmp/elrobot-astra/harness.sock"
+
 TOOLS = [
+    {
+        "name": "start",
+        "description": (
+            "Begin an episode with this task (the person's words). The robot starts from its "
+            "home pose; returns the episode's folder and the current observation. Refused "
+            "while an episode is running (finish it first)."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"task": {"type": "string"}},
+            "required": ["task"],
+            "additionalProperties": False,
+        },
+    },
     {
         "name": "send_action",
         "description": (
@@ -139,7 +157,7 @@ class Server:
             version = (msg.get("params") or {}).get("protocolVersion") or PROTOCOL
             return _ok(mid, {"protocolVersion": version, "capabilities": {"tools": {}},
                              "serverInfo": SERVER,
-                             "instructions": "Read README.md in the session folder first."})
+                             "instructions": "AGENTS.md in the workspace explains the robot and these tools."})
         if method == "ping":
             return _ok(mid, {})
         if method == "tools/list":
@@ -152,8 +170,9 @@ class Server:
             try:
                 out = call_harness(self.sock_path, name, params.get("arguments") or {})
             except (OSError, ValueError) as exc:
-                out = {"text": f"the robot harness is not reachable ({exc}): is "
-                               f"`elrobot_deploy astra` still running?", "is_error": True}
+                out = {"text": (f"the robot is not reachable ({exc}): ask the person to start "
+                                f"`elrobot_deploy astra` (in ElRobot/elrobot_deploy/) and press "
+                                f"Home"), "is_error": True}
             return _ok(mid, tool_result(out))
         return _err(mid, -32601, f"method {method!r} not supported")
 
@@ -166,17 +185,13 @@ def _err(mid, code: int, message: str) -> dict:
     return {"jsonrpc": "2.0", "id": mid, "error": {"code": code, "message": message}}
 
 
-def socket_of(session: Path) -> str:
-    return json.loads((session / "session.json").read_text())["sockets"]["harness"]
-
-
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="The ElRobot Astra MCP server (stdio).")
-    ap.add_argument("--session", required=True, help="the session folder")
+    ap.add_argument("--socket", default=DEFAULT_SOCKET,
+                    help=f"the harness's socket (default {DEFAULT_SOCKET})")
     args = ap.parse_args(argv)
-    session = Path(args.session).resolve()
-    server = Server(socket_of(session))
-    log(f"serving session {session.name}")
+    server = Server(args.socket)
+    log(f"forwarding to {args.socket}")
     for line in sys.stdin:
         line = line.strip()
         if not line:

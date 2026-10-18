@@ -29,7 +29,8 @@ arm with torque OFF (only the blue ghost moves).
   To get it on the Mac: `git fetch origin claude/charming-curie-4748g7` then check it out (add
   the remote first if the local repo has none).
 - `elrobot/`: bring-up tools (bus, calibration, `relax`, `move`, ...). Unchanged.
-- `description/elrobot_ours/`: our URDF (calibrated limits, `tcp`). Unchanged.
+- `description/elrobot_ours/`: our URDF (calibrated limits, `tcp`). Since 2026-10-18 its
+  `base_link` is REP-103 (x forward, y left, z up); no joint moved (section 3, Frames).
 - `elrobot_deploy/`: the deploy runtime, rebuilt for one arm this session.
   - `docs/architecture.md`: the map (processes, arena, session, teleop, timing, safety, the
     pluggable IK and executor, configuration, commands).
@@ -69,6 +70,11 @@ arm with torque OFF (only the blue ghost moves).
   may lead the measured jaw toward closed by at most `squeeze_margin`, enforced in the phone
   source and in the bus process every tick; default 5 deg, uncalibrated); anti-windup (the
   bounded command is stored); hardware TORQUE_LIMIT on servo 8.
+- **Frames (2026-10-18)**: every pose (FK, IK targets, recordings, the dashboard, Astra) is in
+  our URDF's `base_link`: **x forward** (where the arm reaches at the zero pose), **y left, z
+  up**. Upstream's base link had +y forward; it is now `base_body`, under `base_link` turned
+  -90 deg about z. Joint angles, limits and calibration are unchanged. `[teleop] base_forward
+  = [1, 0, 0]`. `elrobot/` (bring-up) reads joint limits from the upstream URDF as before.
 - Control box: this Mac. Camera exposure: the camera's own settings first (`camera_first`),
   ours ("sticky") only when they clearly fail (decided 2026-10-17, section 5D).
 
@@ -176,10 +182,15 @@ camera-to-joint time offset (D4); an exocentric camera is another `[cameras.<nam
 
 - **P9, the recorder**, ported from g1d: one record per rollout under `logs/records/` (bus
   reads, targets, operator rows, every camera frame as JPEG). `run --record` for teleop.
-- **The Astra harness**: GPT-6 Astra (Codex + MCP) drives the arm with `send_action`,
-  `inspect_observation`, `finish`, the exp_011 design ported to one arm. **P12** replaces the
-  phone source on the intervention ring (one action = one engagement), the harness writes the
-  session folder from P9's record, `start_codex.sh` starts Codex on it. Decided with the user:
+- **The Astra harness**: GPT-6 Astra (Codex + MCP) drives the arm with `start`,
+  `send_action`, `inspect_observation`, `finish`, the exp_011 design ported to one arm. **P12**
+  replaces the phone source on the intervention ring (one action = one engagement); the
+  harness writes each episode's folder from P9's record. Flow (decided 2026-10-18): you run
+  `elrobot_deploy astra` and press Home; Codex (the app, first) is opened on the workspace
+  `ElRobot/astra/`, whose generated `AGENTS.md` it loads; Astra calls `start(task)`, which
+  presses Start and returns the opening observation; `finish` homes; any number of episodes
+  per launch. One-time: paste `ElRobot/astra/codex_config.toml` into `~/.codex/config.toml`.
+  Decided with the user:
   a P9 like g1d's; no lag / sag in Astra's README; no workspace box (the bus guards are the
   safety); the exo camera is a second iPhone as a Continuity Camera (`[cameras.exo]`,
   `use = "astra"`, never in teleop); gripper 55 mm open (ruler), linear.
@@ -217,8 +228,8 @@ uv run elrobot_deploy run --sim                           # simulated servos
 uv run elrobot_deploy fake-phone                          # drive a --sim run without the phone
 uv run elrobot_deploy run --dry-run                       # real arm read, torque OFF (ghost only)
 uv run elrobot_deploy run --record                        # ... and record every rollout (P9)
-uv run elrobot_deploy astra --task "..." --sim --fake-cameras   # Astra drives (docs/astra.md)
-../logs/astra/current/start_codex.sh                      # Codex on that session, once READY
+uv run elrobot_deploy astra --sim --fake-cameras         # Astra drives (docs/astra.md): Home,
+                                                          #   then Codex on ../astra/ calls `start`
 uv run elrobot_deploy run --no-phone                      # real arm: check, home, hold, exit
 uv run elrobot_deploy run                                 # real arm, phone teleop
 #   dashboard: http://127.0.0.1:8080 ; run flags: --auto-home --auto-start --no-dashboard

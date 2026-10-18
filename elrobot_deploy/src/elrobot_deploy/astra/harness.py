@@ -1,20 +1,27 @@
-"""The Astra harness: the session folder, and the three tools behind the MCP server.
+"""The Astra harness: the workspace's episodes, and the four tools behind the MCP server.
 
-Started by P0 at INIT of an `astra` session; runs until STOPPED. What runs where:
+Started by P0 at INIT of an `astra` launch; runs until STOPPED, serving any number of episodes
+(one per `start`). What runs where:
 
-    Codex / Astra
+    Codex / Astra    (opened on the workspace, `ElRobot/astra/`, which holds AGENTS.md)
       | stdio (MCP, JSON-RPC)
     MCP server        astra/mcp_server.py, a child of Codex; stateless
-      | Unix socket (AstraLaunch.harness_socket), one JSON line each way per tool call
-    the harness       this process: the tools, the folder, the images, the timeline
-      | Unix socket (AstraLaunch.player_socket)          ^ tails P9's record
+      | Unix socket (/tmp/elrobot-astra/harness.sock), one JSON line each way per tool call
+    the harness       this process: the tools, the episode folders, images, timelines
+      | Unix socket (player.sock)                         ^ tails P9's record
     P12, the Astra source -> intervention ring -> P6 (IK) -> P7 (bus) -> the arm
 
-**The record is the truth.** Everything the harness writes (frames/, timeline.sqlite, the
+**An episode** is one rollout: `start(task)` asks P0 for START (P0 is waiting at READY, the
+arm at home: the operator pressed Home once, at launch), opens `episodes/<stamp>_<task>/`,
+waits for the first ticks and returns the opening observation. `finish` asks P0 for RESET:
+the arm goes home, P0 waits at READY again, and the next `start` begins the next episode. If
+the operator presses Start themselves, the next `start` adopts that rollout.
+
+**The record is the truth.** Everything an episode writes (frames/, timeline.sqlite, the
 measured values in every reply) is read back from P9's record as P9 writes it (`record.Tail`),
-never from the rings: what Astra is told is what was recorded. `Ingest` turns it into ticks:
-one per frame of the anchor camera (30 Hz), every other camera's nearest frame, the bus read
-nearest that instant, the target the IK was solving then.
+never from the rings. `Ingest` turns it into ticks: one per frame of the anchor camera (30 Hz),
+every other camera's nearest frame, the bus read nearest that instant, the target the IK was
+solving then.
 
 **One action** (`send_action`): checked here (nothing moves on a bad one), planned and run by
 P12, which answers twice: `planned` (the composed waypoints, each with its deadline) and
@@ -39,16 +46,15 @@ import numpy as np
 from elrobot_deploy.astra import render
 from elrobot_deploy.astra.frames import GripperMap, TaskFrame, rotation_angle, rpy_from_mat
 from elrobot_deploy.astra.replies import error_text, now_section, result_section
-from elrobot_deploy.astra.session import (
-    AstraLaunch,
-    anchor_camera,
-    codex_script,
-    opening_prompt,
-    update_json,
-    write_readme,
-)
 from elrobot_deploy.astra.timeline import Timeline
 from elrobot_deploy.astra.trajectory import Limits, parse_action
+from elrobot_deploy.astra.workspace import (
+    AstraLaunch,
+    anchor_camera,
+    configured_cameras,
+    new_episode,
+    update_json,
+)
 from elrobot_deploy.robot.transforms import mat_from_quat
 from elrobot_deploy.runtime.shared_memory import Arena, layout_for, open_all, schema
 
@@ -56,13 +62,19 @@ from elrobot_deploy.runtime.shared_memory import Arena, layout_for, open_all, sc
 OTHER_CAMERA_WAIT_S = 0.5
 #: Another camera's frame further than this from the anchor's is not that tick's.
 MATCH_S = 0.1
-#: Ticks before the opening observation is taken (the arm at rest at the session start).
+#: Ticks before the opening observation is taken (the arm at rest at the episode's start).
 OPEN_TICKS = 6
 COMMIT_S = 0.25
 #: How much state history is kept in memory (the record keeps all of it).
 STATE_KEEP_S = 10.0
 #: How long a reply waits for the record to cover the arm's release.
 COVER_WAIT_S = 3.0
+#: `start`: how long it waits for P0 to be ready (homing after the last episode), for the
+#: rollout to begin, for P9's record of it, and for the first ticks.
+READY_WAIT_S = 30.0
+ACTIVE_WAIT_S = 10.0
+RECORD_WAIT_S = 10.0
+OPEN_WAIT_S = 20.0
 
 JOINTS = tuple(f"rev_motor_0{i}" for i in range(1, 8)) + ("gripper (rev_motor_08)",)
 
@@ -344,28 +356,31 @@ class PlayerLink:
         return json.loads(line)
 
 
-class Harness:
-    """The tools. `call(tool, args)` -> {"text", "images": [paths], "is_error"}."""
+class Episode:
+    """One task: its folder, its ticks (`Ingest`), its decision steps. Built by `start`; its
+    ingest is stepped by the harness's main thread; the tools run in the server's threads."""
 
-    def __init__(self, cfg, rings, launch: AstraLaunch, ingest: Ingest, link: PlayerLink, *,
-                 log=print):
-        self.cfg = cfg
-        self.control = rings["control"]
-        self.launch = launch
-        self.folder = Path(launch.session_dir)
+    def __init__(self, harness: Harness, folder: Path, task: str, ingest: Ingest):
+        self.h = harness
+        self.cfg = harness.cfg
+        self.folder = Path(folder)
+        self.name = self.folder.name
+        self.task = task
         self.ingest = ingest
-        self.link = link
-        self.log = log
-        self.frame = ingest.frame
-        self.limits = Limits.from_config(cfg)
-        self.quality = cfg.astra.jpeg_quality
         self.step = 1
         self.n_actions = 0
-        self.ready = False
         self.finished = False
         self.stopped_why: str | None = None
-        self.busy = threading.Lock()
+        self.closed = False
+        self.opened = threading.Event()
+        self.opening: dict | None = None
+        #: When its rollout began (the harness's `t_active`): how a rollout is told apart.
+        self.t_active: float | None = None
         self._n_inspect = 0
+
+    @property
+    def running(self) -> bool:
+        return not (self.finished or self.stopped_why)
 
     # --- folders and images ----------------------------------------------------------------
 
@@ -375,85 +390,61 @@ class Harness:
         return d
 
     def rel(self, path: Path) -> str:
-        return str(Path(path).relative_to(self.folder))
+        """A path as Astra uses it: relative to the workspace (Codex's working directory)."""
+        return str(Path(path).relative_to(self.h.workspace))
 
     def _save(self, img, path: Path) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(render.encode(img, self.quality))
+        path.write_bytes(render.encode(img, self.cfg.astra.jpeg_quality))
         return path
 
     def strip_image(self, tick: int, cams=None, prefix: str = "now  "):
-        cams = list(cams or self.ingest.cams)
-        idx = [self.ingest.cams.index(c) for c in cams]
-        row = self.ingest.row(tick)
-        return render.strip(self.ingest.frames(tick, cams), [self.ingest.kinds[i] for i in idx],
-                            render.label(tick, row["t"], prefix),
-                            [self.ingest.aspects[i] for i in idx])
+        ing = self.ingest
+        cams = list(cams or ing.cams)
+        idx = [ing.cams.index(c) for c in cams]
+        return render.strip(ing.frames(tick, cams), [ing.kinds[i] for i in idx],
+                            render.label(tick, ing.row(tick)["t"], prefix),
+                            [ing.aspects[i] for i in idx])
 
     def sheet_image(self, ticks, cams=None):
-        cams = list(cams or self.ingest.cams)
-        idx = [self.ingest.cams.index(c) for c in cams]
-        cols = [(render.label(k, self.ingest.row(k)["t"]), self.ingest.frames(k, cams))
-                for k in ticks]
-        return render.sheet(cols, [self.ingest.kinds[i] for i in idx],
-                            [self.ingest.aspects[i] for i in idx])
+        ing = self.ingest
+        cams = list(cams or ing.cams)
+        idx = [ing.cams.index(c) for c in cams]
+        cols = [(render.label(k, ing.row(k)["t"]), ing.frames(k, cams)) for k in ticks]
+        return render.sheet(cols, [ing.kinds[i] for i in idx], [ing.aspects[i] for i in idx])
 
-    # --- the session start -------------------------------------------------------------------
+    def _now(self, d: Path) -> tuple[str, Path]:
+        """Strip A at the newest tick into step folder `d`, and its "Current observation"."""
+        row = self.ingest.latest()
+        img = self._save(self.strip_image(row["tick"]), d / "observation_now.jpg")
+        return now_section(row, self.ingest.cams, self.rel(img)), img
+
+    # --- the start ---------------------------------------------------------------------------
 
     def open(self) -> None:
-        """The opening observation (tool-less start): actions/0001, the opening prompt, and
-        the script that starts Codex on it."""
-        row = self.ingest.latest()
-        cams = list(self.ingest.cams)
-        if cams != [c for c in self.cfg.astra.cameras if c in {k.name for k in self.cfg.cameras}]:
-            # A camera of the profile did not start (the iPhone not around, say): the README
-            # describes the ones Astra will actually see.
-            write_readme(self.cfg, self.launch, cams)
-            update_json(self.folder / "session.json", cameras=cams)
-            self.log(f"cameras for this session: {', '.join(cams)}")
+        """The opening observation: actions/0001, and `start`'s reply. (Main thread.)"""
+        ing = self.ingest
         d = self.step_dir(1)
-        self._save(self.strip_image(row["tick"]), d / "observation_now.jpg")
-        text = now_section(row, self.ingest.cams)
+        text, img = self._now(d)
         (d / "observation.txt").write_text(text + "\n")
-        (self.folder / "opening_prompt.md").write_text(opening_prompt(self.launch.task, text))
-        script = self.folder / "start_codex.sh"
-        script.write_text(codex_script(self.launch))
-        os.chmod(script, 0o755)
-        update_json(self.folder / "session.json", clock={
-            "t0_monotonic": self.ingest.t0,
-            "t0_wall": time.strftime("%Y-%m-%dT%H:%M:%S",
-                                     time.localtime(time.time() - (time.monotonic()
-                                                                   - self.ingest.t0))),
-            "anchor_camera": self.ingest.anchor, "tick_hz": self.ingest_fps()})
-        self.ready = True
-        self.log(f"READY. Start Astra in another terminal:\n    {script}")
-
-    def ingest_fps(self) -> float:
-        return float(self.cfg.camera(self.ingest.anchor).fps) if self.ingest.anchor else 30.0
+        update_json(self.folder / "episode.json", cameras=list(ing.cams), clock={
+            "t0_monotonic": ing.t0,
+            "t0_wall": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(
+                time.time() - (time.monotonic() - ing.t0))),
+            "anchor_camera": ing.anchor,
+            "tick_hz": float(self.cfg.camera(ing.anchor).fps) if ing.anchor else 30.0})
+        head = [(f"Episode {self.name} started. Its folder: episodes/{self.name}/ "
+                 f"(episodes/current points at it; AGENTS.md describes what is inside)."),
+                f"Task: {self.task}",
+                f"Cameras, left to right in every image: {' | '.join(ing.cams)}.", ""]
+        if ing.cams != configured_cameras(self.cfg):
+            missing = [c for c in configured_cameras(self.cfg) if c not in ing.cams]
+            head.insert(3, f"Not running this episode: {', '.join(missing)}.")
+        self.opening = {"text": "\n".join(head) + text, "images": [str(img)], "is_error": False}
+        self.opened.set()
+        self.h.log(f"episode {self.name}: open (task: {self.task})")
 
     # --- the tools ---------------------------------------------------------------------------
-
-    def call(self, tool: str, args) -> dict:
-        try:
-            if tool == "send_action":
-                return self.send_action(args)
-            if tool == "inspect_observation":
-                return self.inspect(args)
-            if tool == "finish":
-                return self.finish(args)
-            return _error(f"unknown tool {tool!r}")
-        except Exception as exc:                                   # noqa: BLE001
-            self.log(f"{tool} failed: {type(exc).__name__}: {exc}")
-            return _error(f"{tool} failed inside the harness: {type(exc).__name__}: {exc}")
-
-    def _not_now(self) -> str | None:
-        if not self.ready:
-            return "the session is still starting (no opening observation yet)"
-        if self.finished:
-            return "the episode is finished: no robot tool works after `finish`"
-        if self.stopped_why:
-            return self.stopped_why
-        return None
 
     def _refuse(self, problems) -> dict:
         d = self.step_dir()
@@ -462,28 +453,16 @@ class Harness:
         return _error(error_text(problems))
 
     def send_action(self, args) -> dict:
-        why = self._not_now()
-        if why:
-            return _error(error_text([why]))
-        if not self.busy.acquire(blocking=False):
-            return _error(error_text([("another action is still running (one at a time; "
-                                       "this one was not queued)")]))
-        try:
-            return self._send_action(args)
-        finally:
-            self.busy.release()
-
-    def _send_action(self, args) -> dict:
-        _, speed, problems = parse_action(args, self.limits)
+        _, speed, problems = parse_action(args, self.h.limits)
         if problems:
             return self._refuse(problems)
         n = self.step
         d = self.step_dir(n)
-        self.link.send({"op": "action", "id": n, "waypoints": args["waypoints"],
-                        "speed": speed})
+        link = self.h.link
+        link.send({"op": "action", "id": n, "waypoints": args["waypoints"], "speed": speed})
         planned = None
         while True:
-            msg = self.link.recv()
+            msg = link.recv()
             if msg.get("op") == "planned":
                 planned = msg
                 self.ingest.begin_action(n, msg["t0"])
@@ -510,19 +489,19 @@ class Harness:
         # Step N+1: what Astra sees when deciding the next action.
         self.step = n + 1
         nd = self.step_dir()
-        now = self.ingest.latest()
-        img_now = self._save(self.strip_image(now["tick"]), nd / "observation_now.jpg")
+        now_text, img_now = self._now(nd)
         img_hist = self._save(self.sheet_image(out["history_ticks"]),
                               nd / "observation_history.jpg")
-        text = now_section(now, self.ingest.cams) + "\n\n" + result_section(
-            out, self.ingest.cams, self.rel(d))
+        text = now_text + "\n\n" + result_section(
+            out, self.ingest.cams, self.rel(d), image=self.rel(img_hist),
+            timeline=self.rel(self.folder / "timeline.sqlite"))
         (nd / "observation.txt").write_text(text + "\n")
-        self.log(f"action {n}: ticks {out['tick_start']} -> {out['tick_end']}"
-                 + (f", INTERRUPTED: {out['interrupted']}" if out["interrupted"] else ""))
+        self.h.log(f"action {n}: ticks {out['tick_start']} -> {out['tick_end']}"
+                   + (f", INTERRUPTED: {out['interrupted']}" if out["interrupted"] else ""))
         return {"text": text, "images": [str(img_now), str(img_hist)], "is_error": False}
 
     def _pose(self, pose7, g) -> dict:
-        xyz, rpy = self.frame.describe(pose7)
+        xyz, rpy = self.ingest.frame.describe(pose7)
         return {"xyz": np.round(xyz, 4).tolist(), "rpy": np.round(rpy, 2).tolist(),
                 "gripper_mm": round(float(g), 1)}
 
@@ -553,10 +532,11 @@ class Harness:
         span = max(k1 - k0, 0)
         hist = [k0 + round(i * span / 3) for i in range(3)]
         hist = [k if ing.row(k) else last["tick"] for k in hist]
+        r0, r1 = ing.row(k0), ing.row(k1)
         return {
             "action": n, "speed": speed, "tick_start": k0, "tick_end": k1,
-            "duration_s": round(ing.row(k1)["t"] - ing.row(k0)["t"], 2) if ing.row(k0) and
-            ing.row(k1) else round(done["t_release"] - planned["t0"], 2),
+            "duration_s": (round(r1["t"] - r0["t"], 2) if r0 and r1
+                           else round(done["t_release"] - planned["t0"], 2)),
             "planned_duration_s": round(planned["duration_s"], 3),
             "interrupted": done.get("interrupted"),
             "reference": self._pose(planned["ref"]["pose"], planned["ref"]["gripper_mm"]),
@@ -564,8 +544,6 @@ class Harness:
         }
 
     def inspect(self, args) -> dict:
-        if not self.ready:
-            return _error("the session is still starting (no opening observation yet)")
         if not isinstance(args, dict) or not isinstance(args.get("ticks"), list) or \
                 not args["ticks"]:
             return _error("inspect_observation(ticks, cams?): `ticks` is a non-empty list of "
@@ -604,31 +582,182 @@ class Harness:
         return {"text": "\n".join(lines), "images": images, "is_error": False}
 
     def finish(self, args) -> dict:
-        if self.finished:
-            return _error("finish was already called")
-        if not isinstance(args, dict) or not isinstance(args.get("success"), bool) or \
-                not isinstance(args.get("summary"), str):
-            return _error("finish(success, summary, lessons?): `success` true/false, "
-                          "`summary` text, `lessons` optional text")
-        if not self.busy.acquire(blocking=False):
-            return _error("an action is still running: finish once it has replied")
+        row = self.ingest.latest() or {"tick": None, "t": None}
+        update_json(self.folder / "episode.json", finish={
+            "success": args["success"], "summary": args["summary"],
+            "lessons": args.get("lessons"), "tick": row["tick"], "t": row["t"],
+            "actions": self.n_actions, "time": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "human_outcome": None})
+        self.finished = True
+        self.h.spent = self.h.t_active             # this rollout is over, whatever P0 says yet
+        control = self.h.control
+        going_home = control.session == schema.ACTIVE
+        if going_home:
+            control.request = schema.REQ_RESET
+        self.h.log(f"episode {self.name} finished: success={args['success']}: "
+                   f"{args['summary']}")
+        return {"text": f"Recorded in episodes/{self.name}/episode.json. The episode is over"
+                        + ("; the robot is going home. `start` begins the next one."
+                           if going_home else "."),
+                "images": [], "is_error": False}
+
+
+class Harness:
+    """The tools. `call(tool, args)` -> {"text", "images": [paths], "is_error"}."""
+
+    def __init__(self, cfg, rings, launch: AstraLaunch, link: PlayerLink, *, fk, log=print):
+        self.cfg = cfg
+        self.control = rings["control"]
+        self.launch = launch
+        self.workspace = Path(launch.workspace)
+        self.link = link
+        self.fk = fk
+        self.log = log
+        self.limits = Limits.from_config(cfg)
+        self.episode: Episode | None = None
+        #: When the main loop last saw the session become ACTIVE (a Start nobody asked for
+        #: here is adopted by the next `start`).
+        self.t_active: float | None = None
+        #: The `t_active` of the rollout the last episode used: never adopted again (after
+        #: `finish`, P0 may not have taken the RESET yet when the next `start` arrives).
+        self.spent: float | None = None
+        self.busy = threading.Lock()                 # one action (or start / finish) at a time
+
+    def call(self, tool: str, args) -> dict:
         try:
-            row = self.ingest.latest() or {"tick": None, "t": None}
-            update_json(self.folder / "session.json", finish={
-                "success": args["success"], "summary": args["summary"],
-                "lessons": args.get("lessons"), "tick": row["tick"], "t": row["t"],
-                "actions": self.n_actions, "time": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "human_outcome": None})
-            self.finished = True
-            going_home = self.control.session == schema.ACTIVE
-            if going_home:
-                self.control.request = schema.REQ_RESET
-            self.log(f"finish: success={args['success']}: {args['summary']}")
-            return {"text": "Recorded in session.json. The episode is over"
-                            + ("; the robot is going home." if going_home else "."),
-                    "images": [], "is_error": False}
+            if tool == "start":
+                return self.start(args)
+            if tool not in ("send_action", "inspect_observation", "finish"):
+                return _error(f"unknown tool {tool!r}")
+            ep = self.episode
+            if ep is None or not ep.opened.is_set():
+                why = "no episode is running: call `start` with the task first"
+                return _error(error_text([why]) if tool == "send_action" else why)
+            if tool == "inspect_observation":
+                return ep.inspect(args)
+            if not ep.running:
+                why = ("the episode is finished: `start` begins the next one" if ep.finished
+                       else f"{ep.stopped_why}; `start` begins a new episode")
+                return _error(error_text([why]) if tool == "send_action" else why)
+            if tool == "finish" and not (isinstance(args, dict)
+                                         and isinstance(args.get("success"), bool)
+                                         and isinstance(args.get("summary"), str)):
+                return _error("finish(success, summary, lessons?): `success` true/false, "
+                              "`summary` text, `lessons` optional text")
+            if not self.busy.acquire(blocking=False):
+                return _error(error_text([("another action is still running (one at a time; "
+                                           "this one was not queued)")])
+                              if tool == "send_action" else
+                              "an action is still running: finish once it has replied")
+            try:
+                return ep.send_action(args) if tool == "send_action" else ep.finish(args)
+            finally:
+                self.busy.release()
+        except Exception as exc:                                   # noqa: BLE001
+            self.log(f"{tool} failed: {type(exc).__name__}: {exc}")
+            return _error(f"{tool} failed inside the harness: {type(exc).__name__}: {exc}")
+
+    # --- start ---------------------------------------------------------------------------------
+
+    def _wait(self, predicate, timeout: float) -> bool:
+        end = time.monotonic() + timeout
+        while not predicate():
+            if time.monotonic() > end or self.control.session >= schema.STOPPED:
+                return False
+            time.sleep(0.02)
+        return True
+
+    def _find_record(self, t_from: float) -> Path | None:
+        """P9's record of the rollout that began after `t_from` (its manifest says when)."""
+        best = None
+        for m in Path(self.launch.record_base).glob("*/manifest.json"):
+            try:
+                t = json.loads(m.read_text())["rollout"]["t_start"]
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+            if t >= t_from - 1.0 and (best is None or t > best[0]):
+                best = (t, m.parent)
+        return None if best is None else best[1]
+
+    def start(self, args) -> dict:
+        task = args.get("task") if isinstance(args, dict) else None
+        if not isinstance(task, str) or not task.strip():
+            return _error("start(task): `task` is the task in words, as the person gave it")
+        if not self.busy.acquire(blocking=False):
+            return _error("busy: a start or an action is in progress")
+        try:
+            return self._start(task.strip())
         finally:
             self.busy.release()
+
+    def _start(self, task: str) -> dict:
+        ep = self.episode
+        if ep is not None and ep.running:
+            return _error(f"episode {ep.name} is still running: call `finish` first")
+        control = self.control
+        not_ready = ("the robot is not ready (session {}): the person must start "
+                     "`elrobot_deploy astra` and press Home")
+        spent = control.session == schema.ACTIVE and self.t_active == self.spent
+        if spent or control.session in (schema.INIT, schema.CHECK, schema.HOME) or (
+                control.session == schema.READY and control.wait != schema.WAIT_START):
+            # Homing after the last episode (or the launch still checking): wait for READY.
+            self._wait(lambda: control.session == schema.READY
+                       and control.wait == schema.WAIT_START, READY_WAIT_S)
+        if control.session == schema.READY and control.wait == schema.WAIT_START:
+            t_from = time.monotonic()
+            control.request = schema.REQ_START
+            if not self._wait(lambda: control.session == schema.ACTIVE, ACTIVE_WAIT_S):
+                return _error(not_ready.format(schema.SESSION_NAMES.get(control.session)))
+        elif (control.session == schema.ACTIVE and self.t_active is not None
+              and self.t_active != self.spent):
+            t_from = self.t_active                     # Start pressed by the person: adopt it
+        else:
+            return _error(not_ready.format(schema.SESSION_NAMES.get(control.session)))
+        self._wait(lambda: self._find_record(t_from) is not None, RECORD_WAIT_S)
+        record = self._find_record(t_from)
+        if record is None:
+            return _error("the rollout began but no recording of it appeared (is P9 running?)")
+        folder = new_episode(self.cfg, self.launch, task, configured_cameras(self.cfg))
+        (folder / "record").symlink_to(record)
+        update_json(folder / "episode.json", record=str(record))
+        ep = Episode(self, folder, task, Ingest(self.cfg, folder, record, fk=self.fk,
+                                                log=self.log))
+        if ep.ingest.anchor is None:
+            return _error("no camera is recorded: an episode needs at least one")
+        ep.t_active = self.t_active
+        self.spent = self.t_active                     # this rollout is now this episode's
+        self.episode = ep                              # the main loop steps it from here
+        if not ep.opened.wait(OPEN_WAIT_S):
+            ep.stopped_why = "no camera frames arrived for the opening observation"
+            return _error(f"{ep.stopped_why} (is the {ep.ingest.anchor} camera running?)")
+        return ep.opening
+
+    # --- the main loop's part ------------------------------------------------------------------
+
+    def tick(self) -> None:
+        """Called by the main loop: ingest, open, notice the rollout ending, close."""
+        control = self.control
+        active = control.session == schema.ACTIVE
+        if active and self.t_active is None:
+            self.t_active = time.monotonic()
+        elif not active:
+            self.t_active = None
+        ep = self.episode
+        if ep is None or ep.closed:
+            return
+        new = ep.ingest.step()
+        if not ep.opened.is_set() and len(ep.ingest.order) >= OPEN_TICKS:
+            ep.open()
+        if not active and ep.running:
+            self.spent = ep.t_active
+            ep.stopped_why = (f"the rollout ended (session "
+                              f"{schema.SESSION_NAMES.get(control.session)}): the person pressed "
+                              f"Reset or Exit, or a guard stopped the arm")
+            self.log(f"episode {ep.name}: {ep.stopped_why}")
+        if not active and not new and ep.ingest.tail.complete() and not self.busy.locked():
+            ep.ingest.step()                           # what landed with the manifest
+            ep.ingest.close()
+            ep.closed = True
 
 
 def _error(text: str) -> dict:
@@ -658,56 +787,30 @@ def serve(path: str, harness: Harness):
 
 
 def run(shm_name: str, cfg, *, launch: AstraLaunch) -> None:
-    """The harness as a process. Waits for the rollout, then serves until STOPPED."""
+    """The harness as a process: serves the tools from INIT to STOPPED."""
     def log(text: str) -> None:
         print(f"[astra] {text}", flush=True)
 
     arena = Arena.attach(shm_name, layout_for(cfg))
-    server = ingest = None
+    server = harness = None
     try:
         rings = open_all(arena)
         control = rings["control"]
-        folder = Path(launch.session_dir)
-        log(f"session folder {folder}")
-        while control.session != schema.ACTIVE:
-            if control.session >= schema.STOPPED:
-                return
-            time.sleep(0.05)
-        record = Path(launch.record_dir)
-        while not (record / "manifest.json").exists():
-            if control.session >= schema.STOPPED:
-                return
-            time.sleep(0.05)
-        link_path = folder / "record"
-        if not link_path.exists():
-            link_path.symlink_to(record)
         from elrobot_deploy.robot.elrobot_model import ElRobotModel
         model = ElRobotModel(cfg.urdf)
-        ingest = Ingest(cfg, folder, record, fk=model.fk, log=log)
-        if ingest.anchor is None:
-            log("no camera is recorded: an Astra session needs at least one")
-        harness = Harness(cfg, rings, launch, ingest, PlayerLink(launch.player_socket), log=log)
+        harness = Harness(cfg, rings, launch, PlayerLink(launch.player_socket), fk=model.fk,
+                          log=log)
         server = serve(launch.harness_socket, harness)
-        t_warn = time.monotonic() + 10.0
+        log(f"workspace {launch.workspace}: open it in Codex; Astra calls `start` with the task")
         while control.session < schema.STOPPED:
-            ingest.step()
-            if not harness.ready and len(ingest.order) >= OPEN_TICKS:
-                harness.open()
-            elif not harness.ready and time.monotonic() > t_warn:
-                log(f"still no frames from the anchor camera ({ingest.anchor}): is it running?")
-                t_warn = time.monotonic() + 10.0
-            if control.session != schema.ACTIVE and harness.stopped_why is None:
-                harness.stopped_why = (
-                    f"the rollout ended (session {schema.SESSION_NAMES.get(control.session)}"
-                    f"): the operator pressed Reset or Exit, or a guard stopped the arm")
-                log(harness.stopped_why)
+            harness.tick()
             time.sleep(0.01)
     finally:
         if server is not None:
             server.shutdown()
             server.server_close()
-        if ingest is not None:
-            ingest.close()
+        if harness is not None and harness.episode is not None and not harness.episode.closed:
+            harness.episode.ingest.close()
         for p in (launch.harness_socket, launch.player_socket):
             try:
                 os.unlink(p)
@@ -720,4 +823,4 @@ def run(shm_name: str, cfg, *, launch: AstraLaunch) -> None:
         arena.close()
 
 
-__all__ = ["Harness", "Ingest", "PlayerLink", "run", "serve"]
+__all__ = ["Episode", "Harness", "Ingest", "PlayerLink", "run", "serve"]

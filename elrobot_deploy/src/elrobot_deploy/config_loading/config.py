@@ -146,7 +146,7 @@ class AstraConfig:
     Speeds are the trajectory law's caps in the TCP's own units; the joint speeds the IK needs
     are held to `joint_speed_margin` x the run's velocity limit on top of them."""
 
-    sessions_dir: Path = REPO / "logs" / "astra"
+    workspace: Path = REPO / "astra"           # Codex's folder: AGENTS.md, episodes/
     cameras: tuple = ("exo", "wrist")       # left to right in every image; absent ones skipped
     anchor_camera: str = "wrist"            # whose frames are the ticks (else the first running)
     gripper_open_mm: float = 55.0           # the jaws' inner gap at the open end (3 deg)
@@ -522,7 +522,7 @@ def _astra(t: dict) -> AstraConfig:
     for name in d.__dataclass_fields__:
         if name not in t:
             continue
-        if name == "sessions_dir":
+        if name == "workspace":
             kw[name] = _resolve(str(t[name]))
         elif name == "anchor_camera":
             kw[name] = str(t[name])

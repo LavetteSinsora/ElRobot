@@ -1,8 +1,8 @@
 """`elrobot_deploy <command>`, the entry point (also `python -m elrobot_deploy`).
 
     elrobot_deploy run [--sim | --dry-run] [--no-phone] [--record] [--profile NAME|PATH] [--set k=v ...]
-    elrobot_deploy astra --task "..." [--sim | --dry-run] ...   a session an agent drives (docs/astra.md)
-    elrobot_deploy astra-mcp --session DIR                   the MCP server Codex starts (stdio)
+    elrobot_deploy astra [--sim | --dry-run] ...            an agent drives, via Codex (docs/astra.md)
+    elrobot_deploy astra-mcp [--socket PATH]                 the MCP server Codex starts (stdio)
     elrobot_deploy view [--profile ...]                      the URDF and the poses, no robot
     elrobot_deploy config [--profile ...] [--set ...]        print the resolved settings
     elrobot_deploy phone-bench                               check the phone grip, no robot
@@ -65,13 +65,12 @@ def _parser() -> argparse.ArgumentParser:
                        help="where the bus process's tick log goes (default: "
                             "ElRobot/logs/sessions)")
 
-    a = sub.add_parser("astra", help="a session an agent (Astra, via Codex + MCP) drives",
-                       description="Like `run`, but the arm is driven by an agent through the "
-                                   "harness's MCP tools instead of the phone: check, Home, "
-                                   "Start, then the harness writes the session folder and "
-                                   "prints the command that starts Codex on it. Every rollout "
-                                   "is recorded. docs/astra.md has the whole picture.")
-    a.add_argument("--task", required=True, help="the task, in words, as Astra will read it")
+    a = sub.add_parser("astra", help="an agent (Astra, via Codex + MCP) drives the arm",
+                       description="Like `run`, but the arm is driven by an agent through MCP "
+                                   "tools instead of the phone: check, Home, then the arm waits "
+                                   "at home for Astra's `start` (Codex opened on the workspace, "
+                                   "[astra] workspace); each start/finish is one episode, "
+                                   "recorded. docs/astra.md has the whole picture.")
     session_flags(a)
 
     r = sub.add_parser("run", help="run a session: check, home, teleoperate, exit",
@@ -159,12 +158,14 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--dry-run reads the real arm; --sim has none. Use one.")
         launch = None
         if args.command == "astra":
-            from elrobot_deploy.astra.session import create
+            from elrobot_deploy.astra.workspace import prepare
             if not cfg.cameras:
-                parser.error("an Astra session needs at least one camera (Astra sees through "
-                             "them); --fake-cameras for synthetic ones")
-            launch = create(cfg, args.task)
-            print(f"\nAstra session {launch.session_id}\n  folder {launch.session_dir}")
+                parser.error("Astra needs at least one camera (it sees through them); "
+                             "--fake-cameras for synthetic ones")
+            launch = prepare(cfg)
+            print(f"\nAstra workspace {launch.workspace}: open it in Codex (the app or "
+                  f"`codex -C <it>`).\n  Once: copy {launch.workspace}/codex_config.toml into "
+                  f"~/.codex/config.toml.\n  Then give Astra a task; it calls `start`.")
         if args.dry_run:
             print("\nDRY RUN: the real arm is read, torque stays off, nothing is written.")
         elif cfg.bus.driver != "sim":

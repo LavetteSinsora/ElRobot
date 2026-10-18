@@ -57,7 +57,7 @@ def test_one_rollout_is_recorded_whole_and_reads_back_live_and_after(setup):
     for i in range(10):
         state(rings, t + 0.01 * i)
     rings["targets"].write(10, t + 0.1, np.full(8, 0.2), intervene=1, err=0.001,
-                           pose=np.array([0, 0.25, 0.1, 1, 0, 0, 0.0]))
+                           pose=np.array([0.25, 0, 0.1, 1, 0, 0, 0.0]))  # 25 cm ahead
     rings["intervene"].write(intervene=1, deadline=t + 0.1, delta=np.r_[np.zeros(3), 1, 0, 0, 0],
                              grip=0.5)
     frame(wrist, t + 0.01, 100, SQUARE)
@@ -84,7 +84,7 @@ def test_one_rollout_is_recorded_whole_and_reads_back_live_and_after(setup):
     r = load_record(tmp / "r")
     assert r.manifest["complete"] is True
     assert len(r.state) == 10 and len(r.targets) == 1
-    assert r.targets["pose"][0][1] == 0.25 and r.targets["err"][0] == 0.001
+    assert r.targets["pose"][0][0] == 0.25 and r.targets["err"][0] == 0.001
     cam = r.cameras["wrist"]
     assert len(cam.index) == 1 + wrist.n and r.manifest["cameras"]["wrist"]["dropped"] == 3
     img = cam.image(0)
