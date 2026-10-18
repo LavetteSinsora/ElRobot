@@ -1,0 +1,9 @@
+# The ElRobot's MCP server, for this project only: Codex reads it once you trust the
+# project. `command` is the elrobot_deploy environment's python (`uv sync` makes it);
+# `elrobot_deploy astra` writes this file only when it is missing.
+[mcp_servers.elrobot]
+command = "/Users/chrishe/Desktop/同步空间/Chris/Chris/Obsidian Vault/Robotics/E1Robot DIY/ElRobotRepo/elrobot_deploy/.venv/bin/python3"
+args = ["-m", "elrobot_deploy.astra.mcp_server"]
+startup_timeout_sec = 30
+# One send_action blocks for the whole motion; Codex's default (60 s) could cut it off.
+tool_timeout_sec = 900

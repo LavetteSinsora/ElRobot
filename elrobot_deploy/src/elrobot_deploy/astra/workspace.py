@@ -1,15 +1,17 @@
 """The Astra workspace: the folder Codex is opened on, and one folder per episode inside it.
 
-    launch = prepare(cfg)                      # at `elrobot_deploy astra`: AGENTS.md, sockets
+    launch = prepare(cfg)                      # at `elrobot_deploy astra`: episodes/, sockets
     Launcher(cfg, astra=launch, ...).run()
     folder = new_episode(cfg, launch, task)    # the harness, at each `start(task)`
 
     ElRobot/astra/                  `[astra] workspace`; open it in Codex
       AGENTS.md                     what Astra reads first (Codex loads it by itself): the
-                                    robot, frames, units, tools, the folder. Rewritten at
-                                    every launch from the profile.
-      codex_config.toml             the one-time Codex setup, to copy into ~/.codex/config.toml
-      episodes/<stamp>_<task>/      one per `start`; `episodes/current` -> the newest
+                                    robot, frames, units, tools, the folder. Kept by hand: its
+                                    numbers (limits, gripper, home) follow the profile.
+      .codex/config.toml            the `elrobot` MCP server, for this project only (Codex
+                                    reads it once the project is trusted). Kept by hand.
+      episodes/<stamp>_<task>/      one per `start`; `episodes/current` -> the newest (not
+                                    versioned)
 
 `AstraLaunch` is what every process of the runtime is told (pickled at spawn). The sockets live
 in a fixed short directory under /tmp (`SOCKET_DIR`), not in the workspace: a socket path is
@@ -21,7 +23,6 @@ from __future__ import annotations
 
 import json
 import re
-import string
 import sys
 import time
 from dataclasses import dataclass
@@ -30,9 +31,7 @@ from pathlib import Path
 import numpy as np
 
 from elrobot_deploy.astra.frames import TaskFrame
-from elrobot_deploy.astra.replies import pose_line
 
-AGENTS_TEMPLATE = Path(__file__).with_name("agents_template.md")
 #: Where the harness listens, always: the MCP server's default.
 SOCKET_DIR = "/tmp/elrobot-astra"
 HARNESS_SOCKET = "harness.sock"
@@ -82,52 +81,34 @@ def anchor_camera(cfg, cams) -> str | None:
     return cams[0] if cams else None
 
 
-def _camera_words(cfg, name: str) -> str:
-    if cfg.camera(name).lens == "fisheye":
-        return "a fisheye on the wrist, looking along the jaws; a circular view"
-    return "a fixed camera that sees the arm and the table"
-
-
-def agents_md(cfg, home=None) -> str:
-    """AGENTS.md: `agents_template.md` with the profile's numbers."""
-    xyz, rpy = home if home is not None else home_tcp(cfg)
-    cams = configured_cameras(cfg)
-    a = cfg.astra
-    return string.Template(AGENTS_TEMPLATE.read_text()).substitute({
-        "camera_list": ", ".join(f"`{c}` ({_camera_words(cfg, c)})" for c in cams) or "none",
-        "anchor": anchor_camera(cfg, cams) or "first",
-        "home_pose": pose_line(xyz, rpy, a.gripper_open_mm),
-        "gripper_open_mm": f"{a.gripper_open_mm:g}", "gripper_closed_mm": f"{a.gripper_closed_mm:g}",
-        "max_speed_m_s": f"{a.max_speed_m_s:g}", "max_rot_deg_s": f"{a.max_rot_deg_s:g}",
-        "max_gripper_mm_s": f"{a.max_gripper_mm_s:g}",
-        "max_rotation_deg": f"{a.max_rotation_deg:g}",
-    })
-
-
-def codex_config() -> str:
-    """The `[mcp_servers.elrobot]` table for ~/.codex/config.toml (the CLI and the app share
-    it). The MCP server finds the harness at the fixed socket, so nothing per episode."""
-    def toml(v) -> str:
-        return json.dumps(v, ensure_ascii=False)
-    return "\n".join([
-        "# ElRobot: paste into ~/.codex/config.toml once (Codex CLI and the Codex app share it).",
-        "[mcp_servers.elrobot]",
-        f"command = {toml(sys.executable)}",
-        'args = ["-m", "elrobot_deploy.astra.mcp_server"]',
-        "startup_timeout_sec = 30",
-        "# One send_action blocks for the whole motion; Codex's default (60 s) could cut it off.",
-        "tool_timeout_sec = 900",
-        "",
-    ])
+def check_workspace(ws: Path, *, log=print) -> None:
+    """`AGENTS.md` and `.codex/config.toml` are kept by hand in the repo (`ElRobot/astra/`); a
+    launch only says when one is missing, or when the config names a python that is not
+    there (another machine, a moved checkout)."""
+    import tomllib
+    if not (ws / "AGENTS.md").exists():
+        log(f"WARNING {ws / 'AGENTS.md'} is missing: Astra will not know the robot or the tools.")
+    path = ws / ".codex" / "config.toml"
+    if not path.exists():
+        log(f"WARNING {path} is missing: Codex will not see the robot's tools.")
+        return
+    try:
+        command = tomllib.loads(path.read_text())["mcp_servers"]["elrobot"]["command"]
+    except (tomllib.TOMLDecodeError, KeyError, TypeError) as exc:
+        log(f"WARNING {path}: no [mcp_servers.elrobot] command ({exc}); Codex will not see the "
+            f"robot's tools.")
+        return
+    if not Path(command).exists():
+        log(f"WARNING {path}: the MCP server's python {command} does not exist; Codex will not "
+            f"start the robot's tools. This launch runs {sys.executable}.")
 
 
 def prepare(cfg, *, socket_dir: str = SOCKET_DIR) -> AstraLaunch:
-    """At each launch: the workspace (AGENTS.md, codex_config.toml, episodes/) and the socket
-    directory."""
+    """At each launch: the places (the workspace's episodes/, the socket directory), and a
+    check of the workspace's two hand-kept files."""
     ws = Path(cfg.astra.workspace)
     (ws / "episodes").mkdir(parents=True, exist_ok=True)
-    (ws / "AGENTS.md").write_text(agents_md(cfg))
-    (ws / "codex_config.toml").write_text(codex_config())
+    check_workspace(ws)
     Path(socket_dir).mkdir(parents=True, exist_ok=True)
     return AstraLaunch(workspace=str(ws), record_base=str(cfg.record.dir), socket_dir=socket_dir)
 
@@ -191,6 +172,6 @@ def update_json(path: Path, **fields) -> None:
     write_json(path, obj)
 
 
-__all__ = ["SOCKET_DIR", "AstraLaunch", "agents_md", "anchor_camera", "codex_config",
+__all__ = ["SOCKET_DIR", "AstraLaunch", "anchor_camera", "check_workspace",
            "configured_cameras", "home_tcp", "new_episode", "prepare", "slug", "update_json",
            "write_json"]

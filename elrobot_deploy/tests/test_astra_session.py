@@ -5,7 +5,6 @@ two episodes, each begun by `start` and ended by `finish`."""
 from __future__ import annotations
 
 import json
-import re
 import socket
 import sqlite3
 import subprocess
@@ -134,9 +133,7 @@ def test_two_astra_episodes_on_simulated_servos(tmp_path):
         assert p0.run() == 0
 
     ws = Path(launch.workspace)
-    assert (ws / "AGENTS.md").exists() and (ws / "codex_config.toml").exists()
-    assert "x forward" in (ws / "AGENTS.md").read_text()
-    assert not re.search(r"\$[a-z_]", (ws / "AGENTS.md").read_text())    # all filled
+    assert (ws / "episodes").is_dir()
     assert got["early"][0] and "call `start`" in got["early"][1][0]["text"]
     err, content = got["start"]
     assert not err, content[0]["text"]
@@ -189,3 +186,34 @@ def test_two_astra_episodes_on_simulated_servos(tmp_path):
     path, = db.execute("SELECT wrist_path FROM timeline WHERE action_id = 1 LIMIT 1").fetchone()
     assert (first / path).exists()
     assert (ws / "episodes" / "current").resolve() == second.resolve()
+
+
+def test_a_launch_only_checks_the_hand_kept_workspace_files(tmp_path):
+    from elrobot_deploy.astra.workspace import check_workspace
+    said: list = []
+    check_workspace(tmp_path, log=said.append)
+    assert len(said) == 2 and "AGENTS.md is missing" in said[0] and "missing" in said[1]
+    (tmp_path / "AGENTS.md").write_text("# hand-kept\n")
+    (tmp_path / ".codex").mkdir()
+    cfg = tmp_path / ".codex" / "config.toml"
+    cfg.write_text('[mcp_servers.elrobot]\ncommand = "/nowhere/python"\n')
+    said.clear()
+    check_workspace(tmp_path, log=said.append)
+    assert len(said) == 1 and "/nowhere/python does not exist" in said[0]
+    cfg.write_text(f'[mcp_servers.elrobot]\ncommand = "{sys.executable}"\n')
+    said.clear()
+    check_workspace(tmp_path, log=said.append)
+    assert said == [] and cfg.read_text().startswith("[mcp_servers.elrobot]")   # left alone
+
+
+def test_the_repos_workspace_has_agents_md_and_the_codex_config():
+    import tomllib
+
+    from elrobot_deploy.config_loading.config import REPO
+    ws = REPO / "astra"
+    agents = (ws / "AGENTS.md").read_text()
+    for needle in ("`start(task)`", "send_action", "x forward", "y left", "55 mm"):
+        assert needle in agents, needle
+    server = tomllib.loads((ws / ".codex" / "config.toml").read_text())["mcp_servers"]["elrobot"]
+    assert server["args"] == ["-m", "elrobot_deploy.astra.mcp_server"]
+    assert server["tool_timeout_sec"] >= 600 and server["command"].endswith("python3")

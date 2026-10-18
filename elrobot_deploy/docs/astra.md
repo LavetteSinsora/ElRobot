@@ -7,16 +7,13 @@ what changed for this arm and why. Built 2026-10-17; run in simulation end to en
 with Astra or on the real arm**.
 
 ```bash
-# once: paste ElRobot/astra/codex_config.toml (written by the first launch) into
-# ~/.codex/config.toml: the `elrobot` MCP server (the Codex app and CLI share that file)
-
 # the robot (from ElRobot/elrobot_deploy/): check, then press Home; it waits at READY
 uv run elrobot_deploy astra
 #   --sim --fake-cameras   the whole thing without hardware
 #   --dry-run              the real arm read, torque off (only the dashboard's ghost moves)
 
-# Codex (the app, or `codex -C ElRobot/astra`) opened on the workspace ElRobot/astra/:
-# it reads AGENTS.md by itself. Give it the task; Astra calls `start(task)`, works, `finish`es.
+# Codex (the app, or `codex -C ElRobot/astra`) opened on the workspace ElRobot/astra/, trusted
+# when it asks: it reads AGENTS.md and .codex/config.toml (the robot's MCP tools) by itself. Give it the task; Astra calls `start(task)`, works, `finish`es.
 # The arm goes home; the next task is the next episode, as many as you like.
 ```
 
@@ -26,9 +23,10 @@ uv run elrobot_deploy astra
 2. **A workspace** (`[astra] workspace`, `ElRobot/astra/`, not versioned) that Codex is
    opened on, with one folder per episode: everything Astra may want to look at, readable
    with `ls`, `cat`, `jq`, `sqlite3` and the image viewer (sections 3-4).
-3. **`AGENTS.md`** at the workspace root (`src/elrobot_deploy/astra/agents_template.md`
-   filled in from the profile at every launch), which Codex loads by itself before the first
-   message: the robot, how an episode goes, frames, units, the tools, the folder.
+3. **`AGENTS.md`** at the workspace root, kept by hand in the repo (its numbers, limits,
+   gripper range and home pose follow the profile: change them together), which Codex loads by
+   itself before the first message: the robot, how an episode goes, frames, units, the tools,
+   the folder.
 4. **Wiring into elrobot_deploy**: the Astra source (P12), the recorder (P9), the harness
    process, the MCP server (section 8).
 
@@ -52,8 +50,9 @@ next to measured, and that is enough.
 
 ```
 ElRobot/astra/                       [astra] workspace; Codex's working directory
-  AGENTS.md                          rewritten at every launch from the profile
-  codex_config.toml                  the [mcp_servers.elrobot] table to paste, once
+  AGENTS.md                          kept by hand
+  .codex/config.toml                 the `elrobot` MCP server, for this project only
+                                     (both versioned; episodes/ is not)
   episodes/current -> <newest>
   episodes/2026-10-18_143200_put_the_red_cube_in_the_cup/
     episode.json        task, robot, limits, home TCP pose, clock (tick 0), cameras, the
@@ -171,8 +170,9 @@ frame needs no tool: `frames/<cam>/tNNN/tickNNNNNN.jpg`.
 
 ## 7. `start` and `finish`: episodes
 
-- **The launch**: `elrobot_deploy astra` writes the workspace's `AGENTS.md` and
-  `codex_config.toml`, runs CHECK, and waits for **Home** (the dashboard's button or Enter; the
+- **The launch**: `elrobot_deploy astra` makes the places (`episodes/`, the socket
+  directory), says if `AGENTS.md` or `.codex/config.toml` is missing or names a python that is
+  not there, runs CHECK, and waits for **Home** (the dashboard's button or Enter; the
   one step where the arm moves on the person's say-so). Then the arm holds at home, P0 at READY.
 - **`start(task)`** (decided 2026-10-18: Astra begins episodes itself, the person starts the
   runtime): the harness requests START (no motion: it only hands the arm over), finds P9's
@@ -246,10 +246,16 @@ Sockets live under `/tmp` because macOS caps a socket path at 104 bytes and the 
 
 ### 8.4 Codex
 
-Registered once: the `[mcp_servers.elrobot]` table in `~/.codex/config.toml` (the launch
-writes it to `ElRobot/astra/codex_config.toml`: the venv's python, `-m
-elrobot_deploy.astra.mcp_server`, `tool_timeout_sec = 900` because one `send_action` blocks for
-the whole motion and Codex's default is 60 s). The Codex app and the CLI read the same file.
+Registered for this project only, by the versioned `ElRobot/astra/.codex/config.toml`
+(`[mcp_servers.elrobot]`: the venv's python, `-m elrobot_deploy.astra.mcp_server`,
+`tool_timeout_sec = 900` because one `send_action` blocks for the whole motion and Codex's
+default is 60 s). Kept by hand: `command` is this Mac's main checkout's
+`elrobot_deploy/.venv/bin/python3`; a launch warns if that does not exist (another machine, a
+moved checkout) and never writes the file. Codex reads a project's `.codex/config.toml` only once the project is
+**trusted** (asked when it is first opened); the app, the CLI and the IDE extension share the
+configuration. Nothing goes in `~/.codex/config.toml`. If Codex takes the repo root
+(`ElRobot/`) as the project and does not see the tools, the same file at
+`ElRobot/.codex/config.toml` is the fallback.
 Then Codex is opened on the workspace; `AGENTS.md` there is in Astra's context before the first
 message. **Not yet run: Codex is not installed on this Mac; the first runs will be in the Codex
 app.** Whether it passes MCP image results to the model is to be seen: every reply also names

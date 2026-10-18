@@ -187,9 +187,10 @@ camera-to-joint time offset (D4); an exocentric camera is another `[cameras.<nam
   replaces the phone source on the intervention ring (one action = one engagement); the
   harness writes each episode's folder from P9's record. Flow (decided 2026-10-18): you run
   `elrobot_deploy astra` and press Home; Codex (the app, first) is opened on the workspace
-  `ElRobot/astra/`, whose generated `AGENTS.md` it loads; Astra calls `start(task)`, which
+  `ElRobot/astra/`, whose hand-kept `AGENTS.md` it loads; Astra calls `start(task)`, which
   presses Start and returns the opening observation; `finish` homes; any number of episodes
-  per launch. One-time: paste `ElRobot/astra/codex_config.toml` into `~/.codex/config.toml`.
+  per launch. `ElRobot/astra/.codex/config.toml` (versioned) registers the MCP server for
+  this project only: trust the project in Codex when it asks.
   Decided with the user:
   a P9 like g1d's; no lag / sag in Astra's README; no workspace box (the bus guards are the
   safety); the exo camera is a second iPhone as a Continuity Camera (`[cameras.exo]`,

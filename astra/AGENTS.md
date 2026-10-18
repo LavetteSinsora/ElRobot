@@ -5,9 +5,8 @@ You drive a real robot arm through four MCP tools of the `elrobot` server: `star
 run gets its own folder under `episodes/`, with every reply you got, every camera frame and every
 measurement. Read files with `ls`, `cat`, `jq`, `sqlite3`, and open any image by its path.
 
-(This file is written by `elrobot_deploy astra` each time the robot runtime starts. If a tool
-says the robot is not reachable, ask the person to start it: `uv run elrobot_deploy astra` in
-`ElRobot/elrobot_deploy/`, then Home.)
+If a tool says the robot is not reachable, ask the person to start it: `uv run elrobot_deploy
+astra` in `ElRobot/elrobot_deploy/`, then Home.
 
 ## How an episode goes
 
@@ -22,7 +21,7 @@ says the robot is not reachable, ask the person to start it: `uv run elrobot_dep
 ## The robot
 
 ElRobot: one 7-joint arm on a table, with a two-finger parallel gripper. Cameras, in the order
-every image shows them, left to right: $camera_list. (The `start` reply says which are running.)
+every image shows them, left to right: `exo` (a fixed camera that sees the arm and the table), `wrist` (a fisheye on the wrist, looking along the jaws; a circular view). (The `start` reply says which are running.)
 
 ## Frames and units
 
@@ -36,12 +35,12 @@ every image shows them, left to right: $camera_list. (The `start` reply says whi
   `R = Rz(yaw) · Ry(pitch) · Rx(roll)` (scipy `Rotation.from_euler("xyz", [roll, pitch, yaw],
   degrees=True)`).
 - **Gripper**: the opening between the fingers' inner faces, in millimetres:
-  $gripper_closed_mm mm (closed) to $gripper_open_mm mm (fully open).
-- **Time**: `tick` = the frame index of the $anchor camera, 30 per second, counted from the
+  0 mm (closed) to 55 mm (fully open).
+- **Time**: `tick` = the frame index of the wrist camera, 30 per second, counted from the
   episode's start and through every pause. `t` = seconds since the episode's start. Every camera
   and every measurement of a tick is presented as taken at that `t`.
 
-Every episode starts at the home pose: $home_pose.
+Every episode starts at the home pose: position [ 0.246, -0.000,  0.096] m   rotation (roll, pitch, yaw) [   1.6,   45.5,    0.5]°   gripper opening 55 mm.
 
 ## The tools
 
@@ -71,10 +70,10 @@ robot is not ready (it says why).
 - **The timing is chosen for you.** The arm moves through the waypoints in order **without
   stopping at them**, on a smooth path that starts and ends at rest and never overshoots between
   two waypoints. Each waypoint has a **deadline tick**: when the command reaches it. The
-  duration follows from the distances and the arm's speed limits (peaks about $max_speed_m_s m/s,
-  $max_rot_deg_s °/s, gripper $max_gripper_mm_s mm/s; slower where a joint would be too fast).
+  duration follows from the distances and the arm's speed limits (peaks about 0.1 m/s,
+  45 °/s, gripper 60 mm/s; slower where a joint would be too fast).
   `"speed": "slow"` takes twice as long.
-- A waypoint rotated $max_rotation_deg° or more from the reference is refused: turn further in
+- A waypoint rotated 170° or more from the reference is refused: turn further in
   two actions.
 - The reply arrives when the motion is over: the current observation (image + pose), the
   action's history (the start, ⅓ and ⅔ of the motion, every camera), and per waypoint the
@@ -128,7 +127,7 @@ worked.
 sqlite3 episodes/current/timeline.sqlite "SELECT * FROM column_docs"     # what every column means
 sqlite3 episodes/current/timeline.sqlite "SELECT * FROM timeline WHERE tick = 120"
 sqlite3 episodes/current/timeline.sqlite "SELECT tick, t, meas_z_m, cmd_z_m, meas_gripper_mm FROM timeline WHERE action_id = 3"
-sqlite3 episodes/current/timeline.sqlite "SELECT tick, json_extract(meas_load_frac, '$$[7]') FROM timeline WHERE tick BETWEEN 300 AND 400"
+sqlite3 episodes/current/timeline.sqlite "SELECT tick, json_extract(meas_load_frac, '$[7]') FROM timeline WHERE tick BETWEEN 300 AND 400"
 ```
 
 `action_id` is the action whose commands drive the tick (NULL while holding, which includes

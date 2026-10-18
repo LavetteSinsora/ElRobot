@@ -2,8 +2,8 @@
 
     python -m elrobot_deploy.astra.mcp_server [--socket PATH]
 
-Registered once in ~/.codex/config.toml (the workspace's `codex_config.toml` is the table to
-paste). Stateless: each tool call is one request on the harness's socket (always
+Registered by the workspace's `.codex/config.toml` (written at every launch; Codex reads it once
+the project is trusted). Stateless: each tool call is one request on the harness's socket (always
 `/tmp/elrobot-astra/harness.sock`, `astra.workspace.SOCKET_DIR`, so it needs no argument) and
 one answer, whose images (files in the workspace) go back as MCP image content; their paths are
 in the text too. MCP over stdio is

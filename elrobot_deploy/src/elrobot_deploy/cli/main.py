@@ -164,8 +164,8 @@ def main(argv: list[str] | None = None) -> int:
                              "--fake-cameras for synthetic ones")
             launch = prepare(cfg)
             print(f"\nAstra workspace {launch.workspace}: open it in Codex (the app or "
-                  f"`codex -C <it>`).\n  Once: copy {launch.workspace}/codex_config.toml into "
-                  f"~/.codex/config.toml.\n  Then give Astra a task; it calls `start`.")
+                  f"`codex -C <it>`) and trust it: its .codex/config.toml registers the "
+                  f"robot's tools.\n  Then give Astra a task; it calls `start`.")
         if args.dry_run:
             print("\nDRY RUN: the real arm is read, torque stays off, nothing is written.")
         elif cfg.bus.driver != "sim":
