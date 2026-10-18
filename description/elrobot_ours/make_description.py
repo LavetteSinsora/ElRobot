@@ -9,6 +9,9 @@ Inputs (re-run after any recalibration; nothing generated is edited by hand):
   printed/camera_mount_yoke_facet_*.stl        the printed camera mount, in print orientation
 
 What changes against upstream:
+  0. base_link            REP-103: x forward (where the arm reaches at the zero pose), y left, z up.
+                          Upstream's base_link (+y forward) is renamed base_body and hangs under a
+                          new, empty base_link turned -90 deg about z. No joint moves.
   1. joint limits         the calibrated safe ranges (measured ends minus elrobot/calibration.py's margins)
   2. gripper jaws         frames moved onto the jaws (upstream's sit ~0.3 m away), and the jaw/gear
                           ratio scaled so the jaw tips meet at our measured closed stop
@@ -377,6 +380,29 @@ def calibrated_limits() -> tuple[dict[int, tuple[float, float]], float]:
 
 # --- build ------------------------------------------------------------------------------------
 
+#: Upstream's base link, renamed: the base's mesh, in upstream's axes (+y forward, x right).
+BASE_BODY = "base_body"
+
+
+def rebase(root) -> None:
+    """Make `base_link` REP-103: x forward, y left, z up. Upstream's `base_link` has the arm
+    reaching along +y at the zero pose (x to the robot's right); it is renamed `base_body` and
+    attached to a new, empty `base_link` by a fixed joint turned -90 deg about z, so that
+    `x_new = y_old`, `y_new = -x_old`. Every other frame keeps its place on the arm."""
+    old = root.find("link[@name='base_link']")
+    for el in root.iter():
+        if el.tag in ("parent", "child") and el.get("link") == "base_link":
+            el.set("link", BASE_BODY)
+    old.set("name", BASE_BODY)
+    at = list(root).index(old)
+    joint = ET.Element("joint", name=f"{BASE_BODY}_joint", type="fixed")
+    ET.SubElement(joint, "origin", xyz="0 0 0", rpy=f"0 0 {-math.pi / 2!r}")      # exact
+    ET.SubElement(joint, "parent", link="base_link")
+    ET.SubElement(joint, "child", link=BASE_BODY)
+    root.insert(at, joint)
+    root.insert(at, ET.Element("link", name="base_link"))
+
+
 def _fixed_child(root, name: str, parent: str, T: np.ndarray, inertial=None):
     link = ET.SubElement(root, "link", name=name)
     if inertial is not None:
@@ -406,6 +432,9 @@ def build() -> dict:
 
     for mesh in root.iter("mesh"):
         mesh.set("filename", f"{UPSTREAM_ASSETS}/{Path(mesh.get('filename')).name}")
+
+    # 0. base_link to REP-103 (x forward, y left, z up)
+    rebase(root)
 
     # 1. limits
     limits, closed = calibrated_limits()

@@ -18,7 +18,8 @@ What is changed on the way in, and why:
   * **meshes are passed in memory**, keyed by file name, so the URDF's relative paths
     (`../elrobot_upstream/assets/...`) need no working-directory games.
 
-Conventions: the base frame is `base_link` (z up, the arm reaches along +y at zero). Poses are
+Conventions: the base frame is `base_link`, REP-103: x forward (where the arm reaches at the zero
+pose), y left, z up (`make_description.py` step 0). Poses are
 `[x y z qw qx qy qz]`, as everywhere in elrobot_deploy. Joint vectors are the 7 arm joints in
 order, `rev_motor_01` (base yaw) to `rev_motor_07` (wrist roll), in radians, in the URDF's
 convention (`calibration/calibration.json` maps servo readings onto it).

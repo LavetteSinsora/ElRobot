@@ -74,8 +74,9 @@ max_step_deg = 30.0     # same, for rotation
 # the top (Dynamic Island) pointing FORWARD. In ARKit's camera axes that is forward = -X,
 # left = +Z, up = +Y. Only forward is needed: up is gravity (ARKit's world +Y).
 phone_forward = "-x"
-# The robot's base axes (base_link: z up, the arm reaches along +y at the zero pose).
-base_forward = [0.0, 1.0, 0.0]
+# The robot's base axes (base_link, REP-103: x forward = where the arm reaches at the zero pose,
+# y left, z up).
+base_forward = [1.0, 0.0, 0.0]
 base_up = [0.0, 0.0, 1.0]
 # workspace_min = [-0.30, 0.08, 0.02]   # optional: clamp the TCP into this box (base frame, m;
 # workspace_max = [0.30, 0.40, 0.35]    # the base's bottom is z = 0). Off: no box at all.

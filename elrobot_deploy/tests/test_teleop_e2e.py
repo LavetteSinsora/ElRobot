@@ -76,8 +76,8 @@ def test_the_phone_drives_the_simulated_arm():
         seen["states"][-2:] == ["engaged", "idle"], seen["states"]
     tcp = np.asarray(seen["tcp"])
     span = tcp.max(0) - tcp.min(0)
-    # The phone circled 3 cm in the operator's left/up plane: base x (left/right) and z (up).
-    assert span[0] == pytest.approx(0.06, abs=0.012), span
+    # The phone circled 3 cm in the operator's left/up plane: base y (left) and z (up).
+    assert span[1] == pytest.approx(0.06, abs=0.012), span
     assert span[2] == pytest.approx(0.06, abs=0.012), span
     # One press and one release: the counter ended even, after at least one engagement.
     assert seen["counter"] >= 2 and seen["counter"] % 2 == 0

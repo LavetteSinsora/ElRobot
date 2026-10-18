@@ -31,7 +31,7 @@ logs/astra/current/start_codex.sh          # ASTRA_MODEL=<model> to pick the mod
 |---|---|
 | time index | **`tick`**: the anchor camera's (`[astra] anchor_camera`, the wrist) frame index, 30 Hz, from the session start, **through holds**. Deploy's `k` is never shown. |
 | time | `t`: seconds since tick 0. One `t` per tick: every camera and the state as if taken then. |
-| base frame | **x forward, y left, z up** (REP-103). `base_link` has +y forward (`[teleop] base_forward`), so Astra's frame is `base_link` turned 90° about z (`astra/frames.py`, `TaskFrame`). |
+| base frame | **x forward, y left, z up** (REP-103): the URDF's `base_link` itself (rebased 2026-10-18, `description/elrobot_ours/make_description.py` step 0). `astra/frames.py`'s `TaskFrame` is then the identity; it stays so another description needs only `[teleop] base_forward / base_up`. |
 | pose | the **virtual TCP** (the URDF's `tcp` link), base frame; metres (3 decimals); roll / pitch / yaw degrees, `R = Rz(yaw)·Ry(pitch)·Rx(roll)`. No quaternions. |
 | TCP axes | **x out of the jaws**, **y the jaw-opening direction**, z = x × y: the URDF's `tcp` frame as it is (checked by FK: at the zero pose its axes are the base axes, rpy ≈ 0; at home pitch = +45.5°, TCP at [0.246, 0.000, 0.096] m). |
 | gripper | **opening in mm**, in and out: 55 mm at the open end (3°, ruler, 2026-10-17) to 0 at the closed end of the calibrated range (139.8°), linear (`GripperMap`). Astra never sees servo angles. |
@@ -241,7 +241,7 @@ Mac.** If its flags differ, the server command is in the script.
 | `AstraPolicy` in P5, sync mode, chunk ring | P12 on the intervention ring (section 8.1) |
 | reads the P9 record | the same; P9 ported (and encodes JPEG) |
 | two arms, `left` / `right`, `"hold"` | one arm, one waypoint format, no hold |
-| base x forward (G1 frame) | `base_link` y forward → a fixed REP-103 task frame |
+| base x forward (G1 frame) | the same: our URDF's `base_link` was rebased to REP-103 (it had +y forward) |
 | TCP 184.8 mm on the flange | the URDF's `tcp` link (axes already x approach, y opening) |
 | gripper 0 … 90 mm, Dex-1 rad | 0 … 55 mm, ST3215 rad, linear |
 | 0.20 m/s, 1.0 m/s² | 0.10 m/s, 0.5 m/s², + an IK pre-solve against the joint speed limits |

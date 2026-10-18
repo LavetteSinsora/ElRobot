@@ -30,7 +30,13 @@
   <material name="ST3215_8_1">
     <color rgba="0.00 0.00 0.00 1.000" />
   </material>
-  <link name="base_link">
+  <link name="base_link" />
+  <joint name="base_body_joint" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 -1.5707963267948966" />
+    <parent link="base_link" />
+    <child link="base_body" />
+  </joint>
+  <link name="base_body">
     <inertial>
       <origin xyz="4.1532032114359136e-10 0.013084111185471562 0.019551044495005637" rpy="0 0 0" />
       <mass value="0.06831242050694149" />
@@ -412,7 +418,7 @@
   </link>
   <joint name="Rigid 1" type="fixed">
     <origin xyz="0.0 0.007585 0.0315" rpy="0 0 0" />
-    <parent link="base_link" />
+    <parent link="base_body" />
     <child link="ST3215_1_v1_1" />
   </joint>
   <joint name="rev_motor_01" type="revolute">

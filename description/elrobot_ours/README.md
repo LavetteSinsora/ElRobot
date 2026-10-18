@@ -21,6 +21,11 @@ uv run --with pytest pytest tests/test_description.py                          #
 
 ## What differs from upstream
 
+0. **`base_link` is REP-103**: x forward (where the arm reaches at the zero pose), y left, z up.
+   Upstream's `base_link` has the arm along +y (x to the robot's right); it is renamed
+   `base_body` and hangs under a new, empty `base_link` by a fixed joint turned -90 deg about z.
+   No joint, origin or angle of the arm changes: only the frame poses are written in.
+   (`elrobot/kinematics.py` defaults to the UPSTREAM file and keeps upstream's axes.)
 1. **Joint limits** are our calibrated safe ranges: the measured ends pulled in by
    `elrobot/calibration.py`'s margins (3 deg; 5 deg on the cable-limited rolls 5 and 7). They come
    from `calibration/calibration.json`, except the gripper's closed end. That file caps it at

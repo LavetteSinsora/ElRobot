@@ -17,9 +17,9 @@ renderer.setPixelRatio(window.devicePixelRatio);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0f1216);
 const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 10);
-camera.position.set(0.55, -0.35, 0.45);
+camera.position.set(-0.35, -0.55, 0.45);   // behind-right of the arm, looking forward
 const controls = new OrbitControls(camera, canvas);
-controls.target.set(0, 0.17, 0.12);
+controls.target.set(0.17, 0, 0.12);
 controls.update();
 // Render only when something changed (a new state, the camera moved, a toggle): the Mac running
 // the arm should not spend a core redrawing an unchanged scene 60 times a second.
@@ -29,12 +29,12 @@ controls.addEventListener('change', redraw);
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-sun.position.set(0.5, -0.4, 1.0);
+sun.position.set(-0.4, -0.5, 1.0);
 scene.add(sun);
 const grid = new THREE.GridHelper(1.0, 20, 0x3a4652, 0x232c35);
 grid.rotation.x = Math.PI / 2;                 // into the table plane (z = 0)
 scene.add(grid);
-const axes = new THREE.AxesHelper(0.06);       // base frame: x red, y green (forward), z blue
+const axes = new THREE.AxesHelper(0.06);       // base frame: x red (forward), y green (left), z blue
 scene.add(axes);
 
 function resize() {

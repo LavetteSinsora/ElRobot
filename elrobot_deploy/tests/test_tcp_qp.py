@@ -34,8 +34,8 @@ def _tabletop_target(p, pitch_deg):
     a = np.radians(pitch_deg)
     T = np.eye(4)
     T[:3, 3] = p
-    x = np.array([0.0, np.cos(a), -np.sin(a)])
-    y = np.array([-1.0, 0.0, 0.0])
+    x = np.array([np.cos(a), 0.0, -np.sin(a)])
+    y = np.array([0.0, 1.0, 0.0])
     T[:3, :3] = np.c_[x, y, np.cross(x, y)]
     return T
 
@@ -133,16 +133,17 @@ def test_budget_runs_out(solver, robot):
 
 def test_tracks_a_tabletop_circle(solver):
     """The usual case: gripper pitched down, a 5 cm circle at 0.5 Hz, 60 Hz ticks."""
-    T0 = _tabletop_target([0.0, 0.30, 0.05], 60)
+    T0 = _tabletop_target([0.30, 0.0, 0.05], 60)
     q, err = _settle(T0)
     assert err < 2e-4
     errs = []
-    for plane in ("xz", "xy"):
+    for plane in ("side-up", "forward-side"):
         for k in range(240):
             t = k / 60
             c, s = np.cos(np.pi * t) - 1, np.sin(np.pi * t)
             T = T0.copy()
-            T[:3, 3] += 0.05 * (np.array([c, 0, s]) if plane == "xz" else np.array([c, s, 0]))
+            T[:3, 3] += 0.05 * (np.array([0, -c, s]) if plane == "side-up"
+                                else np.array([s, -c, 0]))
             q, err, ok = solver.solve(T, q)
             assert ok
             errs.append(solver.tcp_error(T))

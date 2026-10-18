@@ -75,7 +75,8 @@ def test_the_server_serves_the_page_the_robot_and_the_meshes(server):
                  "/static/vendor/three/STLLoader.js"):
         assert get(base + path)[0] == 200, path
     robot = json.loads(get(base + "/api/robot")[2])
-    first = robot["links"]["base_link"]["visuals"][0]["mesh"]
+    assert robot["root"] == "base_link"                  # an empty frame: x forward, y left
+    first = robot["links"]["base_body"]["visuals"][0]["mesh"]
     status, ctype, body = get(base + first)
     assert status == 200 and len(body) > 1000
     assert json.loads(get(base + "/api/state")[2])["live"]

@@ -100,7 +100,7 @@ def test_rows_carry_the_motion_since_the_press_in_robot_axes(active):
     engage(ph)
     ph.send(0.02 * FWD + 0.01 * UP, engage=True)
     row = rings["intervene"].newest(1)
-    assert np.allclose(row.delta[:3], [0.0, 0.02, 0.01], atol=1e-9)   # base: +y fwd, +z up
+    assert np.allclose(row.delta[:3], [0.02, 0.0, 0.01], atol=1e-9)   # base: +x fwd, +z up
     # Pinned at the press (one frame earlier) + the lead, then the phone's own clock.
     assert row.deadline == pytest.approx(ph.recv + loop.cfg.teleop.lead_s, abs=1e-6)
 

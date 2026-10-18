@@ -140,8 +140,8 @@ counts only after it has been seen up.
 **Room frame** (`runtime/teleop/intervention.py`, `RoomFrame`). The grip: screen facing left,
 back camera right, the top pointing forward. At each press the operator's heading is taken
 from where the phone's top points, horizontally (ARKit's world is gravity-aligned), and
-mapped onto the robot base's forward/left/up (`[teleop] base_forward`, `base_up`; base_link has
-+y forward, +z up). Then the phone's displacement since the press moves the TCP the same way
+mapped onto the robot base's forward/left/up (`[teleop] base_forward`, `base_up`; base_link is
+REP-103: x forward, y left, z up). Then the phone's displacement since the press moves the TCP the same way
 in the room, and its rotation since the press rotates the TCP about the same room axes, about
 the TCP itself. `[teleop] scale` scales translation only.
 

@@ -2,9 +2,10 @@
 
 What Astra sees (docs/astra.md, "Conventions"):
 
-    base frame   x forward, y left, z up (REP-103). The runtime's `base_link` has +y forward
-                 (`[teleop] base_forward`), so Astra's base frame is `base_link` turned 90 deg
-                 about z: same origin, same up. `TaskFrame` converts.
+    base frame   x forward, y left, z up (REP-103): `base_link` itself (our URDF's, since
+                 2026-10-18). `TaskFrame` maps `[teleop] base_forward / base_up` onto it, the
+                 identity with the shipped profile; it stays so that a description with other
+                 axes needs only those two keys.
     virtual TCP  the URDF's `tcp` link: x out of the jaws (the approach direction), y the
                  jaw-opening direction, z = x cross y. At the URDF zero pose its axes ARE the
                  base frame's (roll = pitch = yaw = 0); at home it is pitched 45 deg down.
@@ -98,7 +99,7 @@ class TaskFrame:
     frame. The TCP's own axes never change: only the frame they are written in.
     """
 
-    def __init__(self, base_forward=(0.0, 1.0, 0.0), base_up=(0.0, 0.0, 1.0)):
+    def __init__(self, base_forward=(1.0, 0.0, 0.0), base_up=(0.0, 0.0, 1.0)):
         f = np.asarray(base_forward, dtype=np.float64)
         u = np.asarray(base_up, dtype=np.float64)
         f, u = f / np.linalg.norm(f), u / np.linalg.norm(u)

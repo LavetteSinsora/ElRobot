@@ -342,7 +342,7 @@ class Recorder:
                 for name in self.cams},
             "joints": list(JOINT_NAMES),
             "units": {"q": "rad", "deadline / t / t_capture": "s, time.monotonic of this Mac",
-                      "pose": "x y z m, qw qx qy qz, base_link (+y forward, +z up)",
+                      "pose": "x y z m, qw qx qy qz, base_link (x forward, y left, z up)",
                       "load": "fraction of stall torque, signed", "gripper": "servo rad"},
             "config": jsonable(self.cfg),
             "code": self.code,

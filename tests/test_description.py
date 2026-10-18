@@ -66,9 +66,9 @@ def test_mount_feet_sit_on_the_base_holes(upstream):
 def test_camera_looks_forward_and_down_at_zero_pose(robot):
     T = robot.fk({}, "wrist_camera_optical")
     view, right = T[:3, 2], T[:3, 0]
-    assert view[1] > 0.85                                       # along the arm (+y)
+    assert view[0] > 0.85                                       # along the arm (+x)
     assert math.degrees(math.asin(-view[2])) == pytest.approx(md.VIEW_TILT_DEG, abs=2)
-    assert right[0] > 0.99                                      # image right = the robot's right (+x)
+    assert right[1] < -0.99                                     # image right = the robot's right (-y)
     tcp = robot.fk({}, "tcp")[:3, 3]
     assert T[2, 3] > tcp[2] + 0.04                              # it sits above the gripper
 
@@ -111,9 +111,23 @@ def test_jaws_meet_at_the_closed_stop(robot):
 
 def test_tcp_axes_out_left_up_at_zero_pose(robot):
     R = robot.fk({}, "tcp")[:3, :3]
-    assert R[:, 0] @ [0, 1, 0] > 0.99                           # x out of the jaws (+y)
-    assert R[:, 1] @ [-1, 0, 0] > 0.99                          # y left (-x)
+    assert R[:, 0] @ [1, 0, 0] > 0.99                           # x out of the jaws (forward)
+    assert R[:, 1] @ [0, 1, 0] > 0.99                           # y left
     assert R[:, 2] @ [0, 0, 1] > 0.99                           # z up
+
+
+def test_base_link_is_rep103_and_upstreams_base_hangs_under_it(robot, urdf, upstream):
+    """x forward (where the arm reaches at the zero pose), y left, z up; upstream's base link
+    is `base_body`, turned -90 deg about z; the arm hangs off it exactly as upstream's."""
+    assert robot.root == "base_link"
+    assert robot.fk({}, "tcp")[:3, 3] @ [1, 0, 0] > 0.3          # reaches forward, along +x
+    T = robot.fk({}, md.BASE_BODY)
+    np.testing.assert_allclose(T[:3, :3], [[0, 1, 0], [-1, 0, 0], [0, 0, 1]], atol=1e-12)
+    ours = {j.get("name"): j.find("origin").attrib for j in urdf.findall("joint")
+            if j.find("parent").get("link") == md.BASE_BODY}
+    theirs = {j.get("name"): j.find("origin").attrib for j in upstream.findall("joint")
+              if j.find("parent").get("link") == "base_link"}
+    assert ours == theirs and ours
 
 
 def test_arm_chain_unchanged_from_upstream(urdf, upstream):

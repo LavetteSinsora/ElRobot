@@ -84,7 +84,7 @@ class TeleopConfig:
     max_step_m: float = 0.05
     max_step: float = math.radians(30.0)                # rad
     phone_forward: tuple = (-1.0, 0.0, 0.0)             # device axis, ARKit camera frame
-    base_forward: tuple = (0.0, 1.0, 0.0)
+    base_forward: tuple = (1.0, 0.0, 0.0)
     base_up: tuple = (0.0, 0.0, 1.0)
     #: An optional box (base frame, m) the TCP is clamped into; None = none (the default).
     workspace_min: tuple | None = None

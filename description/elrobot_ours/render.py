@@ -62,7 +62,10 @@ def main(argv=None) -> int:
     robot = Robot(OUT_URDF)
 
     fig = plt.figure(figsize=(13, 6.5))
-    views = [(20, -60, "front-left"), (10, 0, "from the side (+x)"), (80, -90, "from above")]
+    # base_link is REP-103 (x forward, y left): the same three views as before step 0 of
+    # make_description.py, each turned with the frame.
+    views = [(20, -150, "front-left"), (10, -90, "from the side (the robot's right, -y)"),
+             (80, -180, "from above")]
     pts_all = []
     meshes = []
     for link, T_vis, path, scale in visuals(OUT_URDF):
