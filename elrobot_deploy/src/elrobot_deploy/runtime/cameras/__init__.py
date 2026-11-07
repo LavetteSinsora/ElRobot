@@ -27,6 +27,12 @@ def _realsense(cam):
     return RealSenseCamera(cam.shape, serial=cam.device, fps=cam.fps)
 
 
+def _phone(cam):
+    from elrobot_deploy.runtime.cameras.phone_camera import PhoneCamera
+    return PhoneCamera(cam.device, cam.shape, fps=cam.fps, quality=cam.phone_quality,
+                       lens=cam.phone_lens, exposure=cam.phone_exposure, rotate=cam.phone_rotate)
+
+
 def _fake(cam):
     circle = cam.fallback_lens_circle if cam.lens == "fisheye" else None
     return FakeCamera(cam.shape, fps=cam.fps, circle=circle)
@@ -34,7 +40,8 @@ def _fake(cam):
 
 #: `source` -> a factory taking the camera's `CameraConfig`. "usb" means this machine's own
 #: USB camera binding (`avfoundation` on a Mac, `v4l2` on Linux).
-SOURCES = {"avfoundation": _avf, "v4l2": _v4l2, "realsense": _realsense, "fake": _fake}
+SOURCES = {"avfoundation": _avf, "v4l2": _v4l2, "realsense": _realsense, "phone": _phone,
+           "fake": _fake}
 
 
 def make_source(cam):

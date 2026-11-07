@@ -1,6 +1,7 @@
 """`elrobot_deploy camera ...`: one camera on the bench, no robot and no session.
 
-    elrobot_deploy camera list                  what AVFoundation and USB see
+    elrobot_deploy camera list                  what AVFoundation, USB and the LAN (camera
+                                                phones) see
     elrobot_deploy camera probe [--camera N]    its UVC controls, before and while streaming
                                                 (can exposure be set on this Mac?)
     elrobot_deploy camera test [--camera N] [--seconds S] [--set ...]
@@ -76,6 +77,16 @@ def do_list() -> int:
                     print(f"      {w}x{h} {cc} up to {fps:.0f} fps")
     except ImportError as exc:
         print(f"  (AVFoundation unavailable: {exc}; run `uv sync`)")
+    print("Camera phones on the LAN (the app's Camera role, source = \"phone\"):")
+    try:
+        from elrobot_deploy.runtime.cameras.phone_camera import browse
+        phones = browse()
+        for d in phones:
+            print(f"  {d['name']!r}  {d['host']}:{d['port']}")
+        if not phones:
+            print("  none (the app open in the Camera role, same WiFi, Local Network allowed?)")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  ({type(exc).__name__}: {exc})")
     print("USB (what has UVC controls):")
     try:
         found = uvc.list_devices()

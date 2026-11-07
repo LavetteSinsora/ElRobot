@@ -317,5 +317,6 @@ requests START and `finish` RESET, so one launch serves any number of episodes.
 
 ## Not here yet
 
-Policies (P5, the policy contract, chunk blending) and rollout inspection are g1d's, in
-`../legacy_g1d/`, to be ported when their milestone comes (`../PORTING_PLAN.md` section 4).
+Policies (P5, the policy contract, chunk blending), policy replay and comparative IK
+benchmarking remain in `../legacy_g1d/`. Core offline rollout inspection is available through
+`elrobot_deploy inspect`; see [rollout_inspection.md](rollout_inspection.md).

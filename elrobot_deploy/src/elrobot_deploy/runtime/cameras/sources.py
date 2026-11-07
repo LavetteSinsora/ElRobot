@@ -121,6 +121,25 @@ def avf_formats(device) -> list[dict]:
     return out
 
 
+def verify_rate(src, *, hint: str = "") -> None:
+    """A first frame within 5 s, then `FPS_PROBE_FRAMES` at no less than `MIN_FPS_RATIO` of the
+    requested rate. For a binding with `device`, `mode`, `fps`, `shape`, `_fault` and a
+    `read_into(pixels, timeout=)`."""
+    pixels = np.empty(src.shape, np.uint8)
+    if not src.read_into(pixels, timeout=5.0):
+        raise CameraError(f"{src.device}: no frame within 5 s of starting"
+                          + (f" ({src._fault})" if src._fault else ""))
+    t0 = now()
+    for _ in range(FPS_PROBE_FRAMES):
+        if not src.read_into(pixels, timeout=2.0):
+            raise CameraError(f"{src.device} stopped delivering frames during the rate "
+                              f"probe" + (f" ({src._fault})" if src._fault else ""))
+    measured = FPS_PROBE_FRAMES / max(now() - t0, 1e-9)
+    if measured < MIN_FPS_RATIO * src.fps:
+        raise CameraError(f"{src.device} delivers {measured:.1f} fps against "
+                          f"{src.fps:g} requested ({src.mode}). {hint}".rstrip())
+
+
 def resolve_avf(spec: str, devices: list[dict] | None = None) -> dict:
     """The AVFoundation device a profile's `device` names.
 
@@ -335,20 +354,7 @@ class AvfCamera:
         self._verify_rate()
 
     def _verify_rate(self) -> None:
-        pixels = np.empty(self.shape, np.uint8)
-        if not self.read_into(pixels, timeout=5.0):
-            raise CameraError(f"{self.device}: no frame within 5 s of starting"
-                              + (f" ({self._fault})" if self._fault else ""))
-        t0 = now()
-        for _ in range(FPS_PROBE_FRAMES):
-            if not self.read_into(pixels, timeout=2.0):
-                raise CameraError(f"{self.device} stopped delivering frames during the rate "
-                                  f"probe" + (f" ({self._fault})" if self._fault else ""))
-        measured = FPS_PROBE_FRAMES / max(now() - t0, 1e-9)
-        if measured < MIN_FPS_RATIO * self.fps:
-            raise CameraError(f"{self.device} delivers {measured:.1f} fps against "
-                              f"{self.fps:g} requested ({self.mode}). Another program using "
-                              f"it? A USB hub shared with something busy?")
+        verify_rate(self, hint="Another program using it? A USB hub shared with something busy?")
 
     def read_into(self, pixels: np.ndarray, *, timeout: float = 2.0) -> bool:
         with self._cond:
@@ -634,4 +640,4 @@ def default_usb_source() -> str:
 
 __all__ = ["AvfCamera", "CameraError", "FakeCamera", "FakeControls", "RealSenseCamera",
            "V4l2Camera", "avf_devices", "avf_formats", "default_usb_source", "parse_usb_id",
-           "parse_usb_uid", "resolve_avf"]
+           "parse_usb_uid", "resolve_avf", "verify_rate"]

@@ -178,18 +178,26 @@ slots = 8               # frames kept in the arena (~2.8 MB each at 720p)
 required = false        # true: no session without this camera; false: warn and carry on
 
 [cameras.exo]
-# An iPhone on a stand that sees the whole arm and the table: the exocentric view for Astra.
-# It reaches the Mac as a Continuity Camera (same Apple ID, WiFi and Bluetooth on, the phone
-# locked, on its stand, near the Mac); no app. Its exact pose is not needed: it only shows.
-# Measured 2026-10-17: AVFoundation lists it (model iPhone15,3) with 640x480, 1280x720,
-# 1920x1080 and 1920x1440 modes at 30 and 60 fps.
-source = "avfoundation"
-device = "continuity"   # the one iPhone / iPad Continuity Camera; or its uniqueID (`camera list`)
-width = 1280
-height = 720
+# An iPhone on a stand that sees the whole arm and the table: the exocentric view (the
+# dashboard, the recorder, Astra). It runs the phone app (phone_teleop/ios) in its Camera
+# role and streams over the WiFi (runtime/cameras/phone_camera.py): no Apple ID in
+# common with this Mac, no cable, no IP typed. Its exact pose is not needed: it only shows.
+# Each frame carries its capture time on the phone's clock, mapped onto ours by a ping clock
+# sync (about a millisecond).
+source = "phone"
+device = "auto"         # auto = the one camera phone on the LAN; or part of its name (the
+                        # app's Settings), for several; or its address "192.168.1.20[:5006]"
+width = 1280            # a mode the phone's back camera has (1280x720 and 1920x1080 at 30 and
+height = 720            # 60 fps on every recent iPhone; the app says which it has if not)
 fps = 30
 lens = "normal"
-exposure = "camera"     # its own auto-exposure: it has no UVC controls
+exposure = "camera"     # the phone's own (no control channel here) ...
+phone_exposure = "lock" # ... settled 2 s, then exposure, white balance and focus locked | auto
+phone_lens = "wide"     # wide | ultrawide (more of the table, more distortion)
+phone_quality = 85      # JPEG quality on the phone; lower it on a busy WiFi
+phone_rotate = 0        # 180: the phone upside down on its stand
 slots = 8
-required = false
-use = "astra"           # never in a teleop session: the teleop iPhone could be taken instead
+required = false        # the phone off: a warning, the session carries on without it
+# The same iPhone as a Continuity Camera instead (same Apple ID as this Mac only):
+#   source = "avfoundation", device = "continuity", use = "astra" (never in a teleop session:
+#   the teleop iPhone could be taken instead)

@@ -4,6 +4,7 @@
     elrobot_deploy astra [--sim | --dry-run] ...            an agent drives, via Codex (docs/astra.md)
     elrobot_deploy astra-mcp [--socket PATH]                 the MCP server Codex starts (stdio)
     elrobot_deploy view [--profile ...]                      the URDF and the poses, no robot
+    elrobot_deploy inspect [ROOT-OR-RECORD] [--port 8770]    recorded rollout inspection
     elrobot_deploy config [--profile ...] [--set ...]        print the resolved settings
     elrobot_deploy phone-bench                               check the phone grip, no robot
     elrobot_deploy fake-phone ...                            a synthetic phone (for --sim)
@@ -110,6 +111,8 @@ def _parser() -> argparse.ArgumentParser:
                    add_help=False)
     sub.add_parser("astra-mcp", help="the Astra MCP server, for Codex (its own --help)",
                    add_help=False)
+    sub.add_parser("inspect", help="inspect recorded rollouts offline (its own --help)",
+                   add_help=False)
     return parser
 
 
@@ -123,6 +126,9 @@ def _config(args):
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] == ["inspect"]:
+        from elrobot_deploy.cli import inspect
+        return inspect.main(argv[1:])
     if argv[:1] == ["executor-test"]:
         from elrobot_deploy.cli import executor_test
         return executor_test.main(argv[1:])

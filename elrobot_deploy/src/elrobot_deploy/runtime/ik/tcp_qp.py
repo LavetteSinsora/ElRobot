@@ -7,8 +7,9 @@ frame, with the same four properties the deploy loop relies on:
   * **an explicit seed on every solve.** The seed is the previous *published* target, never
     the measurement (a measured seed feeds tracking error back into the next target). It sets
     both the QP configuration and the smoothness posture target.
-  * **early exit** once the TCP position error is inside `early_stop` (0.1 mm), with
-    `max_iters` as a secondary cap.
+  * **early exit** once both enabled TCP tasks converge: position inside `early_stop`
+    (0.1 mm) and orientation inside `orientation_early_stop` (0.1 degree, in radians).
+    `max_iters` is a secondary cap; `ok` still describes the time budget, not convergence.
   * **a wall-clock budget.** `ok=False` means one thing only: the budget ran out. An
     unreachable target is not a failure; the arm goes as far as it can and the residual is
     returned, so "cannot go there" and "machine too busy" stay distinguishable.
@@ -94,7 +95,8 @@ class TcpSolver:
                  qdot_max=None, velocity_scale: float = 0.5,
                  position_cost: float = 1.0, orientation_cost: float = 0.3,
                  posture_cost: float = 1e-3, nominal_q=None, nominal_cost: float = 1e-3,
-                 early_stop: float = 1e-4, max_iters: int = 20):
+                 early_stop: float = 1e-4, orientation_early_stop: float = np.deg2rad(0.1),
+                 max_iters: int = 20):
         """`qdot_max`: (7,) rad/s, or None for the URDF's velocity limits times
         `velocity_scale`. `nominal_q`: the pose the null-space pull leans toward; None is the
         middle of each joint's range. `dt` is the tick the speed cap is per (60 Hz teleop)."""
@@ -105,6 +107,9 @@ class TcpSolver:
         self.robot = robot or ElRobotModel()
         self.dt = float(dt)
         self.early_stop = float(early_stop)
+        self.orientation_early_stop = float(orientation_early_stop)
+        self.position_enabled = position_cost > 0
+        self.orientation_enabled = orientation_cost > 0
         self.max_iters = int(max_iters)
         self.limits_q = self.robot.limits()
         self.qdot_max = (self.robot.velocity_limits() * float(velocity_scale) if qdot_max is None
@@ -160,9 +165,10 @@ class TcpSolver:
         self.task.set_target(mink.SE3.from_matrix(T_target))
 
         expires = now() + budget
-        err = self.tcp_error(T_target)[0]
+        err, rotation_err = self.tcp_error(T_target)
         iters = 0
-        while err > self.early_stop:
+        while ((self.position_enabled and err > self.early_stop)
+               or (self.orientation_enabled and rotation_err > self.orientation_early_stop)):
             if now() >= expires:
                 return self.q(), err, False
             if iters >= self.max_iters:
@@ -177,7 +183,7 @@ class TcpSolver:
             iters += 1
             if np.allclose(self.config.q, q_prev, atol=1e-12):
                 break               # at the floor: further iterates move nothing
-            err = self.tcp_error(T_target)[0]
+            err, rotation_err = self.tcp_error(T_target)
         return self.q(), err, True
 
     def q(self) -> np.ndarray:

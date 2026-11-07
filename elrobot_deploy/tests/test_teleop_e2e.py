@@ -37,7 +37,8 @@ def test_the_phone_drives_the_simulated_arm():
     lines = []
     p0 = Launcher(cfg, arena_name=arena_name(), log=lines.append, auto_home=True,
                   auto_start=True)
-    seen = {"states": [], "tcp": []}
+    seen = {"states": [], "tcp": [], "intruder": set()}
+    driving = threading.Event()
 
     from elrobot_deploy.robot.elrobot_model import ElRobotModel
     model = ElRobotModel(cfg.urdf)     # loaded first: a stalled phone would (rightly) go stale
@@ -60,6 +61,7 @@ def test_the_phone_drives_the_simulated_arm():
                     seen["states"].append(state)
                 if t_go is None and state == "idle":
                     t_go = time.monotonic()
+                    driving.set()
             except (TimeoutError, OSError):
                 pass
             if engage and p0.rings is not None and seq % 6 == 0:
@@ -70,7 +72,25 @@ def test_the_phone_drives_the_simulated_arm():
         seen["counter"] = p0.rings["control"].intervene
         p0.rings["control"].request = schema.REQ_EXIT
 
+    def intruder():
+        """A second phone in the Controller role, ENGAGE held throughout: never drives."""
+        driving.wait(30)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(0.001)
+        T_off = np.eye(4)
+        T_off[:3, 3] = (0.3, 0.3, 0.3)
+        for seq in range(1, 200):
+            sock.sendto(packet(seq, time.monotonic(), T_off, engage=True, name="spare"),
+                        ("127.0.0.1", port))
+            try:
+                seen["intruder"].add(json.loads(sock.recv(65535))["state"])
+            except (TimeoutError, OSError):
+                pass
+            time.sleep(1 / 30)
+        sock.close()
+
     threading.Thread(target=phone, daemon=True).start()
+    threading.Thread(target=intruder, daemon=True).start()
     assert p0.run() == 0, "\n".join(lines)
     assert seen["states"][-3:] == ["idle", "engaged", "idle"] or \
         seen["states"][-2:] == ["engaged", "idle"], seen["states"]
@@ -81,3 +101,4 @@ def test_the_phone_drives_the_simulated_arm():
     assert span[2] == pytest.approx(0.06, abs=0.012), span
     # One press and one release: the counter ended even, after at least one engagement.
     assert seen["counter"] >= 2 and seen["counter"] % 2 == 0
+    assert seen["intruder"] == {"busy"}, seen["intruder"]

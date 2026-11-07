@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ElRobot · Rollout inspector</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script type="importmap">{"imports":{"three":"/vendor/three/three.module.min.js","three/addons/loaders/STLLoader.js":"/vendor/three/STLLoader.js","three/addons/controls/OrbitControls.js":"/vendor/three/OrbitControls.js"}}</script>
+</head>
+<body>
+  <header class="topbar"><div class="brand"><span class="mark">E1</span><div>ElRobot <span class="muted">/ Rollout inspector</span></div></div><span class="badge">OFFLINE · RECORDINGS ONLY</span></header>
+  <main>
+    <section class="record-bar"><div><label for="record">RECORDING</label><div class="select-row"><select id="record" aria-label="Recording"></select><button id="reload">Reload</button></div></div><div class="task"><h1 id="task">Choose a recording</h1><p id="meta" class="muted">Synchronized cameras, robot poses and actions.</p></div></section>
+    <div id="error" class="notice error" hidden></div>
+    <div id="warnings" class="notice" hidden></div>
+    <section class="workspace">
+      <div class="camera-grid" id="cameras"></div>
+      <div class="card scene-card"><div class="card-head"><h2>Robot pose</h2><span id="model-status" class="muted">Recorded model</span></div><div id="scene-wrap"><canvas id="scene"></canvas><div id="scene-message"></div></div><div id="layers" class="legend"><label><input type="checkbox" data-layer="measured" checked><i class="dot measured"></i>Measured</label><label><input type="checkbox" data-layer="command" checked><i class="dot command"></i>Servo command</label><label><input type="checkbox" data-layer="target"><i class="dot target"></i>IK joints</label><label><input type="checkbox" data-layer="pose" checked><i class="dot pose"></i>Requested TCP</label></div></div>
+    </section>
+    <section class="card transport"><div class="controls"><button id="play" class="primary" disabled>Play</button><button id="back" aria-label="Previous frame">−1 frame</button><button id="forward" aria-label="Next frame">+1 frame</button><select id="speed" aria-label="Playback speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select><output id="time">0.000 / 0.000 s</output><span id="session" class="badge">—</span><button id="end">Last 3 seconds</button></div><input id="scrub" type="range" min="0" max="1" step="0.001" value="0" aria-label="Timeline"><div id="action-strip" class="action-strip"></div></section>
+    <section class="details-grid">
+      <div class="card"><div class="card-head"><h2>Joint tracking</h2><div><select id="joint" aria-label="Joint"></select><select id="window" aria-label="Chart window"><option value="all">Whole rollout</option><option value="10">Around playhead · 10 s</option><option value="2">Around playhead · 2 s</option></select></div></div><canvas id="joint-chart" class="chart" aria-label="Measured and commanded joint angles"></canvas><div class="chart-key"><span class="measured-text">Measured</span><span class="command-text">Servo command</span><span class="target-text">IK joints</span><span class="muted">degrees · click chart to seek</span></div><table><thead><tr><th>Joint</th><th>Measured</th><th>Command</th><th>Error</th><th>Load</th></tr></thead><tbody id="joints"></tbody></table></div>
+      <div class="right-stack"><div class="card"><div class="card-head"><h2>IK residual</h2><select id="metric" aria-label="IK residual metric"><option value="orientation_deg">Orientation · degrees</option><option value="position_mm">Position · mm</option></select></div><canvas id="error-chart" class="chart small"></canvas><p id="residual" class="muted"></p></div><div class="card"><div class="card-head"><h2>Astra action</h2><select id="action" aria-label="Astra action"><option value="">No action</option></select></div><div id="action-info" class="action-info">No Astra episode is associated with this recording.</div><details><summary>Action request and outcome</summary><pre id="action-json">—</pre></details></div><div class="card"><h2>Session events</h2><div id="events"></div><p class="muted footnote">Older recordings store session and bus states, but not the guard’s text. Interrupted actions show the message Astra received.</p></div></div>
+    </section>
+    <details class="card provenance"><summary>Recording details</summary><pre id="record-info"></pre></details>
+  </main>
+  <script type="module" src="/static/app.js"></script>
+</body></html>

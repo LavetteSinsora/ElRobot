@@ -534,12 +534,16 @@ class Launcher:
                     self._ramp_to(self.cfg.poses.home, "recovery: back to the home pose")
                 self._ramp_to(self.cfg.poses.exit, "exit ramp")
                 ramped = True
-        except _SkipRamp:
-            self.log("[P0] second interrupt: skipping the exit ramp")
+        except (_ExitNow, _SkipRamp):
+            # A Ctrl-C on the way out (after a fault, or a second one): stop where it is.
+            self.log("[P0] interrupt during the exit: skipping the exit ramp")
         except (BusFault, ConfigError) as exc:
             self.log(f"[P0] no exit ramp: {exc}")
         except Exception:                                   # noqa: BLE001
             self.log(traceback.format_exc())
+        # From here on a Ctrl-C would escape before STOPPED and orphan the children (holding
+        # the serial port, UDP 5005, the dashboard); the wait below is bounded anyway.
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
         release = ramped and self.cfg.poses.release_at_exit
         control.release_torque = release
         # STOPPED before terminating anything: every child loops on `session < STOPPED`, so

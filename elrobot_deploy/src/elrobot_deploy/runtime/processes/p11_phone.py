@@ -50,6 +50,7 @@ from elrobot_deploy.robot.transforms import mat_from_quat, quat_angle, quat_from
 from elrobot_deploy.runtime import timing as clock
 from elrobot_deploy.runtime.shared_memory import Arena, layout_for, open_all, schema
 from elrobot_deploy.runtime.teleop import phone
+from elrobot_deploy.runtime.teleop.discovery import advertise
 from elrobot_deploy.runtime.teleop.intervention import (
     Console,
     Gripper,
@@ -63,6 +64,35 @@ from elrobot_deploy.runtime.teleop.intervention import (
 RECV_TIMEOUT_S = 0.02
 #: A sequence number this far below the last one is a restarted app, not a reordered packet.
 SEQ_RESTART = 10_000
+#: Another phone may become the controller only once the current one has sent nothing for
+#: this long (closed, locked, out of the WiFi). Never while it is sending: two phones in the
+#: Controller role must not both drive. Longer than `stale_s`, so the arm was released first.
+TAKEOVER_S = 1.0
+
+
+class ControllerLock:
+    """Which phone drives: the first to send, until it has been silent for `TAKEOVER_S`.
+    Every other phone gets a `busy` echo and is otherwise ignored."""
+
+    def __init__(self, takeover_s: float = TAKEOVER_S):
+        self.takeover_s = float(takeover_s)
+        self.addr = None
+        self.name = ""
+        self.t_last = -math.inf
+
+    def admit(self, addr, name: str, t: float) -> str:
+        """"same" (the controller), "new" (a first or a takeover) or "busy"."""
+        if addr == self.addr:
+            self.t_last, self.name = t, name or self.name
+            return "same"
+        if self.addr is not None and t - self.t_last < self.takeover_s:
+            return "busy"
+        self.addr, self.name, self.t_last = addr, name, t
+        return "new"
+
+    def who(self) -> str:
+        host = self.addr[0] if self.addr else "?"
+        return f"{self.name!r} ({host})" if self.name else host
 
 
 class PhoneLoop:
@@ -243,6 +273,12 @@ class PhoneLoop:
                              f"{schema.SESSION_NAMES.get(self.control.session, '?')}): P0 has "
                              f"the arm")
 
+    def new_controller(self) -> None:
+        """Another phone took over: its packets are a new stream (seq, world epoch)."""
+        if self.engaged:                  # cannot happen (stale first), but never carry it over
+            self.release("another phone took over")
+        self.last, self.epoch, self.t_last_recv = None, None, None
+
     def close(self) -> None:
         """Leave on an EVEN counter (hand back), whatever happened."""
         if self.engaged:
@@ -260,8 +296,11 @@ def run(shm_name: str, cfg) -> None:
         sock.bind(("0.0.0.0", int(cfg.teleop.port)))
         sock.settimeout(RECV_TIMEOUT_S)
         loop = PhoneLoop(rings, cfg)
-        print(f"[P11] listening on UDP {cfg.teleop.port} ({_local_ip()})", flush=True)
+        ip = _local_ip()
+        advert = advertise(cfg.teleop.port, ip, log=lambda s: print(s, flush=True))
+        print(f"[P11] listening on UDP {cfg.teleop.port} ({ip})", flush=True)
         control = rings["control"]
+        lock = ControllerLock()
         bad = 0
         try:
             while control.session < schema.STOPPED:
@@ -278,6 +317,17 @@ def run(shm_name: str, cfg) -> None:
                     if bad in (1, 10, 100) or bad % 1000 == 0:
                         print(f"[P11] bad packet #{bad} from {addr[0]}: {exc}", flush=True)
                     continue
+                who = lock.admit(addr, pkt.name, t_recv)
+                if who == "busy":
+                    try:
+                        sock.sendto(phone.echo(pkt, t_mac=t_recv, state="busy",
+                                               why=f"{lock.who()} is the controller"), addr)
+                    except OSError:
+                        pass
+                    continue
+                if who == "new":
+                    loop.new_controller()
+                    print(f"[P11] controller: {lock.who()}", flush=True)
                 state = loop.on_packet(pkt, t_recv)
                 try:
                     sock.sendto(phone.echo(pkt, t_mac=t_recv, state=state, why=loop.why,
@@ -287,13 +337,16 @@ def run(shm_name: str, cfg) -> None:
                 loop.on_idle(t_recv)
         finally:
             loop.close()
+            if advert is not None:
+                advert.close()
     finally:
         sock.close()
         arena.close()
 
 
 def _local_ip() -> str:
-    """This machine's LAN address, for the operator to type into the app (best effort)."""
+    """This machine's LAN address: the one advertised, and the one to type into the app if
+    Bonjour cannot be used (best effort)."""
     import subprocess
     for iface in ("en0", "en1", "en2", "en3"):
         try:
@@ -325,7 +378,9 @@ def bench(cfg, *, port: int | None = None, out=sys.stdout) -> None:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("0.0.0.0", port))
     sock.settimeout(0.5)
-    print(f"bench: listening on UDP {port} ({_local_ip()}). Hold the phone as you will drive "
+    ip = _local_ip()
+    advert = advertise(port, ip, log=lambda s: print(s, file=out))
+    print(f"bench: listening on UDP {port} ({ip}). Hold the phone as you will drive "
           f"(screen left, top forward), hold ENGAGE, and move it. Ctrl-C to stop.", file=out)
     B = np.c_[t.base_forward, np.cross(t.base_up, t.base_forward), t.base_up]
     t_print = 0.0
@@ -365,6 +420,8 @@ def bench(cfg, *, port: int | None = None, out=sys.stdout) -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        if advert is not None:
+            advert.close()
         sock.close()
 
 
@@ -392,4 +449,4 @@ if __name__ == "__main__":
     sys.exit(main())
 
 
-__all__ = ["PhoneLoop", "bench", "run"]
+__all__ = ["ControllerLock", "PhoneLoop", "bench", "run"]

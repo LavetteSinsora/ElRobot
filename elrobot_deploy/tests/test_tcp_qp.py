@@ -131,6 +131,41 @@ def test_budget_runs_out(solver, robot):
     assert err > 0.01              # the residual is still reported
 
 
+@pytest.mark.parametrize("translation", [0.0, 0.00005])
+def test_rotation_is_solved_even_when_position_is_already_inside_tolerance(robot, translation):
+    """The pen-writing failure: position-only early exit silently skipped a rotation."""
+    from elrobot_deploy.astra.frames import mat_from_rpy
+
+    solver = TcpSolver(robot)
+    q = np.radians([0, -20, 40, 50, 10, 30, -10])
+    solver.set_nominal(q)
+    target = robot.fk(q)
+    target[:3, :3] = target[:3, :3] @ mat_from_rpy([0, -15, 0])
+    target[2, 3] += translation
+    first, _, ok = solver.solve(target, q, budget=0.5)
+    assert ok and np.max(np.abs(first - q)) > 1e-5
+    assert np.all(np.abs(first - q) <= solver.qdot_max * solver.dt + 1e-9)
+    q = first
+    for _ in range(100):
+        q, _, ok = solver.solve(target, q, budget=0.5)
+        assert ok
+    pos, rot = solver.tcp_error(target)
+    assert pos < solver.early_stop
+    assert rot < solver.orientation_early_stop
+
+
+def test_disabled_orientation_task_does_not_prevent_early_exit(robot):
+    from elrobot_deploy.astra.frames import mat_from_rpy
+
+    solver = TcpSolver(robot, orientation_cost=0)
+    q = np.radians([0, -20, 40, 50, 10, 30, -10])
+    target = robot.fk(q)
+    target[:3, :3] = target[:3, :3] @ mat_from_rpy([0, -65, 0])
+    solved, err, ok = solver.solve(target, q, budget=0)
+    assert ok and err < solver.early_stop
+    np.testing.assert_array_equal(solved, q)
+
+
 def test_tracks_a_tabletop_circle(solver):
     """The usual case: gripper pitched down, a 5 cm circle at 0.5 Hz, 60 Hz ticks."""
     T0 = _tabletop_target([0.30, 0.0, 0.05], 60)

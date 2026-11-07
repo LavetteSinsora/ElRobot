@@ -43,6 +43,9 @@ runtime = [
     "pyobjc-framework-libdispatch>=10; sys_platform == 'darwin'",
     "pyusb>=1.2",
     "libusb-package>=1.0.26",
+    # Bonjour, both ways (runtime/cameras/phone_camera.py, runtime/teleop/discovery.py): the
+    # Mac finds camera phones by name, and advertises itself to the Controller. No IP is typed.
+    "zeroconf>=0.131",
 ]
 dev = [
     "pytest",

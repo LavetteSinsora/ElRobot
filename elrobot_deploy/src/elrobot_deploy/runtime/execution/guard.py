@@ -8,8 +8,9 @@ faults, each with its own response in the bus process:
             toward a stop whatever it is told), so that joint's torque goes off at once.
             Distance alone is not the test: a joint lagging a fast command is far off too, but
             it is moving TOWARD the command. So the rule is: more than `runaway_deg` off, and over
-            the last `runaway_window_s` the error grew by `runaway_grow_deg` with the joint itself
-            moving that way. Anything more than `gross_deg` off counts whatever it is doing
+            the last `runaway_window_s` the error grew by `runaway_grow_deg` on the same side of
+            the command, with the joint itself moving that way (a command that reverses past a
+            coasting joint flips the error's side: lag, not a runaway). Anything more than `gross_deg` off counts whatever it is doing
             (not the gripper: an object may hold the jaw anywhere).
   blocked   a joint more than `lag_deg` behind for `lag_s` without a break AND not making
             progress (it moved less than `stuck_deg` in that time): held by an obstacle. A joint
@@ -106,8 +107,12 @@ class Guard:
         if t - t0 >= s.runaway_window_s:
             grow = absd - np.degrees(np.abs(e0))
             moved = np.degrees((np.asarray(meas) - m0) * np.sign(err))   # + = away from the goal
+            # Same side of the command all window: a fast reversal flips the error's sign while
+            # the joint still coasts the old way (~0.2 s), which reads as "moving away" but is
+            # just lag (sessions of 2026-10-18). A runaway grows on one side.
+            same_side = np.sign(e0) == np.sign(err)
             away = (absd > s.runaway_deg) & (grow > s.runaway_grow_deg) & \
-                   (moved > 0.5 * s.runaway_grow_deg)
+                   (moved > 0.5 * s.runaway_grow_deg) & same_side
         wild = np.flatnonzero((gross | away) & live)
         if wild.size:
             return Fault("runaway", [int(i) for i in wild],

@@ -9,7 +9,9 @@ One UTF-8 JSON object per UDP datagram, ~60 Hz (one per ARFrame):
      "track": "normal",      ARKit tracking state; anything else is not to be trusted
      "world_epoch": 0,       bumped when the world origin is reset or ARKit relocalizes: poses
                              before and after are in different frames            (v2; v1 has none)
-     "buttons": {"engage": false, "grip": false}}
+     "buttons": {"engage": false, "grip": false},
+     "name": "hand"}         the phone's name, as set in the app (for logs and the busy echo;
+                             optional)
 
 Unknown keys are ignored, so the app can grow without breaking this side. A v1 app (no
 `world_epoch`) works, without that one guard.
@@ -35,8 +37,9 @@ TRACK_NORMAL, TRACK_LIMITED, TRACK_UNAVAILABLE, TRACK_UNKNOWN = range(4)
 
 #: The echo's `state`: `inactive` (no rollout is running: the clutch does nothing), `idle`
 #: (ready: press the clutch), `engaged` (the arm follows), `released` (a guard forced a release:
-#: let go of the clutch and press again).
-STATES = ("inactive", "idle", "engaged", "released")
+#: let go of the clutch and press again), `busy` (another phone is the controller: this one's
+#: packets are ignored).
+STATES = ("inactive", "idle", "engaged", "released", "busy")
 
 
 class BadPacket(ValueError):
@@ -55,6 +58,7 @@ class PhonePacket:
     world_epoch: int            # 0 for a v1 phone
     engage: bool
     grip: bool
+    name: str = ""              # the app's phone name ("" for an older app)
 
 
 def _track(text: str) -> int:
@@ -89,7 +93,8 @@ def parse(data: bytes) -> PhonePacket:
                            t_send=float(obj.get("t_send", t)), T=T, track=_track(track),
                            track_text=track, world_epoch=int(obj.get("world_epoch", 0)),
                            engage=bool(buttons.get("engage", False)),
-                           grip=bool(buttons.get("grip", False)))
+                           grip=bool(buttons.get("grip", False)),
+                           name=str(obj.get("name", ""))[:64])
     except BadPacket:
         raise
     except (ValueError, KeyError, TypeError) as exc:
@@ -103,14 +108,15 @@ def echo(pkt: PhonePacket, *, t_mac: float, state: str, why: str = "",
 
 
 def packet(seq: int, t: float, T, *, engage=False, grip=False, track="normal",
-           world_epoch=0, t_send=None) -> bytes:
+           world_epoch=0, t_send=None, name="") -> bytes:
     """Build a v2 datagram (the fake phone and the tests)."""
     T = np.asarray(T, dtype=np.float64)
     return json.dumps({"v": 2, "seq": int(seq), "t": float(t),
                        "t_send": float(t if t_send is None else t_send),
                        "pose": T.reshape(16).tolist(), "track": track,
                        "world_epoch": int(world_epoch),
-                       "buttons": {"engage": bool(engage), "grip": bool(grip)}}).encode()
+                       "buttons": {"engage": bool(engage), "grip": bool(grip)},
+                       "name": str(name)}).encode()
 
 
 #: The user's grip (screen facing left, back camera right, top forward), as a rotation in an

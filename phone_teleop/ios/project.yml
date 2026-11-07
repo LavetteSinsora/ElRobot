@@ -12,14 +12,18 @@ targets:
     info:
       path: PhoneTeleop/Info.plist
       properties:
-        CFBundleDisplayName: PhoneTeleop
+        CFBundleDisplayName: ElRobot
         UILaunchScreen: {}
-        NSCameraUsageDescription: "ARKit uses the camera to track the phone's 6-DoF pose."
-        NSLocalNetworkUsageDescription: "Streams the phone pose to your Mac over the local network."
+        NSCameraUsageDescription: "As the controller, ARKit tracks the phone's pose with the camera; as a camera, it streams the view of the robot to your Mac."
+        NSLocalNetworkUsageDescription: "Finds your Mac on the local network and sends it the phone's pose or video."
+        NSBonjourServices: [_elrobot._udp, _elrobotcam._tcp]
         UIRequiredDeviceCapabilities: [arkit]
-        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        # The Controller is portrait, the Camera landscape (the app locks each role to its own).
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeRight, UIInterfaceOrientationLandscapeLeft]
+        UIRequiresFullScreen: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.chrishe.phoneteleop
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: HG9HVDNKQU

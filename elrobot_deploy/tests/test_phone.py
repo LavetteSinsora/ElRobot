@@ -246,3 +246,31 @@ def test_lead_covers_a_late_packet_without_sliding(active):
     assert loop.pace.slid > 0.0
     assert rings["intervene"].newest(1).deadline > ph.recv
     assert math.isfinite(rings["intervene"].meta()["latency_s"])
+
+
+def test_the_phones_name_rides_along_and_an_older_app_has_none():
+    assert phone.parse(phone.packet(1, 0.0, pose(), name="hand")).name == "hand"
+    raw = json.loads(phone.packet(1, 0.0, pose()))
+    del raw["name"]
+    assert phone.parse(json.dumps(raw).encode()).name == ""
+
+
+def test_one_phone_drives_and_another_takes_over_only_once_it_is_silent():
+    from elrobot_deploy.runtime.processes.p11_phone import ControllerLock
+    lock = ControllerLock(takeover_s=1.0)
+    a, b = ("10.0.0.5", 50000), ("10.0.0.6", 50001)
+    assert lock.admit(a, "hand", 0.0) == "new"
+    assert lock.admit(a, "hand", 0.5) == "same"
+    assert lock.admit(b, "spare", 0.6) == "busy"          # a is sending: b never drives
+    assert lock.admit(b, "spare", 1.4) == "busy"          # 0.9 s since a: not yet
+    assert lock.who() == "'hand' (10.0.0.5)"
+    assert lock.admit(b, "spare", 1.6) == "new"           # a silent for 1.1 s: b takes over
+    assert lock.admit(a, "hand", 1.7) == "busy"           # and a is now the one refused
+
+
+def test_a_new_controller_starts_a_fresh_stream_and_never_inherits_the_clutch(active):
+    loop, ph, rings = active
+    assert engage(ph) == "engaged"
+    loop.new_controller()
+    assert loop.last is None and loop.epoch is None and not loop.engaged
+    assert rings["control"].intervene % 2 == 0                # handed back

@@ -9,6 +9,7 @@ uv sync                                  # once: everything (IK, ../elrobot bus,
 uv run pytest -q                         # no hardware needed
 
 uv run elrobot_deploy view               # the URDF and the home pose in the browser; no robot
+uv run elrobot_deploy inspect            # recordings: cameras, 3D, timeline, joint/IK traces
 uv run elrobot_deploy phone-bench        # check how you hold the phone; no robot
 uv run elrobot_deploy run --sim          # the whole chain on simulated servos
 uv run elrobot_deploy run --dry-run      # the real arm, torque OFF: only the ghost moves
@@ -23,5 +24,7 @@ How it works (processes, the arena, the session, the teleop mapping, timing, saf
 pluggable): **`docs/architecture.md`**. The robot profile, with every setting commented:
 `src/elrobot_deploy/robot/profiles/elrobot.toml`. The phone app: `../phone_teleop/README.md`.
 
-`legacy_g1d/` holds the g1d code not ported yet (policies, recording, rollout inspection, cameras),
-unchanged, as reference; it is not packaged, linted or tested.
+Recording playback: **`docs/rollout_inspection.md`** (http://127.0.0.1:8770).
+
+`legacy_g1d/` holds the original g1d code as reference, including features not ported yet
+(policy execution/replay and comparative IK benchmarking); it is not packaged, linted or tested.

@@ -282,11 +282,15 @@ def test_p2_streams_into_the_arena_until_stopped(quick):
 
 def test_the_profile_declares_the_wrist_camera_and_sets_reach_into_it():
     cfg = load()
-    (wrist,) = cfg.cameras_for(astra=False).cameras        # a teleop session: the wrist alone
-    assert wrist.name == "wrist" and wrist.lens == "fisheye" and wrist.exposure == "camera_first"
-    exo = cfg.camera("exo")                                 # the iPhone, Astra sessions only
-    assert (exo.use, exo.lens, exo.device) == ("astra", "normal", "continuity")
-    assert [c.name for c in cfg.cameras_for(astra=True).cameras] == ["exo", "wrist"]
+    wrist = cfg.camera("wrist")
+    assert wrist.lens == "fisheye" and wrist.exposure == "camera_first"
+    exo = cfg.camera("exo")                                 # the camera phone (app, Camera role)
+    assert (exo.source, exo.use, exo.lens, exo.exposure) == ("phone", "always", "normal",
+                                                             "camera")
+    for astra in (False, True):                             # teleop and Astra sessions alike
+        assert [c.name for c in cfg.cameras_for(astra=astra).cameras] == ["exo", "wrist"]
+    assert [c.name for c in load(sets=['cameras.exo.use="astra"']).cameras_for(
+        astra=False).cameras] == ["wrist"]
     cfg = load(sets=['cameras.wrist.exposure="sticky"',
                      "cameras.wrist.fallback_lens_circle=[663, 334, 344]"])
     assert cfg.camera("wrist").exposure == "sticky"
@@ -306,8 +310,9 @@ def test_the_profile_declares_the_wrist_camera_and_sets_reach_into_it():
 def test_each_camera_has_its_own_rings_in_the_layout():
     cfg = load().cameras_for(astra=False)
     lay = layout_for(cfg)
-    assert lay.cameras == ("wrist",)
-    assert layout_for(load()).cameras == ("exo", "wrist")
+    assert lay.cameras == ("exo", "wrist")
+    assert layout_for(load(sets=['cameras.exo.use="astra"']).cameras_for(
+        astra=False)).cameras == ("wrist",)
     assert lay.region("cam_wrist_rec").dtype["pixels"].shape == (720, 1280, 3)
     assert layout_for(cfg.with_cameras(none=True)).hash != lay.hash
 

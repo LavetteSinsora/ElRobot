@@ -188,6 +188,35 @@ def test_a_still_waypoint_closing_the_gripper_takes_the_gripper_time():
     assert plan.duration >= 1.5 * 55 / Limits().g - DT       # 60 mm/s peak, a cubic's 1.5x
 
 
+def test_a_path_that_still_fails_the_joint_speed_check_is_refused():
+    calls = []
+
+    def stretch(plan):
+        calls.append(plan.duration)
+        return np.array([1.1])
+
+    with pytest.raises(ValueError, match="cannot satisfy joint speed limits"):
+        plan_of([wp([0.01, 0, 0])], stretch=stretch)
+    assert len(calls) == 6             # initial check plus every retimed candidate, including last
+
+
+def test_the_final_retimed_plan_is_accepted_only_when_checked():
+    calls = []
+
+    def stretch(plan):
+        calls.append(plan.duration)
+        return np.array([1.1 if len(calls) < 6 else 1.0])
+
+    plan = plan_of([wp([0.01, 0, 0])], stretch=stretch)
+    assert len(calls) == 6 and calls[-1] == plan.duration
+
+
+@pytest.mark.parametrize("factor", [np.nan, np.inf, 0., -1.])
+def test_invalid_joint_speed_checks_never_allow_motion(factor):
+    with pytest.raises(ValueError, match="invalid timing factors"):
+        plan_of([wp([0.01, 0, 0])], stretch=lambda plan: np.array([factor]))
+
+
 # --- the profile ----------------------------------------------------------------------------
 
 

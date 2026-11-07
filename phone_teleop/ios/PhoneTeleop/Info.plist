@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>PhoneTeleop</string>
+	<string>ElRobot</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -20,19 +20,28 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_elrobot._udp</string>
+		<string>_elrobotcam._tcp</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>ARKit uses the camera to track the phone's 6-DoF pose.</string>
+	<string>As the controller, ARKit tracks the phone's pose with the camera; as a camera, it streams the view of the robot to your Mac.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Streams the phone pose to your Mac over the local network.</string>
+	<string>Finds your Mac on the local network and sends it the phone's pose or video.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>arkit</string>
 	</array>
+	<key>UIRequiresFullScreen</key>
+	<true/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
 	</array>
 </dict>
 </plist>

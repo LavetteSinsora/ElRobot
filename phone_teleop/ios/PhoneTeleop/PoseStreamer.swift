@@ -14,7 +14,8 @@ import QuartzCore
 ///   "pose": [16 floats],         // 4x4 T_world_phone, ROW-major, metres
 ///   "track": "normal",           // ARKit tracking state
 ///   "world_epoch": 0,            // bumped whenever the world frame may have changed
-///   "buttons": {"engage": false, "grip": false}
+///   "buttons": {"engage": false, "grip": false},
+///   "name": "hand"               // this phone's name (the Mac's logs, its busy echo)
 /// }
 /// The Mac echoes {"seq", "t_send", "t_mac", "state", "why", "intervene"} back.
 /// New fields can be added freely; receivers ignore unknown keys.
@@ -27,8 +28,10 @@ final class PoseStreamer: NSObject, ObservableObject, ARSessionDelegate {
     @Published var connected = false
     @Published var epoch = 0
     // What the Mac says the arm is doing (from its echo; updated when it changes).
-    @Published var macState = "—"      // inactive | idle | engaged | released
+    @Published var macState = "—"      // inactive | idle | engaged | released | busy
     @Published var macWhy = ""
+    /// An echo arrived within the last second: the Mac is there and answering.
+    @Published var linkAlive = false
 
     private let session = ARSession()
     private let queue = DispatchQueue(label: "pose.stream", qos: .userInteractive)
@@ -39,6 +42,7 @@ final class PoseStreamer: NSObject, ObservableObject, ARSessionDelegate {
     private var engage = false
     private var grip = false
     private var worldEpoch = 0
+    private var name = ""
 
     // Touched only on `queue`
     private var seq: UInt64 = 0
@@ -48,6 +52,7 @@ final class PoseStreamer: NSObject, ObservableObject, ARSessionDelegate {
     private var lastTrack = ""
     private var lastMacState = ""
     private var lastMacWhy = ""
+    private var lastEcho = -Double.infinity
 
     override init() {
         super.init()
@@ -57,6 +62,12 @@ final class PoseStreamer: NSObject, ObservableObject, ARSessionDelegate {
 
     // MARK: Buttons
 
+    func setName(_ n: String) {
+        lock.lock()
+        name = n
+        lock.unlock()
+    }
+
     func setButtons(engage e: Bool? = nil, grip g: Bool? = nil) {
         lock.lock()
         if let e { engage = e }
@@ -64,9 +75,9 @@ final class PoseStreamer: NSObject, ObservableObject, ARSessionDelegate {
         lock.unlock()
     }
 
-    private func readState() -> (Bool, Bool, Int) {
+    private func readState() -> (Bool, Bool, Int, String) {
         lock.lock(); defer { lock.unlock() }
-        return (engage, grip, worldEpoch)
+        return (engage, grip, worldEpoch, name)
     }
 
     /// Poses before and after this are in different frames: the Mac releases the clutch.
@@ -104,7 +115,7 @@ final class PoseStreamer: NSObject, ObservableObject, ARSessionDelegate {
             bumpEpoch()                              // the map may be re-anchored after this
         }
         lastTrack = track
-        let (e, g, epochNow) = readState()
+        let (e, g, epochNow, phoneName) = readState()
         seq &+= 1
 
         let packet: [String: Any] = [
@@ -116,6 +127,7 @@ final class PoseStreamer: NSObject, ObservableObject, ARSessionDelegate {
             "track": track,
             "world_epoch": epochNow,
             "buttons": ["engage": e, "grip": g],
+            "name": phoneName,
         ]
         if let conn = connection,
            let data = try? JSONSerialization.data(withJSONObject: packet) {
@@ -131,12 +143,19 @@ final class PoseStreamer: NSObject, ObservableObject, ARSessionDelegate {
             rateWindowStart = now
             let pos = SIMD3<Float>(m.columns.3.x, m.columns.3.y, m.columns.3.z)
             let rtt = rttEMA
+            let alive = now - lastEcho < 1.0
             DispatchQueue.main.async {
                 self.sendRate = rate
                 self.trackingText = track
                 self.position = pos
                 self.rttMs = rtt
+                self.linkAlive = alive
+                if !alive && self.macState != "—" {
+                    self.macState = "—"                  // no reply: nothing is known
+                    self.macWhy = ""
+                }
             }
+            if !alive { lastMacState = "" }
         }
     }
 
@@ -168,16 +187,37 @@ final class PoseStreamer: NSObject, ObservableObject, ARSessionDelegate {
         }
     }
 
+    /// Leaving the Controller role: tracking and the link off.
+    func stop() {
+        session.pause()
+        queue.async {
+            self.connection?.cancel()
+            self.connection = nil
+            DispatchQueue.main.async {
+                self.connected = false
+                self.linkAlive = false
+                self.macState = "—"
+            }
+        }
+    }
+
     // MARK: Network
 
+    /// A Mac by its address (typed in the settings).
     func connect(host: String, port: UInt16) {
+        guard let p = NWEndpoint.Port(rawValue: port), !host.isEmpty else { return }
+        connect(to: .hostPort(host: NWEndpoint.Host(host), port: p))
+    }
+
+    /// A Mac by its Bonjour service (`MacBrowser`): found again by name if its IP changes.
+    func connect(to endpoint: NWEndpoint) {
         queue.async {
             self.connection?.cancel()
             self.rttEMA = .nan
-            guard let p = NWEndpoint.Port(rawValue: port), !host.isEmpty else { return }
+            self.lastEcho = -Double.infinity
             let params = NWParameters.udp
             params.serviceClass = .interactiveVoice   // ask Wi-Fi for low-latency (voice) queueing
-            let c = NWConnection(host: NWEndpoint.Host(host), port: p, using: params)
+            let c = NWConnection(to: endpoint, using: params)
             c.stateUpdateHandler = { state in
                 var ready = false
                 if case .ready = state { ready = true }
@@ -196,6 +236,7 @@ final class PoseStreamer: NSObject, ObservableObject, ARSessionDelegate {
         c.receiveMessage { data, _, _, error in
             if let data,
                let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                self.lastEcho = CACurrentMediaTime()
                 if let ts = obj["t_send"] as? Double {
                     let rtt = (CACurrentMediaTime() - ts) * 1000
                     self.rttEMA = self.rttEMA.isNaN ? rtt : 0.9 * self.rttEMA + 0.1 * rtt

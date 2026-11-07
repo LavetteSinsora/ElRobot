@@ -216,6 +216,11 @@ Safety is the runtime's: P6's and the bus process's speed and limit clamps, the 
 (runaway: torque off; recovery to rest), and P12 hands back at once if the session leaves
 ACTIVE or the bus stops following. No workspace box (decided 2026-10-17).
 
+IK convergence checks both position (0.1 mm) and orientation (0.1 degree) for enabled tasks;
+being at the right position does not complete a rotation-only command. Astra's timing planner
+checks its final retimed candidate too: if it still exceeds the joint-speed margin after five
+retiming rounds, the action is refused before engagement.
+
 ### 8.2 P9, the recorder
 
 `runtime/processes/p9_record.py`, ported from g1d: one record per ACTIVE period under

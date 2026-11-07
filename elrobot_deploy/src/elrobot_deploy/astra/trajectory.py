@@ -310,11 +310,16 @@ def build(ref: Reference, waypoints, limits: Limits, dt: float, *, speed: str = 
                 break
             T = _on_grid(np.where(over > 1 + 1e-6, T * over * STRETCH_SLACK, T), dt, limits)
         plan = _sample(Y, T * (SLOW_FACTOR if speed == "slow" else 1.0), dt, ref, targets)
-        if stretch is None or rounds >= 5:
+        if stretch is None:
             return plan
         need = np.asarray(stretch(plan), dtype=np.float64).reshape(len(T))
+        if not np.all(np.isfinite(need)) or np.any(need <= 0):
+            raise ValueError("joint-speed check returned invalid timing factors; action refused")
         if np.all(need <= 1 + 1e-6):
             return plan
+        if rounds >= 5:
+            raise ValueError("cannot satisfy joint speed limits after 5 retiming rounds; "
+                             "action refused (try smaller waypoints or a different posture)")
         T = _on_grid(np.where(need > 1 + 1e-6, T * need * STRETCH_SLACK, T), dt, limits)
         rounds += 1
 

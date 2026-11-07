@@ -7,16 +7,24 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		2EFCE0032C1DE36203C2B9FF /* MacBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFB654A0CCE5FC3EB8622E3F /* MacBrowser.swift */; };
+		413A0ECCED64DE978733C837 /* CameraServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D156EBDF5118020B189DBAB4 /* CameraServer.swift */; };
+		65CAD38BAD767B2E8E147212 /* CameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8AC3928B0E02504422CA6B5 /* CameraView.swift */; };
+		66D27482CEBEF649BD15C65A /* ControllerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 269CF5FB7E5482AB1A8FDA4D /* ControllerView.swift */; };
+		69388A78578B2455BBF51CB7 /* Capture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 902F4B62D8BCCB6C1FA63C10 /* Capture.swift */; };
 		D01765D768FDA35526584D7D /* PhoneTeleopApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 318A14EF52D95260D41B698B /* PhoneTeleopApp.swift */; };
-		EF658B807BA34F959B89DDF7 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 666EFC023593DBE54BC2F327 /* ContentView.swift */; };
 		FF52CEFADF59EEA5968A2347 /* PoseStreamer.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF69CB6CDDF09E834AB726CF /* PoseStreamer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		269CF5FB7E5482AB1A8FDA4D /* ControllerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerView.swift; sourceTree = "<group>"; };
 		318A14EF52D95260D41B698B /* PhoneTeleopApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneTeleopApp.swift; sourceTree = "<group>"; };
 		3AA37471B86178D76200677B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		666EFC023593DBE54BC2F327 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		BAD106AFD2190082C2E6C614 /* PhoneTeleop.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhoneTeleop.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		902F4B62D8BCCB6C1FA63C10 /* Capture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Capture.swift; sourceTree = "<group>"; };
+		B8AC3928B0E02504422CA6B5 /* CameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraView.swift; sourceTree = "<group>"; };
+		BAD106AFD2190082C2E6C614 /* PhoneTeleop.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PhoneTeleop.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CFB654A0CCE5FC3EB8622E3F /* MacBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacBrowser.swift; sourceTree = "<group>"; };
+		D156EBDF5118020B189DBAB4 /* CameraServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraServer.swift; sourceTree = "<group>"; };
 		DF69CB6CDDF09E834AB726CF /* PoseStreamer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoseStreamer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -24,8 +32,12 @@
 		BBE2814D34CD55EB95D9BF56 /* PhoneTeleop */ = {
 			isa = PBXGroup;
 			children = (
-				666EFC023593DBE54BC2F327 /* ContentView.swift */,
+				D156EBDF5118020B189DBAB4 /* CameraServer.swift */,
+				B8AC3928B0E02504422CA6B5 /* CameraView.swift */,
+				902F4B62D8BCCB6C1FA63C10 /* Capture.swift */,
+				269CF5FB7E5482AB1A8FDA4D /* ControllerView.swift */,
 				3AA37471B86178D76200677B /* Info.plist */,
+				CFB654A0CCE5FC3EB8622E3F /* MacBrowser.swift */,
 				318A14EF52D95260D41B698B /* PhoneTeleopApp.swift */,
 				DF69CB6CDDF09E834AB726CF /* PoseStreamer.swift */,
 			);
@@ -78,6 +90,7 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					195BD405FFE2C3DDD47B7AD7 = {
+						DevelopmentTeam = HG9HVDNKQU;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -106,7 +119,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				EF658B807BA34F959B89DDF7 /* ContentView.swift in Sources */,
+				413A0ECCED64DE978733C837 /* CameraServer.swift in Sources */,
+				65CAD38BAD767B2E8E147212 /* CameraView.swift in Sources */,
+				69388A78578B2455BBF51CB7 /* Capture.swift in Sources */,
+				66D27482CEBEF649BD15C65A /* ControllerView.swift in Sources */,
+				2EFCE0032C1DE36203C2B9FF /* MacBrowser.swift in Sources */,
 				D01765D768FDA35526584D7D /* PhoneTeleopApp.swift in Sources */,
 				FF52CEFADF59EEA5968A2347 /* PoseStreamer.swift in Sources */,
 			);

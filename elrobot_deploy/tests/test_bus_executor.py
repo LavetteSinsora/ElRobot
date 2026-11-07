@@ -275,6 +275,23 @@ def test_a_joint_lagging_a_fast_command_is_not_a_runaway():
     assert f is None
 
 
+def test_a_command_reversing_past_a_coasting_joint_is_not_a_runaway():
+    """The phone flicked back (sessions of 2026-10-18, joints 1/3/5/7): the command reverses at
+    120 deg/s while the servo still coasts the old way for ~0.15 s. The error flips side and
+    grows past 25 deg with the joint moving "away" from the new side: lag, not a runaway."""
+    from elrobot_deploy.runtime.execution.guard import Guard
+    t = np.arange(0, 1.5, 1 / 250)
+    v_cmd = np.where(t < 0.3, -100.0, 120.0)                   # deg/s: down, then back up
+    # The servo keeps going down for 50 ms, slows to a stop over 0.1 s, then follows ~28 deg
+    # behind (as in the log: about 27 deg at the trip).
+    v_meas = np.select([t < 0.35, t < 0.45], [-100.0, -100.0 * (0.45 - t) / 0.1], 120.0)
+    cmd, meas = np.zeros((len(t), 8)), np.zeros((len(t), 8))
+    cmd[:, 2] = np.radians(np.cumsum(v_cmd) / 250)
+    meas[:, 2] = np.radians(np.cumsum(v_meas) / 250)
+    f, _ = _run_guard(Guard(), cmd, meas)
+    assert f is None
+
+
 def test_the_gripper_is_not_guarded_by_default():
     from elrobot_deploy.runtime.execution.guard import Guard, GuardSettings
     t = np.arange(0, 1.0, 1 / 250)

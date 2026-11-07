@@ -117,6 +117,11 @@ class CameraConfig:
     slots: int = 8                   # frames the arena keeps
     required: bool = False           # refuse the session if this camera cannot start
     use: str = "always"              # always | astra (only `elrobot_deploy astra` starts it)
+    # source = "phone" (the app's Camera role, runtime/cameras/phone_camera.py):
+    phone_lens: str = "wide"         # wide | ultrawide (the back camera to stream)
+    phone_quality: int = 85          # JPEG quality on the phone, 1-100
+    phone_exposure: str = "lock"     # lock (settle 2 s, then lock exposure, WB, focus) | auto
+    phone_rotate: int = 0            # 0 | 180 (the phone upside down on its stand)
 
     @property
     def shape(self) -> tuple[int, int, int]:
@@ -128,7 +133,7 @@ class CameraConfig:
                 f"{', required' if self.required else ''}")
 
 
-CAMERA_SOURCES = ("usb", "avfoundation", "v4l2", "realsense", "fake")
+CAMERA_SOURCES = ("usb", "avfoundation", "v4l2", "realsense", "phone", "fake")
 CAMERA_USES = ("always", "astra")
 
 
@@ -332,7 +337,11 @@ def _cameras(tables: dict) -> tuple:
             pinned_gain=int(t.get("pinned_gain", d.pinned_gain)),
             white_balance=int(t.get("white_balance", d.white_balance)),
             slots=int(t.get("slots", d.slots)), required=bool(t.get("required", d.required)),
-            use=str(t.get("use", d.use)))
+            use=str(t.get("use", d.use)),
+            phone_lens=str(t.get("phone_lens", d.phone_lens)),
+            phone_quality=int(t.get("phone_quality", d.phone_quality)),
+            phone_exposure=str(t.get("phone_exposure", d.phone_exposure)),
+            phone_rotate=int(t.get("phone_rotate", d.phone_rotate)))
         if cam.source not in CAMERA_SOURCES:
             raise ConfigError(f"[cameras.{name}] source {cam.source!r}: one of {CAMERA_SOURCES}")
         if cam.use not in CAMERA_USES:
@@ -343,6 +352,17 @@ def _cameras(tables: dict) -> tuple:
             raise ConfigError(f"[cameras.{name}] exposure {cam.exposure!r}: one of {MODES}")
         if cam.fallback_lens_circle is not None and len(cam.fallback_lens_circle) != 3:
             raise ConfigError(f"[cameras.{name}] fallback_lens_circle: [cx, cy, r] in pixels")
+        if cam.phone_lens not in ("wide", "ultrawide"):
+            raise ConfigError(f"[cameras.{name}] phone_lens {cam.phone_lens!r}: wide or ultrawide")
+        if cam.phone_exposure not in ("lock", "auto"):
+            raise ConfigError(f"[cameras.{name}] phone_exposure {cam.phone_exposure!r}: lock or "
+                              f"auto")
+        if cam.phone_rotate not in (0, 180) or not 1 <= cam.phone_quality <= 100:
+            raise ConfigError(f"[cameras.{name}]: phone_rotate 0 or 180, phone_quality 1-100")
+        if cam.source == "phone" and cam.exposure != "camera":
+            raise ConfigError(f"[cameras.{name}]: a phone camera has no control channel here: "
+                              f"exposure = \"camera\" (the phone's own; phone_exposure says "
+                              f"whether it locks)")
         if not (cam.width > 0 and cam.height > 0 and cam.fps > 0 and cam.slots >= 3):
             raise ConfigError(f"[cameras.{name}]: width, height, fps > 0 and slots >= 3")
         out.append(cam)
